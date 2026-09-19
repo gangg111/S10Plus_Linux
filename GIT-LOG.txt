@@ -1,0 +1,188 @@
+### UWAGA: ten plik jest UCIETY
+
+Snapshot historii gita z telefonu przyjechal niekompletny (transfer urwal sie
+w polowie linii, ostatni wpis to 'build-logs/05-ch'). Repozytorium projektu nie
+jest repozytorium gita na PC, wiec ogona nie da sie odtworzyc z tej strony.
+
+Pelna historia zyje w repozytorium na telefonie; ten plik sluzy tylko do czytania
+przeszlosci i NIE jest zrodlem prawdy o stanie serii. Aktualny stan serii opisuja
+patches/, docs/00-summary.md i build-logs/44-pc-verify.log.
+
+Praca wykonana na PC (29 patchy, przebudowa bramek) NIE jest w tym logu.
+
+3fb75af chore: nie wersjonuj __pycache__
+ .gitignore                                     |   1 +
+ scripts/__pycache__/decode-pps.cpython-313.pyc | Bin 7663 -> 0 bytes
+ 2 files changed, 1 insertion(+)
+688c065 docs: opisz silnik dimmingu z MTP (patch 0024)
+ README.md                                          |    5 +-
+ build-logs/00-tree-hash.txt                        |    1 +
+ build-logs/01-defconfig.log                        |   14 -
+ build-logs/02-dtb.log                              |   27 +-
+ build-logs/03-check-dtbs.log                       |    2 -
+ build-logs/04-dt-binding-check.log                 |   10 -
+ build-logs/05-checkpatch.log                       |  952 +++++++++++++-
+ build-logs/42-dimming-engine-check.log             |    8 +
+ build-logs/43-verify-24-patches.log                | 1075 ++++++++++++++++
+ docs/00-summary.md                                 |    1 +
+ docs/R2-panel-driver.md                            |   78 +-
+ ...-panel-s6e3ha9-Add-the-AID-dimming-engine.patch | 1330 ++++++++++++++++++++
+ scripts/check-dimming-engine.sh                    |   61 +
+ scripts/dimming-harness/port_main.c                |   36 +
+ scripts/dimming-harness/vendor_main.c              |  104 ++
+ 15 files changed, 3641 insertions(+), 63 deletions(-)
+b896220 drm/panel: s6e3ha9 - sterowanie jasnoscia (patch 0023)
+ README.md                                          |   4 +-
+ build-logs/40-aid-tables-check.log                 |   4 +
+ build-logs/41-clean-worktree-23patches.log         |   3 +
+ docs/00-summary.md                                 |   1 +
+ docs/R2-panel-driver.md                            |  50 ++++-
+ ...-drm-panel-s6e3ha9-Add-brightness-control.patch | 250 +++++++++++++++++++++
+ scripts/check-aid-tables.py                        |  52 +++++
+ 7 files changed, 357 insertions(+), 7 deletions(-)
+c6ff371 drm/exynos9820: odczyty DSI (patch 0022)
+ README.md                                          |   2 +-
+ build-logs/38-clean-worktree-22patches.log         |   3 +
+ build-logs/39-dsi-read-check.log                   |   8 +
+ docs/00-summary.md                                 |   1 +
+ docs/R2-decon-dsim-driver.md                       |  27 ++-
+ .../0022-drm-exynos9820-Support-DSI-reads.patch    | 188 +++++++++++++++++++++
+ 6 files changed, 226 insertions(+), 3 deletions(-)
+4b66feb pmic: s2dos05 - mainline ma sterownik, dopisana magistrala (0020-0021)
+ README.md                                          |   2 +-
+ build-logs/36-s2dos05-check.log                    |   8 +
+ build-logs/37-clean-worktree-21patches.log         |   3 +
+ docs/00-summary.md                                 |   2 +
+ docs/R2-s2dos05.md                                 |  94 +++++++++++
+ ...-samsung-exynos9820-add-CMU_DPU-CMU_CMGP.patch} | 114 ++++++++++++--
+ ...dt-bindings-clock-Add-Exynos9820-CMU_CMGP.patch |  67 ++++++++
+ ...xynos-exynos9820-Add-CMGP-I2C-and-the-S2D.patch | 174 +++++++++++++++++++++
+ 8 files changed, 453 insertions(+), 11 deletions(-)
+cc2fe2b drm/exynos9820: bloki analogowe D-PHY + naprawa adresow PLL (0017-0019)
+ README.md                                          |   2 +-
+ build-logs/34-dphy-analog-check.log                |  15 ++
+ build-logs/35-clean-worktree-19patches.log         |   3 +
+ docs/00-summary.md                                 |   1 +
+ docs/R2-decon-dsim-driver.md                       |  59 +++++-
+ ...820-Program-the-D-PHY-analog-blocks-and-f.patch | 231 +++++++++++++++++++++
+ ...-display-exynos9820-dsim-Add-the-D-PHY-to.patch |  46 ++++
+ ...xynos-exynos9820-Add-the-D-PHY-top-range-.patch |  35 ++++
+ 8 files changed, 389 insertions(+), 3 deletions(-)
+8d64444 drm/exynos9820: DSC w DECON (patch 0016)
+ README.md                                          |   7 +-
+ build-logs/33-decon-dsc-check.log                  |  21 +
+ docs/00-summary.md                                 |   1 +
+ docs/R2-decon-dsim-driver.md                       |  46 +-
+ ...6-drm-exynos9820-Program-the-DSC-encoders.patch | 526 +++++++++++++++++++++
+ scripts/check-decon-dsc.py                         | 106 +++++
+ 6 files changed, 701 insertions(+), 6 deletions(-)
+c5e6e7e dt: bindingi i wezly DECON/DSIM + panel na plycie (0013-0015)
+ README.md                                          |   2 +-
+ build-logs/30-decon-dsim-binding.log               |   9 +
+ build-logs/31-decon-dsim-dt-check.log              |   3 +
+ build-logs/32-clean-worktree-15patches.log         |   5 +
+ docs/00-summary.md                                 |   2 +
+ docs/R2-decon-dsim-dt.md                           |  77 ++++++
+ ...ngs-display-Add-Exynos9820-DECON-and-DSIM.patch | 261 +++++++++++++++++++++
+ ...820-Take-the-frame-done-interrupt-by-name.patch |  31 +++
+ ...xynos-exynos9820-Add-DECON-DSIM-and-the-S.patch | 172 ++++++++++++++
+ 9 files changed, 561 insertions(+), 1 deletion(-)
+f2fa434 iommu: SYSMMU dla 9820 - mainline juz to ma, dopisane wezly DT (0011-0012)
+ README.md                                          |  2 +-
+ build-logs/29-sysmmu-check.log                     |  8 +++
+ docs/00-summary.md                                 |  2 +
+ docs/R1-sysmmu.md                                  | 84 ++++++++++++++++++++++
+ ...ings-clock-exynos9820-Allow-power-domains.patch | 32 +++++++++
+ ...xynos-exynos9820-Add-CMU_DPU-and-the-DPU-.patch | 78 ++++++++++++++++++++
+ scripts/sync-to-downloads.sh                       | 14 ++++
+ 7 files changed, 219 insertions(+), 1 deletion(-)
+0d7de17 pmdomain: dopisana domena zasilania DPU (patche 0008-0010)
+ README.md                                          |  2 +-
+ build-logs/27-pd-dpu-check.log                     | 11 +++++
+ build-logs/28-clean-worktree-10patches.log         |  5 +++
+ docs/00-summary.md                                 |  1 +
+ docs/R1-cmu-dpu.md                                 | 39 +++++++++++++++++-
+ ...indings-power-Add-Exynos9820-power-domain.patch | 28 +++++++++++++
+ ...msung-Add-Exynos9820-power-domain-support.patch | 48 ++++++++++++++++++++++
+ ...xynos-exynos9820-Add-the-DPU-power-domain.patch | 35 ++++++++++++++++
+ 8 files changed, 166 insertions(+), 3 deletions(-)
+98c78fa clk: dopisany blok CMU_DPU (patch 0007 + patches-oot/0001)
+ README.md                                          |   3 +-
+ build-logs/25-cmu-dpu-binding-check.log            |   7 +
+ build-logs/26-cmu-dpu-verify.log                   |  20 ++
+ docs/00-summary.md                                 |   2 +
+ docs/R1-cmu-dpu.md                                 |  85 +++++++++
+ .../0001-clk-samsung-exynos9820-add-CMU_DPU.patch  | 210 +++++++++++++++++++++
+ ...-dt-bindings-clock-Add-Exynos9820-CMU_DPU.patch |  81 ++++++++
+ 7 files changed, 407 insertions(+), 1 deletion(-)
+2729624 drm: szkic sterownika DECON/DSIM dla 9820 (patch 0006)
+ README.md                                          |    2 +-
+ build-logs/05-checkpatch.log                       |   26 +
+ build-logs/24-decon-dsim-build.log                 |   12 +
+ docs/00-summary.md                                 |    2 +
+ docs/R2-decon-dsim-driver.md                       |   86 ++
+ ...skeleton-DECON-DSIM-driver-for-Exynos9820.patch | 1403 ++++++++++++++++++++
+ scripts/kcc-termux.sh                              |    2 +-
+ 7 files changed, 1531 insertions(+), 2 deletions(-)
+edd3962 drm/panel: szkic sterownika S6E3HA9 do mainline (patches 0004-0005)
+ README.md                                          |   5 +-
+ build-logs/05-checkpatch.log                       |  33 +-
+ build-logs/21-panel-driver-build.log               |  27 ++
+ build-logs/22-panel-binding-check.log              |   7 +
+ build-logs/23-dsc-config-check.log                 |  35 ++
+ docs/00-summary.md                                 |   2 +
+ docs/R2-panel-driver.md                            |  89 +++++
+ ...indings-display-panel-Add-Samsung-S6E3HA9.patch |  94 +++++
+ ...rm-panel-Add-Samsung-S6E3HA9-panel-driver.patch | 429 +++++++++++++++++++++
+ scripts/check-dsc-config.py                        | 130 +++++++
+ scripts/kcc-termux.sh                              |  11 +
+ 11 files changed, 855 insertions(+), 7 deletions(-)
+2240292 R2 §9-§10: przepisana sekwencja init panelu i konfiguracja TE
+ build-logs/20-init-seq-beyond2.log |  71 +++++++++++++++++++++
+ docs/00-summary.md                 |   1 +
+ docs/R2-display.md                 |   2 +-
+ docs/R2-panel-timings.md           | 122 +++++++++++++++++++++++++++++++++++--
+ scripts/dump-init-seq.py           | 112 ++++++++++++++++++++++++++++++++++
+ 5 files changed, 303 insertions(+), 5 deletions(-)
+66df169 R2 §8: FFC (0xC5) dla naszego zegara + model przeliczania
+ SOURCES.md                  |  3 +-
+ build-logs/19-ffc-model.log | 30 ++++++++++++++++++++
+ docs/00-summary.md          |  3 +-
+ docs/R2-panel-timings.md    | 68 +++++++++++++++++++++++++++++++++++++++++++--
+ scripts/fetch-sources.sh    |  2 ++
+ scripts/ffc-calc.py         | 65 +++++++++++++++++++++++++++++++++++++++++++
+ 6 files changed, 167 insertions(+), 4 deletions(-)
+c77de6c R2 §7: dopisz zrodla D-PHY do fetch-sources/SOURCES i wpis w podsumowaniu
+ SOURCES.md               | 3 ++-
+ docs/00-summary.md       | 3 ++-
+ scripts/fetch-sources.sh | 2 ++
+ 3 files changed, 6 insertions(+), 2 deletions(-)
+7437ac1 R2 §7: timingi D-PHY z cal_9820/dsim_reg.c dla beyond2lte
+ build-logs/18-dphy-9820.log | 35 +++++++++++++++++++
+ docs/R2-panel-timings.md    | 84 +++++++++++++++++++++++++++++++++++++++++++--
+ 2 files changed, 117 insertions(+), 2 deletions(-)
+7091ad9 R2: timingi panelu S6E3HA9 i pelna konfiguracja DSC dla beyond2lte
+ README.md                                      |   5 +-
+ SOURCES.md                                     |   6 +-
+ build-logs/14-pps-decoded-beyond2.txt          | 416 +++++++++++++++++++++++++
+ build-logs/15-pps-decoded-dpu20.txt            | 208 +++++++++++++
+ build-logs/16-r2-panel-dt-node.log             |  71 +++++
+ build-logs/17-pps-crosscheck.log               |  37 +++
+ docs/00-summary.md                             |   4 +-
+ docs/R2-display.md                             |   9 +-
+ docs/R2-panel-timings.md                       | 155 +++++++++
+ scripts/__pycache__/decode-pps.cpython-313.pyc | Bin 0 -> 7663 bytes
+ scripts/decode-pps.py                          | 111 +++++++
+ scripts/fetch-sources.sh                       |   5 +
+ 12 files changed, 1018 insertions(+), 9 deletions(-)
+7d50bd5 Faza rekonesansu R1-R5: raporty, patche DT dla exynos9820/beyond2lte, logi bramek
+ .gitignore                                         |    1 +
+ README.md                                          |   35 +
+ SOURCES.md                                         |   29 +
+ build-logs/00-tree-hash.txt                        |    8 +
+ build-logs/01-defconfig.log                        |   18 +
+ build-logs/02-dtb.log                              |   28 +
+ build-logs/03-check-dtbs.log                       |    3 +
+ build-logs/04-dt-binding-check.log                 |   22 +
+ build-logs/05-ch
+[UCIETE W TYM MIEJSCU]

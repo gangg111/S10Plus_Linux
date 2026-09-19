@@ -1,0 +1,54 @@
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\arm\cpus.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/arm/cpus.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\arm\cpus.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\arm\samsung\samsung-boards.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/arm/samsung/samsung-boards.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\arm\samsung\samsung-boards.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\clock\samsung,exynos9820-clock.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/clock/samsung,exynos9820-clock.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\clock\samsung,exynos9820-clock.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\display\bridge\samsung,mipi-dsim.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/display/bridge/samsung,mipi-dsim.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\display\bridge\samsung,mipi-dsim.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\display\panel\samsung,s6e3ha9.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/display/panel/samsung,s6e3ha9.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\display\panel\samsung,s6e3ha9.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\display\samsung\samsung,exynos9820-decon.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/display/samsung/samsung,exynos9820-decon.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\display\samsung\samsung,exynos9820-decon.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\hwinfo\samsung,exynos-chipid.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/hwinfo/samsung,exynos-chipid.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\hwinfo\samsung,exynos-chipid.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\i2c\i2c-exynos5.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/i2c/i2c-exynos5.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\i2c\i2c-exynos5.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\mfd\syscon.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/mfd/syscon.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\mfd\syscon.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\phy\samsung,exynos9820-mipi-dphy.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/phy/samsung,exynos9820-mipi-dphy.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\phy\samsung,exynos9820-mipi-dphy.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\pinctrl\samsung,pinctrl-wakeup-interrupt.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\pinctrl\samsung,pinctrl-wakeup-interrupt.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\pinctrl\samsung,pinctrl.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/pinctrl/samsung,pinctrl.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\pinctrl\samsung,pinctrl.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\power\pd-samsung.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/power/pd-samsung.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\power\pd-samsung.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\serial\samsung_uart.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/serial/samsung_uart.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\serial\samsung_uart.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\soc\samsung\exynos-pmu.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/soc/samsung/exynos-pmu.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\soc\samsung\exynos-pmu.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\soc\samsung\exynos-usi.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/soc/samsung/exynos-usi.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\soc\samsung\exynos-usi.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\soc\samsung\samsung,exynos-sysreg.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/soc/samsung/samsung,exynos-sysreg.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\soc\samsung\samsung,exynos-sysreg.yaml
+C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\timer\samsung,exynos4210-mct.yaml: $id: Cannot determine base path from $id, relative path/filename doesn't match actual path or filename
+	 $id: http://devicetree.org/schemas/timer/samsung,exynos4210-mct.yaml
+	file: C:\Users\Artur\Documents\Serwis\Programowanie\S10Plus_Linux\sources\linux\Documentation\devicetree\bindings\timer\samsung,exynos4210-mct.yaml

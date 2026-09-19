@@ -1,0 +1,9 @@
+  SCHEMA  Documentation/devicetree/bindings/processed-schema.json
+  CHKDT   ./Documentation/devicetree/bindings
+  LINT    ./Documentation/devicetree/bindings
+  STYLE   ./Documentation/devicetree/bindings
+  DTEX    Documentation/devicetree/bindings/display/samsung/samsung,exynos9820-decon.example.dts
+  DTC [C] Documentation/devicetree/bindings/display/samsung/samsung,exynos9820-decon.example.dtb
+  DTEX    Documentation/devicetree/bindings/display/samsung/samsung,exynos9820-dsim.example.dts
+  DTC [C] Documentation/devicetree/bindings/display/samsung/samsung,exynos9820-dsim.example.dtb
+EXIT=0

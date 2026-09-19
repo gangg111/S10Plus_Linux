@@ -1,0 +1,20 @@
+# CMU_DPU - bramki weryfikacyjne
+# data: 2026-08-19T01:28:05Z
+
+## 1. Patch OOT stosuje sie na czysty plik chiffa (0aeca03f7acd):
+checking file drivers/clk/samsung/clk-exynos9820.c
+
+## 2. Kompilacja drivera z blokiem CMU_DPU (shim tylko na 2 brakujace typy PLL):
+   EXIT=0  uwagi z pliku: 0  obiekt: 78984 B
+
+   shim (NIE jest czescia patcha):
+     /* LOKALNY SHIM TESTOWY - NIE JEST CZESCIA ZADNEGO PATCHA.
+      * Mainline clk-pll.h nie ma jeszcze typow PLL uzywanych przez ten driver
+      * (pll_0817x, pll_1018x). Dodajemy je tylko po to, zeby dalo sie skompilowac
+      * plik i sprawdzic NASZ blok CMU_DPU.
+      */
+     #define pll_0817x pll_0818x
+     #define pll_1018x pll_0822x
+
+## 3. dt_binding_check dla samsung,exynos9820-clock.yaml z cmu-dpu: EXIT=0 (build-logs/25)
+## 4. checkpatch --strict: 0 bledow w obu patchach (0007 i patches-oot/0001)

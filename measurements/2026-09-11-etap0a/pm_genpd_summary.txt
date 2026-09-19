@@ -1,0 +1,60 @@
+domain                          status          slaves
+    /device                                             runtime status
+----------------------------------------------------------------------
+pd-vra2                         off-0           
+    /devices/platform/17680000.sysmmu                   suspended
+    /devices/platform/170e0000.fimc_is                  suspended
+    /devices/platform/dbgdev-pd-vra2                    suspended
+pd-fsys0a                       on              
+    /devices/platform/10c00000.usb                      active
+    /devices/platform/dbgdev-pd-fsys0a                  suspended
+pd-vts                          off-0           
+    /devices/platform/15510000.vts                      suspended
+    /devices/platform/dbgdev-pd-vts                     suspended
+pd-mfc                          off-0           
+    /devices/platform/18890000.sysmmu                   suspended
+    /devices/platform/188b0000.sysmmu                   suspended
+    /devices/platform/dbgdev-pd-mfc                     suspended
+pd-iva                          off-0           
+    /devices/platform/18020000.sysmmu                   suspended
+    /devices/platform/dbgdev-pd-iva                     suspended
+pd-isplp                        off-0           pd-vra2
+    /devices/platform/17450000.sysmmu                   suspended
+    /devices/platform/17470000.sysmmu                   suspended
+    /devices/platform/dbgdev-pd-isplp                   suspended
+pd-isphq                        off-0           
+    /devices/platform/17750000.sysmmu                   suspended
+    /devices/platform/dbgdev-pd-isphq                   suspended
+pd-isppre                       off-0           
+    /devices/platform/17210000.sysmmu                   suspended
+    /devices/platform/dbgdev-pd-isppre                  suspended
+pd-embedded_g3d                 off-0           
+    /devices/platform/18500000.mali                     suspended
+    /devices/platform/dbgdev-pd-embedded-g3d            suspended
+pd-g2d                          off-0           
+    /devices/platform/18a60000.sysmmu                   suspended
+    /devices/platform/18a80000.sysmmu                   suspended
+    /devices/platform/18b90000.sysmmu                   suspended
+    /devices/platform/repeater@0                        suspended
+    /devices/platform/dbgdev-pd-g2d                     suspended
+pd-dsps                         off-0           
+    /devices/platform/17c20000.sysmmu                   suspended
+    /devices/platform/17c30000.sysmmu                   suspended
+    /devices/platform/dbgdev-pd-dsps                    suspended
+pd-dspm                         off-0           pd-dsps
+    /devices/platform/dbgdev-pd-dspm                    suspended
+pd-dpu                          on              pd-isppre
+    /devices/platform/190a0000.sysmmu                   active
+    /devices/platform/190b0000.sysmmu                   active
+    /devices/platform/190c0000.sysmmu                   active
+    /devices/platform/dbgdev-pd-dpu                     suspended
+pd-npu1                         off-0           
+    /devices/platform/17930000.sysmmu                   suspended
+    /devices/platform/170000a0.devfreq_npu              suspended
+    /devices/platform/dbgdev-pd-npu1                    suspended
+pd-npu0                         off-0           pd-npu1
+    /devices/platform/dbgdev-pd-npu0                    suspended
+pd-aud                          off-0           
+    /devices/platform/18e00000.sysmmu                   suspended
+    /devices/platform/17000060.devfreq_aud              suspended
+    /devices/platform/dbgdev-pd-aud                     suspended

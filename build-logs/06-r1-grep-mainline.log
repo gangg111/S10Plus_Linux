@@ -1,0 +1,31 @@
+# R1 evidence — pristine mainline base 1200d84f4c0a929a0780180d25063d93773be79c (v7.2.0)
+
+## git grep -il "9820" <base> -- drivers/clk/samsung include/dt-bindings/clock Documentation/devicetree/bindings/clock
+exit=1 (no output above = no hits)
+
+## git grep -il "exynos9820" <base> -- (whole tree)
+exit=1 (no output above = no hits)
+
+## Exynos ARM64 clock drivers present in base:
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:7:obj-$(CONFIG_EXYNOS_3250_COMMON_CLK)	+= clk-exynos3250.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:8:obj-$(CONFIG_EXYNOS_4_COMMON_CLK)	+= clk-exynos4.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:9:obj-$(CONFIG_EXYNOS_4_COMMON_CLK)	+= clk-exynos4412-isp.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:10:obj-$(CONFIG_EXYNOS_5250_COMMON_CLK)	+= clk-exynos5250.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:11:obj-$(CONFIG_EXYNOS_5250_COMMON_CLK)	+= clk-exynos5-subcmu.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:12:obj-$(CONFIG_EXYNOS_5260_COMMON_CLK)	+= clk-exynos5260.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:13:obj-$(CONFIG_EXYNOS_5410_COMMON_CLK)	+= clk-exynos5410.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:14:obj-$(CONFIG_EXYNOS_5420_COMMON_CLK)	+= clk-exynos5420.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:15:obj-$(CONFIG_EXYNOS_5420_COMMON_CLK)	+= clk-exynos5-subcmu.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:18:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos5433.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:19:obj-$(CONFIG_EXYNOS_AUDSS_CLK_CON) += clk-exynos-audss.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:20:obj-$(CONFIG_EXYNOS_CLKOUT)	+= clk-exynos-clkout.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:21:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos-arm64.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:22:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos2200.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:23:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos7.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:24:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos7870.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:25:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos7885.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:26:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos850.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:27:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos8895.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:28:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynos990.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:29:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynosautov9.o
+1200d84f4c0a929a0780180d25063d93773be79c:drivers/clk/samsung/Makefile:30:obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-exynosautov920.o

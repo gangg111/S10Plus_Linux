@@ -1,0 +1,78 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 19 Aug 2026 08:04:45 +0200
+Subject: [PATCH] clk: samsung: Add the PLL_0817X and PLL_1018X types
+
+Exynos9820 drives its shared PLLs with two IP revisions that the driver
+does not name yet: PLL_0817X (fout_pll_shared0 and fout_pll_shared1) and
+PLL_1018X (fout_pll_shared4).
+
+Both belong to families the driver already handles. The vendor clock
+abstraction layer puts them in the very same buckets as types that are
+already supported: PLL_0817X shares its spec with PLL_0822X and
+PLL_1017X, and PLL_1018X shares its spec with PLL_0818X
+(cal-if/pll_spec.c:293-301 of
+LineageOS/android_kernel_samsung_exynos9820 at 7d08ec364a06). The two
+specs describe the same register layout, an integer PLL with P in 1..63,
+M in 64..1023, S in 0..6 and no K field (:158-177); they differ only in
+the allowed input and VCO frequency ranges, which the clock driver does
+not encode.
+
+Since pll_0818x and pll_0822x already share samsung_pll0822x_clk_ops
+with the same enable and lock bit offsets, add the two new names to that
+same case list rather than duplicating the ops.
+
+This is not a new idea: an out of tree Exynos9820 port carries the same
+change, with the two names in the same ops group
+(chiffathefox/exynos-9820-mainline-linux at 0aeca03f7acd,
+drivers/clk/samsung/clk-pll.h and clk-pll.c). Landing it
+upstream is what removes the need for a local "#define pll_0817x
+pll_0818x" shim in every tree that wants to build an Exynos9820 clock
+driver.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/clk/samsung/clk-pll.c | 2 ++
+ drivers/clk/samsung/clk-pll.h | 2 ++
+ 2 files changed, 4 insertions(+)
+
+diff --git a/drivers/clk/samsung/clk-pll.c b/drivers/clk/samsung/clk-pll.c
+index fdb84bcec91..61d90d53f0b 100644
+--- a/drivers/clk/samsung/clk-pll.c
++++ b/drivers/clk/samsung/clk-pll.c
+@@ -1649,6 +1649,7 @@ static void __init _samsung_clk_register_pll(struct samsung_clk_provider *ctx,
+ 	case pll_1418x:
+ 	case pll_1051x:
+ 	case pll_1052x:
++	case pll_0817x:
+ 	case pll_0818x:
+ 	case pll_0822x:
+ 	case pll_0516x:
+@@ -1657,6 +1658,7 @@ static void __init _samsung_clk_register_pll(struct samsung_clk_provider *ctx,
+ 	case pll_0717x:
+ 	case pll_0718x:
+ 	case pll_0732x:
++	case pll_1018x:
+ 		pll->enable_offs = PLL0822X_ENABLE_SHIFT;
+ 		pll->lock_offs = PLL0822X_LOCK_STAT_SHIFT;
+ 		if (!pll->rate_table)
+diff --git a/drivers/clk/samsung/clk-pll.h b/drivers/clk/samsung/clk-pll.h
+index d6eb3246611..00bf34c0438 100644
+--- a/drivers/clk/samsung/clk-pll.h
++++ b/drivers/clk/samsung/clk-pll.h
+@@ -35,6 +35,7 @@ enum samsung_pll_type {
+ 	pll_1451x,
+ 	pll_1452x,
+ 	pll_1460x,
++	pll_0817x,
+ 	pll_0818x,
+ 	pll_0822x,
+ 	pll_0831x,
+@@ -50,6 +51,7 @@ enum samsung_pll_type {
+ 	pll_0732x,
+ 	pll_4311,
+ 	pll_1017x,
++	pll_1018x,
+ 	pll_1031x,
+ 	pll_a9fracm,
+ 	pll_a9fraco,

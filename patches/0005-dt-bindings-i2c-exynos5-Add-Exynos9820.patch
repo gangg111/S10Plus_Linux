@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:48:03 +0200
+Subject: [PATCH] dt-bindings: i2c: exynos5: Add Exynos9820
+
+The HSI2C controller reuses the register layout of an already documented
+SoC, so only the compatible string is added.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/i2c/i2c-exynos5.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/i2c/i2c-exynos5.yaml b/Documentation/devicetree/bindings/i2c/i2c-exynos5.yaml
+index 32269239bae..9ece1bd6bd2 100644
+--- a/Documentation/devicetree/bindings/i2c/i2c-exynos5.yaml
++++ b/Documentation/devicetree/bindings/i2c/i2c-exynos5.yaml
+@@ -42,6 +42,7 @@ properties:
+               - google,gs101-hsi2c
+               - samsung,exynos2200-hsi2c
+               - samsung,exynos850-hsi2c
++              - samsung,exynos9820-hsi2c
+               - samsung,exynos990-hsi2c
+           - const: samsung,exynosautov9-hsi2c
+       - const: samsung,exynos5-hsi2c    # Exynos5250 and Exynos5420

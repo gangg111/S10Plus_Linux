@@ -1,0 +1,3 @@
+# Nic tutaj nie moze miec przepisywanych koncow linii: seria patchy musi
+# stosowac sie bajt w bajt, a skrypty jada pod WSL.
+* -text

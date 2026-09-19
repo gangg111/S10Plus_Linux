@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 8 Sep 2026 21:31:13 +0200
+Subject: [PATCH] dt-bindings: hwinfo: samsung,exynos-chipid: Add Exynos9820
+
+The chip identification block of the Exynos9820 is the one the
+samsung,exynos850-chipid entry already describes, but every SoC in this
+binding names itself first and falls back to that entry, so add the
+Exynos9820 to the list rather than have its device tree claim to be a
+different SoC.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../devicetree/bindings/hwinfo/samsung,exynos-chipid.yaml        | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/hwinfo/samsung,exynos-chipid.yaml b/Documentation/devicetree/bindings/hwinfo/samsung,exynos-chipid.yaml
+index b9cdfe52b62..f60d2bce9a2 100644
+--- a/Documentation/devicetree/bindings/hwinfo/samsung,exynos-chipid.yaml
++++ b/Documentation/devicetree/bindings/hwinfo/samsung,exynos-chipid.yaml
+@@ -29,6 +29,7 @@ properties:
+               - samsung,exynos8895-chipid
+               - samsung,exynos9610-chipid
+               - samsung,exynos9810-chipid
++              - samsung,exynos9820-chipid
+               - samsung,exynos990-chipid
+               - samsung,exynosautov9-chipid
+               - samsung,exynosautov920-chipid

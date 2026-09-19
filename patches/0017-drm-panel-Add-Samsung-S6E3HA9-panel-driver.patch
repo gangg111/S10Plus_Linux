@@ -1,0 +1,479 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 19 Aug 2026 01:57:08 +0200
+Subject: [PATCH] drm/panel: Add Samsung S6E3HA9 panel driver
+
+The S6E3HA9 DDIC drives the AMB644WQ01 1440x3040 command mode AMOLED
+panel found in the Samsung Galaxy S10 family (beyond1lte/beyond2lte/
+beyondx). It always runs with DSC 1.1 enabled: 8 bpp, 8 bpc, two 720x40
+slices.
+
+Timings come from the vendor device tree node s6e3ha9_beyond2 and the
+command sequences from the vendor panel description; the DSC parameters
+computed by the DRM helpers match the vendor PPS payload field by field.
+
+The power-on ramp follows the vendor panel driver: the rails come up
+as vci, then vdd3, then vddr, followed by 10 ms, the reset being
+released, and another 5 ms before the first DCS command.
+regulator_bulk_enable() is not used for it, because it hands every
+rail to async_schedule_domain() and only then waits, so it cannot
+express an order. The down ramp does have one, reverse array order,
+so regulator_bulk_disable() stays.
+
+Brightness control is not implemented yet: the panel uses Samsung AID
+dimming, which needs the per-level gamma/AOR/ELVSS tables derived from
+the panel's MTP data. The driver programs the vendor's static brightness
+condition instead.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/panel/Kconfig                 |  15 +
+ drivers/gpu/drm/panel/Makefile                |   1 +
+ drivers/gpu/drm/panel/panel-samsung-s6e3ha9.c | 400 ++++++++++++++++++
+ 3 files changed, 416 insertions(+)
+ create mode 100644 drivers/gpu/drm/panel/panel-samsung-s6e3ha9.c
+
+diff --git a/drivers/gpu/drm/panel/Kconfig b/drivers/gpu/drm/panel/Kconfig
+index 3eac4d0f88b..f144db1d329 100644
+--- a/drivers/gpu/drm/panel/Kconfig
++++ b/drivers/gpu/drm/panel/Kconfig
+@@ -966,6 +966,21 @@ config DRM_PANEL_SAMSUNG_S6E3HA8
+ 	    Samsung AMB577PX01 (found in the Samsung S9 smartphone)
+ 
+ 
++config DRM_PANEL_SAMSUNG_S6E3HA9
++	tristate "Samsung S6E3HA9 DSI command mode panel"
++	depends on BACKLIGHT_CLASS_DEVICE
++	depends on GPIOLIB
++	depends on OF
++	depends on DRM_MIPI_DSI
++	select DRM_DISPLAY_HELPER
++	select DRM_DISPLAY_DSC_HELPER
++	help
++	  Say Y or M here if you want to enable support for the
++	  Samsung S6E3HA9 DDIC and connected MIPI DSI panel.
++	  Currently supported panels:
++
++	    Samsung AMB644WQ01 (found in the Samsung Galaxy S10+ smartphone)
++
+ config DRM_PANEL_SAMSUNG_S6E63J0X03
+ 	tristate "Samsung S6E63J0X03 DSI command mode panel"
+ 	depends on OF
+diff --git a/drivers/gpu/drm/panel/Makefile b/drivers/gpu/drm/panel/Makefile
+index c2c5cf81711..e6ae1472af3 100644
+--- a/drivers/gpu/drm/panel/Makefile
++++ b/drivers/gpu/drm/panel/Makefile
+@@ -93,6 +93,7 @@ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3FA7) += panel-samsung-s6e3fa7.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3FC2X01) += panel-samsung-s6e3fc2x01.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3HA2) += panel-samsung-s6e3ha2.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3HA8) += panel-samsung-s6e3ha8.o
++obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3HA9) += panel-samsung-s6e3ha9.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E63J0X03) += panel-samsung-s6e63j0x03.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E63M0) += panel-samsung-s6e63m0.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E63M0_SPI) += panel-samsung-s6e63m0-spi.o
+diff --git a/drivers/gpu/drm/panel/panel-samsung-s6e3ha9.c b/drivers/gpu/drm/panel/panel-samsung-s6e3ha9.c
+new file mode 100644
+index 00000000000..b0683f5e534
+--- /dev/null
++++ b/drivers/gpu/drm/panel/panel-samsung-s6e3ha9.c
+@@ -0,0 +1,400 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Samsung S6E3HA9 DDIC / AMB644WQ01 panel driver
++ *
++ * Found in the Samsung Galaxy S10+ (SM-G975F, beyond2lte) and its siblings.
++ *
++ * Command sequences and DSC configuration transcribed from the vendor kernel:
++ * LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
++ * drivers/video/fbdev/exynos/panel/s6e3ha9/s6e3ha9_beyond2_a3_s0_panel.h
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ */
++
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/regulator/consumer.h>
++
++#include <drm/display/drm_dsc.h>
++#include <drm/display/drm_dsc_helper.h>
++#include <drm/drm_mipi_dsi.h>
++#include <drm/drm_modes.h>
++#include <drm/drm_panel.h>
++#include <drm/drm_probe_helper.h>
++
++struct s6e3ha9 {
++	struct drm_panel panel;
++	struct mipi_dsi_device *dsi;
++	struct drm_dsc_config dsc;
++	struct gpio_desc *reset_gpio;
++	struct regulator_bulk_data *supplies;
++};
++
++/*
++ * Supply names follow the S6E3HA8 binding.  On beyond2lte they are driven by
++ * the S2DOS05 display PMIC: ldo4 3.0 V (vci), ldo1 1.8 V (vdd3) and buck1
++ * 1.6 V (vddr, 1.5 V in the vendor's low power mode, which is not modelled
++ * here).
++ *
++ * The order matters and is the order below.  The vendor panel driver walks its
++ * regulator table from index 0 when it powers the panel up, and that table is
++ * ddi-3p0, ddi-1p8, ddr-1p6; the board file binds those three names to ldo4,
++ * ldo1 and buck1.
++ */
++static const struct regulator_bulk_data s6e3ha9_supplies[] = {
++	{ .supply = "vci" },
++	{ .supply = "vdd3" },
++	{ .supply = "vddr" },
++};
++
++static inline struct s6e3ha9 *to_s6e3ha9(struct drm_panel *panel)
++{
++	return container_of(panel, struct s6e3ha9, panel);
++}
++
++#define s6e3ha9_key_on_lvl1(ctx)  mipi_dsi_dcs_write_seq_multi(ctx, 0x9f, 0xa5, 0xa5)
++#define s6e3ha9_key_off_lvl1(ctx) mipi_dsi_dcs_write_seq_multi(ctx, 0x9f, 0x5a, 0x5a)
++#define s6e3ha9_key_on_lvl2(ctx)  mipi_dsi_dcs_write_seq_multi(ctx, 0xf0, 0x5a, 0x5a)
++#define s6e3ha9_key_off_lvl2(ctx) mipi_dsi_dcs_write_seq_multi(ctx, 0xf0, 0xa5, 0xa5)
++#define s6e3ha9_key_on_lvl3(ctx)  mipi_dsi_dcs_write_seq_multi(ctx, 0xfc, 0x5a, 0x5a)
++#define s6e3ha9_key_off_lvl3(ctx) mipi_dsi_dcs_write_seq_multi(ctx, 0xfc, 0xa5, 0xa5)
++
++/*
++ * The panel RESETB pin is active low: the vendor device tree describes it as
++ * "disp-reset" with the active-low flag set (gpa3-4, flag 1).  gpiod values are
++ * logical, so 1 asserts the reset and 0 releases it, and the sequence has to
++ * end released, before any DCS command is sent.
++ *
++ * The ramp itself is the vendor's: hold the reset asserted, bring the rails up
++ * in order, wait 10 ms, release the reset and wait another 5 ms.  The reset is
++ * never pulsed on the way up, because the down ramp leaves it asserted.
++ *
++ * regulator_bulk_enable() is deliberately not used here.  It hands every rail
++ * to async_schedule_domain() and only then waits for them, so it cannot express
++ * an order.  The down ramp does have one, reverse array order, which is what
++ * the vendor does, so regulator_bulk_disable() is fine.
++ */
++static int s6e3ha9_power_on(struct s6e3ha9 *priv)
++{
++	int i, ret;
++
++	gpiod_set_value_cansleep(priv->reset_gpio, 1);
++
++	for (i = 0; i < ARRAY_SIZE(s6e3ha9_supplies); i++) {
++		ret = regulator_enable(priv->supplies[i].consumer);
++		if (ret) {
++			while (i--)
++				regulator_disable(priv->supplies[i].consumer);
++			return ret;
++		}
++	}
++
++	usleep_range(10000, 11000);
++	gpiod_set_value_cansleep(priv->reset_gpio, 0);
++	usleep_range(5000, 6000);
++
++	return 0;
++}
++
++static int s6e3ha9_on(struct s6e3ha9 *priv)
++{
++	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
++	struct drm_dsc_picture_parameter_set pps;
++
++	mipi_dsi_msleep(&ctx, 5);
++
++	/* DSC is mandatory on this panel: compression mode + PPS under key 1 */
++	s6e3ha9_key_on_lvl1(&ctx);
++	mipi_dsi_compression_mode_multi(&ctx, true);
++	drm_dsc_pps_payload_pack(&pps, &priv->dsc);
++	mipi_dsi_picture_parameter_set_multi(&ctx, &pps);
++	s6e3ha9_key_off_lvl1(&ctx);
++
++	mipi_dsi_dcs_exit_sleep_mode_multi(&ctx);
++	mipi_dsi_msleep(&ctx, 10);
++
++	s6e3ha9_key_on_lvl2(&ctx);
++	/* scaler off, native WQHD+ */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xba, 0x01, 0x26, 0x08, 0x08, 0xf3);
++	s6e3ha9_key_off_lvl2(&ctx);
++
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0x2a, 0x00, 0x00, 0x05, 0x9f); /* CASET */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0x2b, 0x00, 0x00, 0x0b, 0xdf); /* PASET */
++
++	s6e3ha9_key_on_lvl1(&ctx);
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0x1a, 0x1f, 0x00, 0x00, 0x00, 0x00);
++	mipi_dsi_dcs_set_tear_on_multi(&ctx, MIPI_DSI_DCS_TEAR_MODE_VBLANK);
++	s6e3ha9_key_off_lvl1(&ctx);
++
++	s6e3ha9_key_on_lvl2(&ctx);
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xed, 0x04, 0x4c); /* ERR_FG */
++
++	s6e3ha9_key_on_lvl3(&ctx);
++	/* FFC for the 898 Mbps link (encodes 897.6 Mbps) */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xc5, 0x0d, 0x10, 0xb4, 0x3e, 0x01);
++	s6e3ha9_key_off_lvl3(&ctx);
++
++	/*
++	 * TSP HSYNC: TE start at line 3041, PLL sleep variant.
++	 *
++	 * UNVERIFIED: the value is transcribed from the vendor table, not
++	 * derived: the vendor's own rule gives 3053 for these porches and 3042
++	 * with the 11 line correction, so no rule produces 3041.  The packet also
++	 * assumes PLL sleep, which the DSIM driver does not implement yet.
++	 */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb9, 0x01, 0xb0, 0xe1, 0x09,
++				     0x00, 0x00, 0x00, 0x11, 0x03);
++
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x04); /* global para offset 4 */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xf6, 0x43); /* ISC */
++
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0x86, 0x01, 0x08, 0x10, 0x21, 0x11,
++				     0x42, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
++				     0x00, 0x00, 0x00); /* STM */
++
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb0, 0x95); /* global para offset 0x95 */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb1, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00);
++
++	/*
++	 * Static brightness condition, copied from the vendor's base packets.
++	 * TODO: proper AID dimming needs the per-level gamma/AOR/ELVSS tables
++	 * derived from the panel's MTP data, which this driver does not read yet.
++	 */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xca,
++				     0x2a, 0x00, 0x00, 0x00,
++				     0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
++				     0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
++				     0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
++				     0x80, 0x80, 0x80, 0x80, 0x80, 0x80,
++				     0x80, 0x80, 0x80,
++				     0x00, 0x00, 0x00);
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb1, 0x00, 0x14);       /* AOR */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb5, 0x19, 0xdc, 0x0a); /* TSET/MPS/ELVSS */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xf4, 0xeb, 0x23);       /* VGH/VINT */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xb4, 0x00, 0x44, 0x80, 0x65, 0x26, 0x00);
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0x55, 0x00);             /* ACL off */
++	mipi_dsi_dcs_write_seq_multi(&ctx, 0xf7, 0x03);             /* gamma update */
++	s6e3ha9_key_off_lvl2(&ctx);
++
++	return ctx.accum_err;
++}
++
++static int s6e3ha9_prepare(struct drm_panel *panel)
++{
++	struct s6e3ha9 *priv = to_s6e3ha9(panel);
++	int ret;
++
++	ret = s6e3ha9_power_on(priv);
++	if (ret < 0)
++		return ret;
++
++	ret = s6e3ha9_on(priv);
++	if (ret < 0) {
++		gpiod_set_value_cansleep(priv->reset_gpio, 1);
++		regulator_bulk_disable(ARRAY_SIZE(s6e3ha9_supplies), priv->supplies);
++		return ret;
++	}
++
++	return 0;
++}
++
++static int s6e3ha9_unprepare(struct drm_panel *panel)
++{
++	struct s6e3ha9 *priv = to_s6e3ha9(panel);
++
++	/* hold the DDIC in reset while the rails go down */
++	gpiod_set_value_cansleep(priv->reset_gpio, 1);
++
++	return regulator_bulk_disable(ARRAY_SIZE(s6e3ha9_supplies), priv->supplies);
++}
++
++static int s6e3ha9_enable(struct drm_panel *panel)
++{
++	struct s6e3ha9 *priv = to_s6e3ha9(panel);
++	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
++
++	s6e3ha9_key_on_lvl1(&ctx);
++	mipi_dsi_dcs_set_display_on_multi(&ctx);
++	s6e3ha9_key_off_lvl1(&ctx);
++
++	return ctx.accum_err;
++}
++
++static int s6e3ha9_disable(struct drm_panel *panel)
++{
++	struct s6e3ha9 *priv = to_s6e3ha9(panel);
++	struct mipi_dsi_multi_context ctx = { .dsi = priv->dsi };
++
++	s6e3ha9_key_on_lvl1(&ctx);
++	mipi_dsi_dcs_set_display_off_multi(&ctx);
++	mipi_dsi_dcs_enter_sleep_mode_multi(&ctx);
++	s6e3ha9_key_off_lvl1(&ctx);
++	mipi_dsi_msleep(&ctx, 120);
++
++	return ctx.accum_err;
++}
++
++/* Timings from the vendor device tree node "s6e3ha9_beyond2" */
++static const struct drm_display_mode s6e3ha9_mode = {
++	.clock = (1440 + 2 + 2 + 2) * (3040 + 3 + 1 + 15) * 60 / 1000,
++	.hdisplay = 1440,
++	.hsync_start = 1440 + 2,
++	.hsync_end = 1440 + 2 + 2,
++	.htotal = 1440 + 2 + 2 + 2,
++	.vdisplay = 3040,
++	.vsync_start = 3040 + 3,
++	.vsync_end = 3040 + 3 + 1,
++	.vtotal = 3040 + 3 + 1 + 15,
++	.width_mm = 70,
++	.height_mm = 148,
++	.type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED,
++};
++
++static int s6e3ha9_get_modes(struct drm_panel *panel,
++			     struct drm_connector *connector)
++{
++	return drm_connector_helper_get_modes_fixed(connector, &s6e3ha9_mode);
++}
++
++static const struct drm_panel_funcs s6e3ha9_panel_funcs = {
++	.prepare = s6e3ha9_prepare,
++	.unprepare = s6e3ha9_unprepare,
++	.enable = s6e3ha9_enable,
++	.disable = s6e3ha9_disable,
++	.get_modes = s6e3ha9_get_modes,
++};
++
++/*
++ * DSC configuration.  The panel runs DSC 1.1, 8 bpp, 8 bpc, 2 slices of
++ * 720x40 - see the vendor PPS payload in
++ * s6e3ha9_beyond2_a3_s0_panel.h, beyond2_a3_s0_pps_table[1][0].
++ *
++ * Everything else is pure DSC 1.1 boilerplate, so it is left to the helpers;
++ * they reproduce the vendor PPS byte for byte (initial_dec_delay 616,
++ * scale_decrement_interval 10, scale_increment_interval 1132,
++ * nfl_bpg_offset 631, slice_bpg_offset 489, final_offset 4336,
++ * slice_chunk_size 720).
++ */
++static int s6e3ha9_init_dsc(struct device *dev, struct drm_dsc_config *dsc)
++{
++	int ret;
++
++	dsc->dsc_version_major = 1;
++	dsc->dsc_version_minor = 1;
++
++	dsc->pic_width = 1440;
++	dsc->pic_height = 3040;
++	dsc->slice_width = 720;
++	dsc->slice_height = 40;
++	dsc->slice_count = 1440 / 720;
++
++	dsc->bits_per_component = 8;
++	dsc->bits_per_pixel = 8 << 4;	/* 8.0 bpp, 4 fractional bits */
++	dsc->line_buf_depth = 9;
++	dsc->block_pred_enable = true;
++	dsc->convert_rgb = true;
++
++	drm_dsc_set_const_params(dsc);
++	drm_dsc_set_rc_buf_thresh(dsc);
++
++	ret = drm_dsc_setup_rc_params(dsc, DRM_DSC_1_1_PRE_SCR);
++	if (ret)
++		return dev_err_probe(dev, ret, "Failed to set up RC params\n");
++
++	dsc->initial_scale_value = drm_dsc_initial_scale_value(dsc);
++
++	ret = drm_dsc_compute_rc_parameters(dsc);
++	if (ret)
++		return dev_err_probe(dev, ret, "Failed to compute RC params\n");
++
++	return 0;
++}
++
++static int s6e3ha9_probe(struct mipi_dsi_device *dsi)
++{
++	struct device *dev = &dsi->dev;
++	struct s6e3ha9 *priv;
++	int ret;
++
++	priv = devm_drm_panel_alloc(dev, struct s6e3ha9, panel,
++				    &s6e3ha9_panel_funcs,
++				    DRM_MODE_CONNECTOR_DSI);
++	if (IS_ERR(priv))
++		return PTR_ERR(priv);
++
++	ret = devm_regulator_bulk_get_const(dev, ARRAY_SIZE(s6e3ha9_supplies),
++					    s6e3ha9_supplies, &priv->supplies);
++	if (ret < 0)
++		return dev_err_probe(dev, ret, "Failed to get regulators\n");
++
++	/*
++	 * Asserted from the start: the rails are down at probe time and the
++	 * RESETB pin must not be driven into an unpowered DDIC.
++	 */
++	priv->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
++	if (IS_ERR(priv->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(priv->reset_gpio),
++				     "Failed to get reset-gpios\n");
++
++	priv->dsi = dsi;
++	mipi_dsi_set_drvdata(dsi, priv);
++
++	dsi->lanes = 4;
++	dsi->format = MIPI_DSI_FMT_RGB888;
++	/*
++	 * Command mode, and every transfer goes out in low power: the host
++	 * caches these when the peripheral attaches, so they cannot be
++	 * changed later without the two copies drifting apart.
++	 */
++	dsi->mode_flags = MIPI_DSI_CLOCK_NON_CONTINUOUS | MIPI_DSI_MODE_LPM;
++
++	ret = s6e3ha9_init_dsc(dev, &priv->dsc);
++	if (ret)
++		return ret;
++
++	dsi->dsc = &priv->dsc;
++
++	priv->panel.prepare_prev_first = true;
++	drm_panel_add(&priv->panel);
++
++	ret = mipi_dsi_attach(dsi);
++	if (ret < 0) {
++		drm_panel_remove(&priv->panel);
++		return dev_err_probe(dev, ret, "Failed to attach to DSI host\n");
++	}
++
++	return 0;
++}
++
++static void s6e3ha9_remove(struct mipi_dsi_device *dsi)
++{
++	struct s6e3ha9 *priv = mipi_dsi_get_drvdata(dsi);
++	int ret;
++
++	ret = mipi_dsi_detach(dsi);
++	if (ret < 0)
++		dev_err(&dsi->dev, "Failed to detach from DSI host: %d\n", ret);
++
++	drm_panel_remove(&priv->panel);
++}
++
++static const struct of_device_id s6e3ha9_of_match[] = {
++	{ .compatible = "samsung,s6e3ha9" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, s6e3ha9_of_match);
++
++static struct mipi_dsi_driver s6e3ha9_driver = {
++	.probe = s6e3ha9_probe,
++	.remove = s6e3ha9_remove,
++	.driver = {
++		.name = "panel-samsung-s6e3ha9",
++		.of_match_table = s6e3ha9_of_match,
++	},
++};
++module_mipi_dsi_driver(s6e3ha9_driver);
++
++MODULE_DESCRIPTION("Samsung S6E3HA9 DSI panel driver");
++MODULE_LICENSE("GPL");

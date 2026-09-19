@@ -1,0 +1,8 @@
+# R2 evidence: DSC support in mainline samsung-dsim
+tree: linux@1200d84f4c0a (v7.2.0)
+
+$ grep -in "dsc\|compress" drivers/gpu/drm/bridge/samsung-dsim.c
+exit=1 (empty = no hits)
+
+$ ls drivers/gpu/drm/display | grep dsc
+drm_dsc_helper.c

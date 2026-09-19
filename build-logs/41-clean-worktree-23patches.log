@@ -1,0 +1,3 @@
+  SCHEMA  Documentation/devicetree/bindings/processed-schema.json
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+DTBS_EXIT=0

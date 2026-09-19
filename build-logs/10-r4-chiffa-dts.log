@@ -1,0 +1,10 @@
+# R4 evidence: no board DTS in the pmOS-pinned kernel tree
+repo: chiffathefox/exynos-9820-mainline-linux@0aeca03f7acddd3aacdf25b01fede0ee3c724d48 (branch exynos9820-7.2-rc2)
+
+$ GET /repos/.../contents/arch/arm64/boot/dts/exynos  -> names matching 9820|beyond:
+entries: 50
+matching 9820|beyond: NONE
+
+$ raw probe for exynos9820.dtsi / exynos9820-beyond2lte.dts:
+arch/arm64/boot/dts/exynos/exynos9820.dtsi -> HTTP 404
+arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts -> HTTP 404

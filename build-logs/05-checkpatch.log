@@ -1,0 +1,896 @@
+########## 0001-drm-bridge-samsung-dsim-Do-not-mark-the-host-initial.patch
+WARNING: Unknown commit id '7eb8f069be8a', maybe rebased or not pulled?
+#26: 
+Fixes: 7eb8f069be8a ("drm/exynos: add DSIM driver")
+
+total: 0 errors, 1 warnings, 0 checks, 36 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0001-drm-bridge-samsung-dsim-Do-not-mark-the-host-initial.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0002-dt-bindings-arm-cpus-Add-the-Mongoose-M4-core.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0002-dt-bindings-arm-cpus-Add-the-Mongoose-M4-core.patch has no obvious style problems and is ready for submission.
+########## 0003-dt-bindings-arm-samsung-Add-the-Galaxy-S10-board.patch
+total: 0 errors, 0 warnings, 0 checks, 12 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0003-dt-bindings-arm-samsung-Add-the-Galaxy-S10-board.patch has no obvious style problems and is ready for submission.
+########## 0004-dt-bindings-hwinfo-samsung-exynos-chipid-Add-Exynos9.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0004-dt-bindings-hwinfo-samsung-exynos-chipid-Add-Exynos9.patch has no obvious style problems and is ready for submission.
+########## 0005-dt-bindings-i2c-exynos5-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0005-dt-bindings-i2c-exynos5-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0006-dt-bindings-pinctrl-samsung-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 14 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0006-dt-bindings-pinctrl-samsung-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0007-pinctrl-samsung-Add-Exynos9820-pin-controller-suppor.patch
+total: 0 errors, 0 warnings, 0 checks, 178 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0007-pinctrl-samsung-Add-Exynos9820-pin-controller-suppor.patch has no obvious style problems and is ready for submission.
+########## 0008-dt-bindings-serial-samsung-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0008-dt-bindings-serial-samsung-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0009-dt-bindings-soc-samsung-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 29 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0009-dt-bindings-soc-samsung-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0010-dt-bindings-timer-exynos4210-mct-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 14 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0010-dt-bindings-timer-exynos4210-mct-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0011-dt-bindings-clock-Add-Exynos9820-SoC-clock-controlle.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#28: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 768 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0011-dt-bindings-clock-Add-Exynos9820-SoC-clock-controlle.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0012-clk-samsung-Add-the-PLL_0817X-and-PLL_1018X-types.patch
+total: 0 errors, 0 warnings, 0 checks, 28 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0012-clk-samsung-Add-the-PLL_0817X-and-PLL_1018X-types.patch has no obvious style problems and is ready for submission.
+########## 0013-clk-samsung-Add-the-Exynos9820-clock-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#88: 
+new file mode 100644
+
+CHECK: Avoid CamelCase: <nMUX>
+#515: FILE: drivers/clk/samsung/clk-exynos9820.c:423:
++	nMUX(CLK_MOUT_PERIC0_UART_DBG, "mout_peric0_uart_dbg",
+
+WARNING: line length of 126 exceeds 100 columns
+#981: FILE: drivers/clk/samsung/clk-exynos9820.c:889:
++#define PLL_LOCKTIME_PLL_MMC												0x0000
+
+WARNING: line length of 126 exceeds 100 columns
+#982: FILE: drivers/clk/samsung/clk-exynos9820.c:890:
++#define PLL_CON0_MUX_CLKCMU_FSYS1_BUS_USER										0x0100
+
+WARNING: line length of 126 exceeds 100 columns
+#983: FILE: drivers/clk/samsung/clk-exynos9820.c:891:
++#define PLL_CON0_MUX_CLKCMU_FSYS1_MMC_CARD_USER										0x0120
+
+WARNING: line length of 126 exceeds 100 columns
+#984: FILE: drivers/clk/samsung/clk-exynos9820.c:892:
++#define PLL_CON0_MUX_CLKCMU_FSYS1_PCIE_USER										0x0140
+
+WARNING: line length of 126 exceeds 100 columns
+#985: FILE: drivers/clk/samsung/clk-exynos9820.c:893:
++#define PLL_CON0_MUX_CLKCMU_FSYS1_UFS_CARD_USER										0x0160
+
+WARNING: line length of 126 exceeds 100 columns
+#986: FILE: drivers/clk/samsung/clk-exynos9820.c:894:
++#define PLL_CON0_MUX_CLKCMU_FSYS1_UFS_EMBD_USER										0x0180
+
+WARNING: line length of 126 exceeds 100 columns
+#987: FILE: drivers/clk/samsung/clk-exynos9820.c:895:
++#define PLL_CON0_PLL_MMC												0x01a0
+
+WARNING: line length of 126 exceeds 100 columns
+#988: FILE: drivers/clk/samsung/clk-exynos9820.c:896:
++#define PLL_CON3_PLL_MMC												0x01ac
+
+WARNING: line length of 126 exceeds 100 columns
+#989: FILE: drivers/clk/samsung/clk-exynos9820.c:897:
++#define CLK_CON_MUX_MUX_CLK_FSYS1_BUS											0x1000
+
+WARNING: line length of 126 exceeds 100 columns
+#990: FILE: drivers/clk/samsung/clk-exynos9820.c:898:
++#define CLK_CON_MUX_MUX_CLK_FSYS1_MMC_CARD										0x1004
+
+WARNING: line length of 126 exceeds 100 columns
+#991: FILE: drivers/clk/samsung/clk-exynos9820.c:899:
++#define CLK_CON_DIV_DIV_CLK_FSYS1_BUS											0x1800
+
+WARNING: line length of 126 exceeds 100 columns
+#992: FILE: drivers/clk/samsung/clk-exynos9820.c:900:
++#define CLK_CON_DIV_DIV_CLK_FSYS1_MMC_CARD										0x1804
+
+WARNING: line length of 126 exceeds 100 columns
+#993: FILE: drivers/clk/samsung/clk-exynos9820.c:901:
++#define CLK_CON_GAT_CLK_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PHY_REFCLK_IN							0x2000
+
+WARNING: line length of 126 exceeds 100 columns
+#994: FILE: drivers/clk/samsung/clk-exynos9820.c:902:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_ADM_AHB_SSS_IPCLKPORT_HCLKM							0x2004
+
+WARNING: line length of 126 exceeds 100 columns
+#995: FILE: drivers/clk/samsung/clk-exynos9820.c:903:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_BAAW_SSS_IPCLKPORT_I_PCLK							0x2008
+
+WARNING: line length of 126 exceeds 100 columns
+#996: FILE: drivers/clk/samsung/clk-exynos9820.c:904:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_BTM_FSYS1_IPCLKPORT_I_ACLK							0x200c
+
+WARNING: line length of 126 exceeds 100 columns
+#997: FILE: drivers/clk/samsung/clk-exynos9820.c:905:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_BTM_FSYS1_IPCLKPORT_I_PCLK							0x2010
+
+WARNING: line length of 126 exceeds 100 columns
+#998: FILE: drivers/clk/samsung/clk-exynos9820.c:906:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_D_TZPC_FSYS1_IPCLKPORT_PCLK							0x2014
+
+WARNING: line length of 126 exceeds 100 columns
+#999: FILE: drivers/clk/samsung/clk-exynos9820.c:907:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_FSYS1_CMU_FSYS1_IPCLKPORT_PCLK							0x2018
+
+WARNING: line length of 126 exceeds 100 columns
+#1000: FILE: drivers/clk/samsung/clk-exynos9820.c:908:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_GPIO_FSYS1_IPCLKPORT_PCLK							0x201c
+
+WARNING: line length of 126 exceeds 100 columns
+#1001: FILE: drivers/clk/samsung/clk-exynos9820.c:909:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_LHM_AXI_P_FSYS1_IPCLKPORT_I_CLK							0x2020
+
+WARNING: line length of 126 exceeds 100 columns
+#1002: FILE: drivers/clk/samsung/clk-exynos9820.c:910:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_LHS_ACEL_D_FSYS1_IPCLKPORT_I_CLK							0x2024
+
+WARNING: line length of 126 exceeds 100 columns
+#1003: FILE: drivers/clk/samsung/clk-exynos9820.c:911:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_MMC_CARD_IPCLKPORT_I_ACLK							0x2028
+
+WARNING: line length of 126 exceeds 100 columns
+#1004: FILE: drivers/clk/samsung/clk-exynos9820.c:912:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_MMC_CARD_IPCLKPORT_SDCLKIN							0x202c
+
+WARNING: line length of 126 exceeds 100 columns
+#1005: FILE: drivers/clk/samsung/clk-exynos9820.c:913:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_DBI_ACLK							0x2030
+
+WARNING: line length of 126 exceeds 100 columns
+#1006: FILE: drivers/clk/samsung/clk-exynos9820.c:914:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_IEEE1500_WRAPPER_FOR_PCIEG2_PHY_X1_INST_0_I_SCL_APB_PCLK	0x2034
+
+WARNING: line length of 126 exceeds 100 columns
+#1007: FILE: drivers/clk/samsung/clk-exynos9820.c:915:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_MSTR_ACLK							0x2038
+
+WARNING: line length of 126 exceeds 100 columns
+#1008: FILE: drivers/clk/samsung/clk-exynos9820.c:916:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK			0x203c
+
+WARNING: line length of 126 exceeds 100 columns
+#1009: FILE: drivers/clk/samsung/clk-exynos9820.c:917:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PIPE2_DIGITAL_X1_WRAP_INST_0_I_APB_PCLK_SCL			0x2040
+
+WARNING: line length of 126 exceeds 100 columns
+#1010: FILE: drivers/clk/samsung/clk-exynos9820.c:918:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_SLV_ACLK							0x2044
+
+WARNING: line length of 126 exceeds 100 columns
+#1011: FILE: drivers/clk/samsung/clk-exynos9820.c:919:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_IA_GEN2_IPCLKPORT_I_CLK							0x2048
+
+WARNING: line length of 126 exceeds 100 columns
+#1012: FILE: drivers/clk/samsung/clk-exynos9820.c:920:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PPMU_FSYS1_IPCLKPORT_ACLK							0x204c
+
+WARNING: line length of 126 exceeds 100 columns
+#1013: FILE: drivers/clk/samsung/clk-exynos9820.c:921:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PPMU_FSYS1_IPCLKPORT_PCLK							0x2050
+
+WARNING: line length of 126 exceeds 100 columns
+#1014: FILE: drivers/clk/samsung/clk-exynos9820.c:922:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PUF_IPCLKPORT_I_CLK								0x2054
+
+WARNING: line length of 126 exceeds 100 columns
+#1015: FILE: drivers/clk/samsung/clk-exynos9820.c:923:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_QE_RTIC_IPCLKPORT_ACLK								0x2058
+
+WARNING: line length of 126 exceeds 100 columns
+#1016: FILE: drivers/clk/samsung/clk-exynos9820.c:924:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_QE_RTIC_IPCLKPORT_PCLK								0x205c
+
+WARNING: line length of 126 exceeds 100 columns
+#1017: FILE: drivers/clk/samsung/clk-exynos9820.c:925:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_QE_SSS_IPCLKPORT_ACLK								0x2060
+
+WARNING: line length of 126 exceeds 100 columns
+#1018: FILE: drivers/clk/samsung/clk-exynos9820.c:926:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_QE_SSS_IPCLKPORT_PCLK								0x2064
+
+WARNING: line length of 126 exceeds 100 columns
+#1019: FILE: drivers/clk/samsung/clk-exynos9820.c:927:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_RSTNSYNC_CLK_FSYS1_BUS_IPCLKPORT_CLK						0x2068
+
+WARNING: line length of 126 exceeds 100 columns
+#1020: FILE: drivers/clk/samsung/clk-exynos9820.c:928:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_RSTNSYNC_CLK_FSYS1_OSCCLK_IPCLKPORT_CLK						0x206c
+
+WARNING: line length of 126 exceeds 100 columns
+#1021: FILE: drivers/clk/samsung/clk-exynos9820.c:929:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_RTIC_IPCLKPORT_I_ACLK								0x2070
+
+WARNING: line length of 126 exceeds 100 columns
+#1022: FILE: drivers/clk/samsung/clk-exynos9820.c:930:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_RTIC_IPCLKPORT_I_PCLK								0x2074
+
+WARNING: line length of 126 exceeds 100 columns
+#1023: FILE: drivers/clk/samsung/clk-exynos9820.c:931:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_SSS_IPCLKPORT_I_ACLK								0x2078
+
+WARNING: line length of 126 exceeds 100 columns
+#1024: FILE: drivers/clk/samsung/clk-exynos9820.c:932:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_SSS_IPCLKPORT_I_PCLK								0x207c
+
+WARNING: line length of 126 exceeds 100 columns
+#1025: FILE: drivers/clk/samsung/clk-exynos9820.c:933:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_SYSMMU_FSYS1_IPCLKPORT_CLK							0x2080
+
+WARNING: line length of 126 exceeds 100 columns
+#1026: FILE: drivers/clk/samsung/clk-exynos9820.c:934:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_SYSREG_FSYS1_IPCLKPORT_PCLK							0x2084
+
+WARNING: line length of 126 exceeds 100 columns
+#1027: FILE: drivers/clk/samsung/clk-exynos9820.c:935:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_UFS_CARD_IPCLKPORT_I_ACLK							0x2088
+
+WARNING: line length of 126 exceeds 100 columns
+#1028: FILE: drivers/clk/samsung/clk-exynos9820.c:936:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_UFS_CARD_IPCLKPORT_I_CLK_UNIPRO							0x208c
+
+WARNING: line length of 126 exceeds 100 columns
+#1029: FILE: drivers/clk/samsung/clk-exynos9820.c:937:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_UFS_CARD_IPCLKPORT_I_FMP_CLK							0x2090
+
+WARNING: line length of 126 exceeds 100 columns
+#1030: FILE: drivers/clk/samsung/clk-exynos9820.c:938:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_UFS_EMBD_IPCLKPORT_I_ACLK							0x2094
+
+WARNING: line length of 126 exceeds 100 columns
+#1031: FILE: drivers/clk/samsung/clk-exynos9820.c:939:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_UFS_EMBD_IPCLKPORT_I_CLK_UNIPRO							0x2098
+
+WARNING: line length of 126 exceeds 100 columns
+#1032: FILE: drivers/clk/samsung/clk-exynos9820.c:940:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_UFS_EMBD_IPCLKPORT_I_FMP_CLK							0x209c
+
+WARNING: line length of 126 exceeds 100 columns
+#1033: FILE: drivers/clk/samsung/clk-exynos9820.c:941:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_VGEN_LITE_FSYS1_IPCLKPORT_CLK							0x20a0
+
+WARNING: line length of 126 exceeds 100 columns
+#1034: FILE: drivers/clk/samsung/clk-exynos9820.c:942:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_XIU_D_FSYS1_IPCLKPORT_ACLK							0x20a4
+
+WARNING: line length of 126 exceeds 100 columns
+#1035: FILE: drivers/clk/samsung/clk-exynos9820.c:943:
++#define CLK_CON_GAT_GOUT_BLK_FSYS1_UID_XIU_P_FSYS1_IPCLKPORT_ACLK							0x20a8
+
+WARNING: line length of 116 exceeds 100 columns
+#1062: FILE: drivers/clk/samsung/clk-exynos9820.c:970:
++	CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_IEEE1500_WRAPPER_FOR_PCIEG2_PHY_X1_INST_0_I_SCL_APB_PCLK,
+
+WARNING: line length of 103 exceeds 100 columns
+#1065: FILE: drivers/clk/samsung/clk-exynos9820.c:973:
++	CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PIPE2_DIGITAL_X1_WRAP_INST_0_I_APB_PCLK_SCL,
+
+WARNING: line length of 121 exceeds 100 columns
+#1189: FILE: drivers/clk/samsung/clk-exynos9820.c:1097:
++	     CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_IEEE1500_WRAPPER_FOR_PCIEG2_PHY_X1_INST_0_I_SCL_APB_PCLK,
+
+WARNING: line length of 102 exceeds 100 columns
+#1198: FILE: drivers/clk/samsung/clk-exynos9820.c:1106:
++	     CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK,
+
+WARNING: line length of 108 exceeds 100 columns
+#1203: FILE: drivers/clk/samsung/clk-exynos9820.c:1111:
++	     CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PIPE2_DIGITAL_X1_WRAP_INST_0_I_APB_PCLK_SCL,
+
+total: 0 errors, 61 warnings, 1 checks, 2490 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0013-clk-samsung-Add-the-Exynos9820-clock-driver.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0014-arm64-dts-exynos-Add-initial-support-for-the-Exynos9.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 1134 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0014-arm64-dts-exynos-Add-initial-support-for-the-Exynos9.patch has no obvious style problems and is ready for submission.
+########## 0015-arm64-dts-exynos-Add-initial-support-for-the-Samsung.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#37: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 303 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0015-arm64-dts-exynos-Add-initial-support-for-the-Samsung.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0016-dt-bindings-display-panel-Add-Samsung-S6E3HA9.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#18: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 71 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0016-dt-bindings-display-panel-Add-Samsung-S6E3HA9.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0017-drm-panel-Add-Samsung-S6E3HA9-panel-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#75: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 428 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0017-drm-panel-Add-Samsung-S6E3HA9-panel-driver.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0018-drm-panel-s6e3ha9-Add-brightness-control.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#12: 
+(LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
+
+total: 0 errors, 1 warnings, 0 checks, 249 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0018-drm-panel-s6e3ha9-Add-brightness-control.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0019-drm-panel-s6e3ha9-Compute-the-gamma-from-the-panel-M.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#14: 
+commit 7d08ec364a06, drivers/video/fbdev/exynos/panel/dimming.c):
+
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#53: 
+ rename drivers/gpu/drm/panel/{panel-samsung-s6e3ha9.c => panel-samsung-s6e3ha9-main.c} (87%)
+
+total: 0 errors, 2 warnings, 0 checks, 1576 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0019-drm-panel-s6e3ha9-Compute-the-gamma-from-the-panel-M.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0020-dt-bindings-power-Add-Exynos9820-power-domain.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0020-dt-bindings-power-Add-Exynos9820-power-domain.patch has no obvious style problems and is ready for submission.
+########## 0021-pmdomain-samsung-Add-Exynos9820-power-domain-support.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#12: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06, drivers/soc/
+
+total: 0 errors, 1 warnings, 0 checks, 19 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0021-pmdomain-samsung-Add-Exynos9820-power-domain-support.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0022-clk-samsung-exynos9820-Add-the-CMU_DPU-and-CMU_CMGP-.patch
+CHECK: Avoid CamelCase: <nMUX>
+#182: FILE: drivers/clk/samsung/clk-exynos9820.c:1663:
++	nMUX(CLK_MOUT_I2C_CMGP0, "mout_i2c_cmgp0", mout_i2c_cmgp0_p,
+
+WARNING: line length of 102 exceeds 100 columns
+#379: FILE: drivers/clk/samsung/clk-exynos9820.c:1860:
++#define PLL_CON0_MUX_CLKCMU_DPU_BUS_USER							0x0100
+
+WARNING: line length of 102 exceeds 100 columns
+#380: FILE: drivers/clk/samsung/clk-exynos9820.c:1861:
++#define CLK_CON_DIV_DIV_CLK_DPU_BUSP								0x1800
+
+WARNING: line length of 102 exceeds 100 columns
+#381: FILE: drivers/clk/samsung/clk-exynos9820.c:1862:
++#define CLK_CON_GAT_CLK_BLK_DPU_UID_DPU_CMU_DPU_IPCLKPORT_PCLK					0x2000
+
+WARNING: line length of 102 exceeds 100 columns
+#382: FILE: drivers/clk/samsung/clk-exynos9820.c:1863:
++#define CLK_CON_GAT_CLK_BLK_DPU_UID_RSTNSYNC_CLK_DPU_OSCCLK_IPCLKPORT_CLK			0x2004
+
+WARNING: line length of 102 exceeds 100 columns
+#383: FILE: drivers/clk/samsung/clk-exynos9820.c:1864:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON0_IPCLKPORT_PCLKM				0x2008
+
+WARNING: line length of 102 exceeds 100 columns
+#384: FILE: drivers/clk/samsung/clk-exynos9820.c:1865:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON0_IPCLKPORT_PCLKS				0x200c
+
+WARNING: line length of 102 exceeds 100 columns
+#385: FILE: drivers/clk/samsung/clk-exynos9820.c:1866:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON1_IPCLKPORT_PCLKM				0x2010
+
+WARNING: line length of 102 exceeds 100 columns
+#386: FILE: drivers/clk/samsung/clk-exynos9820.c:1867:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON1_IPCLKPORT_PCLKS				0x2014
+
+WARNING: line length of 102 exceeds 100 columns
+#387: FILE: drivers/clk/samsung/clk-exynos9820.c:1868:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON2_IPCLKPORT_PCLKM				0x2018
+
+WARNING: line length of 102 exceeds 100 columns
+#388: FILE: drivers/clk/samsung/clk-exynos9820.c:1869:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON2_IPCLKPORT_PCLKS				0x201c
+
+WARNING: line length of 102 exceeds 100 columns
+#389: FILE: drivers/clk/samsung/clk-exynos9820.c:1870:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPP_IPCLKPORT_PCLKM					0x2020
+
+WARNING: line length of 102 exceeds 100 columns
+#390: FILE: drivers/clk/samsung/clk-exynos9820.c:1871:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPP_IPCLKPORT_PCLKS					0x2024
+
+WARNING: line length of 102 exceeds 100 columns
+#391: FILE: drivers/clk/samsung/clk-exynos9820.c:1872:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_IPCLKPORT_PCLKM				0x2028
+
+WARNING: line length of 102 exceeds 100 columns
+#392: FILE: drivers/clk/samsung/clk-exynos9820.c:1873:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_IPCLKPORT_PCLKS				0x202c
+
+WARNING: line length of 102 exceeds 100 columns
+#393: FILE: drivers/clk/samsung/clk-exynos9820.c:1874:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_PGEN_IPCLKPORT_PCLKM			0x2030
+
+WARNING: line length of 102 exceeds 100 columns
+#394: FILE: drivers/clk/samsung/clk-exynos9820.c:1875:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_PGEN_IPCLKPORT_PCLKS			0x2034
+
+WARNING: line length of 102 exceeds 100 columns
+#395: FILE: drivers/clk/samsung/clk-exynos9820.c:1876:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_WB_MUX_IPCLKPORT_PCLKM				0x2038
+
+WARNING: line length of 102 exceeds 100 columns
+#396: FILE: drivers/clk/samsung/clk-exynos9820.c:1877:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_WB_MUX_IPCLKPORT_PCLKS				0x203c
+
+WARNING: line length of 102 exceeds 100 columns
+#397: FILE: drivers/clk/samsung/clk-exynos9820.c:1878:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MCD_IPCLKPORT_PCLKM					0x2040
+
+WARNING: line length of 102 exceeds 100 columns
+#398: FILE: drivers/clk/samsung/clk-exynos9820.c:1879:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MCD_IPCLKPORT_PCLKS					0x2044
+
+WARNING: line length of 102 exceeds 100 columns
+#399: FILE: drivers/clk/samsung/clk-exynos9820.c:1880:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MIPI_DSIM0_IPCLKPORT_PCLKS				0x2048
+
+WARNING: line length of 102 exceeds 100 columns
+#400: FILE: drivers/clk/samsung/clk-exynos9820.c:1881:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MIPI_DSIM1_IPCLKPORT_PCLKS				0x204c
+
+WARNING: line length of 102 exceeds 100 columns
+#401: FILE: drivers/clk/samsung/clk-exynos9820.c:1882:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_IPCLKPORT_PCLKM			0x2050
+
+WARNING: line length of 102 exceeds 100 columns
+#402: FILE: drivers/clk/samsung/clk-exynos9820.c:1883:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_IPCLKPORT_PCLKS			0x2054
+
+WARNING: line length of 102 exceeds 100 columns
+#403: FILE: drivers/clk/samsung/clk-exynos9820.c:1884:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_S_IPCLKPORT_PCLKM			0x2058
+
+WARNING: line length of 102 exceeds 100 columns
+#404: FILE: drivers/clk/samsung/clk-exynos9820.c:1885:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_S_IPCLKPORT_PCLKS			0x205c
+
+WARNING: line length of 102 exceeds 100 columns
+#405: FILE: drivers/clk/samsung/clk-exynos9820.c:1886:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_IPCLKPORT_PCLKM			0x2060
+
+WARNING: line length of 102 exceeds 100 columns
+#406: FILE: drivers/clk/samsung/clk-exynos9820.c:1887:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_IPCLKPORT_PCLKS			0x2064
+
+WARNING: line length of 102 exceeds 100 columns
+#407: FILE: drivers/clk/samsung/clk-exynos9820.c:1888:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_S_IPCLKPORT_PCLKM			0x2068
+
+WARNING: line length of 102 exceeds 100 columns
+#408: FILE: drivers/clk/samsung/clk-exynos9820.c:1889:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_S_IPCLKPORT_PCLKS			0x206c
+
+WARNING: line length of 102 exceeds 100 columns
+#409: FILE: drivers/clk/samsung/clk-exynos9820.c:1890:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_IPCLKPORT_PCLKM			0x2070
+
+WARNING: line length of 102 exceeds 100 columns
+#410: FILE: drivers/clk/samsung/clk-exynos9820.c:1891:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_IPCLKPORT_PCLKS			0x2074
+
+WARNING: line length of 102 exceeds 100 columns
+#411: FILE: drivers/clk/samsung/clk-exynos9820.c:1892:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_S_IPCLKPORT_PCLKM			0x2078
+
+WARNING: line length of 102 exceeds 100 columns
+#412: FILE: drivers/clk/samsung/clk-exynos9820.c:1893:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_S_IPCLKPORT_PCLKS			0x207c
+
+WARNING: line length of 102 exceeds 100 columns
+#413: FILE: drivers/clk/samsung/clk-exynos9820.c:1894:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AXI2APB_DPUP0_IPCLKPORT_ACLK				0x2080
+
+WARNING: line length of 102 exceeds 100 columns
+#414: FILE: drivers/clk/samsung/clk-exynos9820.c:1895:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AXI2APB_DPUP1_IPCLKPORT_ACLK				0x2084
+
+WARNING: line length of 102 exceeds 100 columns
+#415: FILE: drivers/clk/samsung/clk-exynos9820.c:1896:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD0_IPCLKPORT_I_ACLK					0x2088
+
+WARNING: line length of 102 exceeds 100 columns
+#416: FILE: drivers/clk/samsung/clk-exynos9820.c:1897:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD0_IPCLKPORT_I_PCLK					0x208c
+
+WARNING: line length of 102 exceeds 100 columns
+#417: FILE: drivers/clk/samsung/clk-exynos9820.c:1898:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD1_IPCLKPORT_I_ACLK					0x2090
+
+WARNING: line length of 102 exceeds 100 columns
+#418: FILE: drivers/clk/samsung/clk-exynos9820.c:1899:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD1_IPCLKPORT_I_PCLK					0x2094
+
+WARNING: line length of 102 exceeds 100 columns
+#419: FILE: drivers/clk/samsung/clk-exynos9820.c:1900:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD2_IPCLKPORT_I_ACLK					0x2098
+
+WARNING: line length of 102 exceeds 100 columns
+#420: FILE: drivers/clk/samsung/clk-exynos9820.c:1901:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD2_IPCLKPORT_I_PCLK					0x209c
+
+WARNING: line length of 102 exceeds 100 columns
+#421: FILE: drivers/clk/samsung/clk-exynos9820.c:1902:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DECON					0x20a0
+
+WARNING: line length of 102 exceeds 100 columns
+#422: FILE: drivers/clk/samsung/clk-exynos9820.c:1903:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DMA					0x20a4
+
+WARNING: line length of 102 exceeds 100 columns
+#423: FILE: drivers/clk/samsung/clk-exynos9820.c:1904:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DPP					0x20a8
+
+WARNING: line length of 102 exceeds 100 columns
+#424: FILE: drivers/clk/samsung/clk-exynos9820.c:1905:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DPU_WB_MUX				0x20ac
+
+WARNING: line length of 102 exceeds 100 columns
+#425: FILE: drivers/clk/samsung/clk-exynos9820.c:1906:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_D_TZPC_DPU_IPCLKPORT_PCLK					0x20b0
+
+WARNING: line length of 102 exceeds 100 columns
+#426: FILE: drivers/clk/samsung/clk-exynos9820.c:1907:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHM_AXI_P_DPU_IPCLKPORT_I_CLK				0x20b4
+
+WARNING: line length of 102 exceeds 100 columns
+#427: FILE: drivers/clk/samsung/clk-exynos9820.c:1908:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHS_AXI_D0_DPU_IPCLKPORT_I_CLK				0x20b8
+
+WARNING: line length of 102 exceeds 100 columns
+#428: FILE: drivers/clk/samsung/clk-exynos9820.c:1909:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHS_AXI_D1_DPU_IPCLKPORT_I_CLK				0x20bc
+
+WARNING: line length of 102 exceeds 100 columns
+#429: FILE: drivers/clk/samsung/clk-exynos9820.c:1910:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHS_AXI_D2_DPU_IPCLKPORT_I_CLK				0x20c0
+
+WARNING: line length of 102 exceeds 100 columns
+#430: FILE: drivers/clk/samsung/clk-exynos9820.c:1911:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD0_IPCLKPORT_ACLK					0x20c4
+
+WARNING: line length of 102 exceeds 100 columns
+#431: FILE: drivers/clk/samsung/clk-exynos9820.c:1912:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD0_IPCLKPORT_PCLK					0x20c8
+
+WARNING: line length of 102 exceeds 100 columns
+#432: FILE: drivers/clk/samsung/clk-exynos9820.c:1913:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD1_IPCLKPORT_ACLK					0x20cc
+
+WARNING: line length of 102 exceeds 100 columns
+#433: FILE: drivers/clk/samsung/clk-exynos9820.c:1914:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD1_IPCLKPORT_PCLK					0x20d0
+
+WARNING: line length of 102 exceeds 100 columns
+#434: FILE: drivers/clk/samsung/clk-exynos9820.c:1915:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD2_IPCLKPORT_ACLK					0x20d4
+
+WARNING: line length of 102 exceeds 100 columns
+#435: FILE: drivers/clk/samsung/clk-exynos9820.c:1916:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD2_IPCLKPORT_PCLK					0x20d8
+
+WARNING: line length of 102 exceeds 100 columns
+#436: FILE: drivers/clk/samsung/clk-exynos9820.c:1917:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_RSTNSYNC_CLK_DPU_BUSD_IPCLKPORT_CLK			0x20dc
+
+WARNING: line length of 102 exceeds 100 columns
+#437: FILE: drivers/clk/samsung/clk-exynos9820.c:1918:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_RSTNSYNC_CLK_DPU_BUSP_IPCLKPORT_CLK			0x20e0
+
+WARNING: line length of 102 exceeds 100 columns
+#438: FILE: drivers/clk/samsung/clk-exynos9820.c:1919:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSMMU_DPUD0_IPCLKPORT_CLK					0x20e4
+
+WARNING: line length of 102 exceeds 100 columns
+#439: FILE: drivers/clk/samsung/clk-exynos9820.c:1920:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSMMU_DPUD1_IPCLKPORT_CLK					0x20e8
+
+WARNING: line length of 102 exceeds 100 columns
+#440: FILE: drivers/clk/samsung/clk-exynos9820.c:1921:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSMMU_DPUD2_IPCLKPORT_CLK					0x20ec
+
+WARNING: line length of 102 exceeds 100 columns
+#441: FILE: drivers/clk/samsung/clk-exynos9820.c:1922:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSREG_DPU_IPCLKPORT_PCLK					0x20f0
+
+WARNING: line length of 102 exceeds 100 columns
+#442: FILE: drivers/clk/samsung/clk-exynos9820.c:1923:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_WRAPPER_FOR_S5I6280_HSI_DCPHY_COMBO_TOP_IPCLKPORT_PCLK	0x20f4
+
+WARNING: line length of 102 exceeds 100 columns
+#443: FILE: drivers/clk/samsung/clk-exynos9820.c:1924:
++#define CLK_CON_GAT_GOUT_BLK_DPU_UID_XIU_P_DPU_IPCLKPORT_ACLK					0x20f8
+
+total: 0 errors, 65 warnings, 1 checks, 764 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0022-clk-samsung-exynos9820-Add-the-CMU_DPU-and-CMU_CMGP-.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0023-dt-bindings-mfd-syscon-Add-the-Exynos9820-D-PHY-top-.patch
+total: 0 errors, 0 warnings, 0 checks, 14 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0023-dt-bindings-mfd-syscon-Add-the-Exynos9820-D-PHY-top-.patch has no obvious style problems and is ready for submission.
+########## 0024-dt-bindings-phy-Add-the-Exynos9820-MIPI-DSI-D-PHY.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#22: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 81 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0024-dt-bindings-phy-Add-the-Exynos9820-MIPI-DSI-D-PHY.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0025-phy-samsung-Add-the-Exynos9820-MIPI-DSI-D-PHY-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#18: 
+commit 7d08ec364a06,
+
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#82: 
+new file mode 100644
+
+total: 0 errors, 2 warnings, 0 checks, 648 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0025-phy-samsung-Add-the-Exynos9820-MIPI-DSI-D-PHY-driver.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0026-dt-bindings-display-samsung-mipi-dsim-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 61 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0026-dt-bindings-display-samsung-mipi-dsim-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0027-drm-bridge-samsung-dsim-Give-the-register-tables-an-.patch
+total: 0 errors, 0 warnings, 0 checks, 69 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0027-drm-bridge-samsung-dsim-Give-the-register-tables-an-.patch has no obvious style problems and is ready for submission.
+########## 0028-drm-bridge-samsung-dsim-Look-the-pixel-format-up-in-.patch
+total: 0 errors, 0 warnings, 0 checks, 66 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0028-drm-bridge-samsung-dsim-Look-the-pixel-format-up-in-.patch has no obvious style problems and is ready for submission.
+########## 0029-drm-bridge-samsung-dsim-Take-the-escape-clock-refere.patch
+total: 0 errors, 0 warnings, 0 checks, 36 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0029-drm-bridge-samsung-dsim-Take-the-escape-clock-refere.patch has no obvious style problems and is ready for submission.
+########## 0030-drm-bridge-samsung-dsim-Give-the-lane-re-enable-afte.patch
+total: 0 errors, 0 warnings, 0 checks, 23 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0030-drm-bridge-samsung-dsim-Give-the-lane-re-enable-afte.patch has no obvious style problems and is ready for submission.
+########## 0031-drm-bridge-samsung-dsim-Hand-the-peripheral-s-DSC-co.patch
+total: 0 errors, 0 warnings, 0 checks, 65 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0031-drm-bridge-samsung-dsim-Hand-the-peripheral-s-DSC-co.patch has no obvious style problems and is ready for submission.
+########## 0032-drm-bridge-samsung-dsim-Support-a-PLL-that-lives-in-.patch
+total: 0 errors, 0 warnings, 0 checks, 179 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0032-drm-bridge-samsung-dsim-Support-a-PLL-that-lives-in-.patch has no obvious style problems and is ready for submission.
+########## 0033-drm-bridge-samsung-dsim-Make-the-lazy-host-init-an-e.patch
+total: 0 errors, 0 warnings, 0 checks, 64 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0033-drm-bridge-samsung-dsim-Make-the-lazy-host-init-an-e.patch has no obvious style problems and is ready for submission.
+########## 0034-drm-bridge-samsung-dsim-Add-Exynos9820-support.patch
+WARNING: Prefer a maximum 75 chars per line (possible unwrapped commit description?)
+#24: 
+shared table, which defines all four, so none of them can reach it. The escape prescaler
+
+total: 0 errors, 1 warnings, 0 checks, 321 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0034-drm-bridge-samsung-dsim-Add-Exynos9820-support.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0035-drm-exynos-dsi-Add-Exynos9820-support.patch
+total: 0 errors, 0 warnings, 0 checks, 21 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0035-drm-exynos-dsi-Add-Exynos9820-support.patch has no obvious style problems and is ready for submission.
+########## 0036-dt-bindings-display-Add-the-Exynos9820-DECON.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#25: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 113 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0036-dt-bindings-display-Add-the-Exynos9820-DECON.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0037-drm-exynos-Add-the-Exynos9820-DECON-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#37: 
+(LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
+
+total: 0 errors, 1 warnings, 0 checks, 1611 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0037-drm-exynos-Add-the-Exynos9820-DECON-driver.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0038-arm64-dts-exynos-exynos9820-Add-the-DPU-power-domain.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#8: 
+tables, commit 7d08ec364a06).
+
+total: 0 errors, 1 warnings, 0 checks, 22 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0038-arm64-dts-exynos-exynos9820-Add-the-DPU-power-domain.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0039-arm64-dts-exynos-exynos9820-Add-CMU_DPU-and-the-DPU-.patch
+total: 0 errors, 0 warnings, 0 checks, 52 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0039-arm64-dts-exynos-exynos9820-Add-CMU_DPU-and-the-DPU-.patch has no obvious style problems and is ready for submission.
+########## 0040-arm64-dts-exynos-exynos9820-Add-the-display-pipeline.patch
+total: 0 errors, 0 warnings, 0 checks, 291 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0040-arm64-dts-exynos-exynos9820-Add-the-display-pipeline.patch has no obvious style problems and is ready for submission.

@@ -1,0 +1,70 @@
+==========================================================
+ bramki projektu s10-mainline
+ data: 2026-09-07T11:23:28Z
+==========================================================
+
+[1] seria patchy
+  patchy w serii: 27
+  OK      brak plikow .orig/.rej/~ w patches/
+  OK      seria stosuje sie na 1200d84f4c0a929a0780180d25063d93773be79c (27/27)
+  OK      seria daje dokladnie te pliki, ktore sprawdzaja pozostale bramki
+  OK      patche nie wnosza plikow .orig/.rej
+  OK      patche out-of-tree stosuja sie na przypiete drzewo obce
+  OK      patche out-of-tree wnosza komplet identyfikatorow zegarow
+
+[2] checkpatch --strict
+  OK      checkpatch przeliczyl kazdy patch (27/27)
+  errors=0 checks=0 warnings=77
+  OK      checkpatch: 0 errors
+  OK      checkpatch: 0 checks
+  OK      checkpatch: warningow 77 (limit 77)
+
+[3] device tree
+  OK      dtb bajt w bajt
+  OK      dt-validate na dtb (odpowiednik CHECK_DTBS): 0 naruszen
+  OK      dt-doc-validate na bindingach serii (odpowiednik dt_binding_check)
+
+[4] kompilacja arm64 (bez make)
+  OK      kompilacja clk-exynos9820.c (0 uwag)
+  OK      kompilacja W=1 clk-exynos9820.c (0 uwag)
+  OK      kompilacja clk-pll.c (0 uwag)
+  OK      kompilacja W=1 clk-pll.c (0 uwag)
+  OK      kompilacja exynos-pm-domains.c (0 uwag)
+  OK      kompilacja W=1 exynos-pm-domains.c (0 uwag)
+  OK      kompilacja panel-samsung-s6e3ha9.c (0 uwag)
+  OK      kompilacja W=1 panel-samsung-s6e3ha9.c (0 uwag)
+  OK      kompilacja panel-samsung-s6e3ha9-dimming.c (0 uwag)
+  OK      kompilacja W=1 panel-samsung-s6e3ha9-dimming.c (0 uwag)
+  OK      kompilacja exynos9820_drm_decon.c (0 uwag)
+  OK      kompilacja W=1 exynos9820_drm_decon.c (0 uwag)
+  OK      kompilacja phy-exynos9820-dsim.c (0 uwag)
+  OK      kompilacja W=1 phy-exynos9820-dsim.c (0 uwag)
+  OK      kompilacja samsung-dsim.c (0 uwag)
+  OK      kompilacja W=1 samsung-dsim.c (0 uwag)
+
+[5] stale i tablice wobec zrodel producenta
+  OK      PPS panelu beyond2 (128 B)
+  OK      PPS dpu20 (kontrola krzyzowa)
+  OK      model FFC (0xC5)
+  OK      sekwencja init rozwinieta
+  OK      sekwencja display-on
+  OK      DSC panelu: 30/30 pol zgodnych z firmowym PPS
+  OK      DSC enkoderow DECON: 18/18 pol
+  OK      tablice AID: wierszy w sterowniku: 74
+  OK      silnik dimmingu: 74/74 poziomy dla 7 zestawow MTP
+
+[5b] bisectowalnosc serii
+  OK      kazdy punkt serii kompiluje sie w swoim miejscu
+  OK      odsylacze do patchy w dokumentach
+  OK      cytaty do zrodel: cytatow z linia 123
+  OK      rejestry wobec producenta: rozwiazane wobec producenta 235
+  OK      predkosc lacza wobec tablicy D-PHY
+  OK      zegary wobec cmucal: offsetow 437/437 offsetow
+  OK      zrodla producenta w sources/ds
+
+[6] spojnosc z docs/HW-BLOCKED.md
+  OK      kazde UNVERIFIED w serii ma pozycje w HW-BLOCKED
+
+==========================================================
+ przeszlo: 46  padlo: 0   nieuruchomione: 0
+==========================================================

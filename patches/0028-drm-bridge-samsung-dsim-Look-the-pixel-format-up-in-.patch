@@ -1,0 +1,98 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:16:34 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Look the pixel format up in a per
+ variant table
+
+The main pixel format field is not the same width, and does not sit at
+the same bit, on every version of this block, so the value written for a
+given MIPI format cannot stay hardcoded in the switch.
+
+Let the switch pick an index and take the value from a table the variant
+can override. Every variant currently uses the default table, so the
+register value written is unchanged for all of them.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 29 +++++++++++++++++++++++----
+ include/drm/bridge/samsung-dsim.h     |  1 +
+ 2 files changed, 26 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index 40f3b7e1baa..ad9c2d63d58 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -353,6 +353,22 @@ static const unsigned int exynos7870_reg_ofs[NUM_REGS] = {
+ 	[DSIM_PHYTIMING2_REG] = 0xBC,
+ };
+ 
++/* Index into samsung_dsim_driver_data.pix_formats. */
++enum samsung_dsim_pix_format {
++	DSIM_PIX_FORMAT_RGB888,
++	DSIM_PIX_FORMAT_RGB666,
++	DSIM_PIX_FORMAT_RGB666_P,
++	DSIM_PIX_FORMAT_RGB565,
++	DSIM_PIX_FORMAT_COUNT
++};
++
++static const unsigned int samsung_dsim_pix_formats[DSIM_PIX_FORMAT_COUNT] = {
++	[DSIM_PIX_FORMAT_RGB888] = DSIM_MAIN_PIX_FORMAT_RGB888,
++	[DSIM_PIX_FORMAT_RGB666] = DSIM_MAIN_PIX_FORMAT_RGB666,
++	[DSIM_PIX_FORMAT_RGB666_P] = DSIM_MAIN_PIX_FORMAT_RGB666_P,
++	[DSIM_PIX_FORMAT_RGB565] = DSIM_MAIN_PIX_FORMAT_RGB565,
++};
++
+ enum reg_value_idx {
+ 	RESET_TYPE,
+ 	PLL_TIMER,
+@@ -1046,6 +1062,9 @@ static void samsung_dsim_enable_lane(struct samsung_dsim *dsi, u32 lane)
+ static int samsung_dsim_init_link(struct samsung_dsim *dsi)
+ {
+ 	const struct samsung_dsim_driver_data *driver_data = dsi->driver_data;
++	const unsigned int *pix_formats = driver_data->pix_formats ?:
++					     samsung_dsim_pix_formats;
++	enum samsung_dsim_pix_format pix_format;
+ 	int timeout;
+ 	u32 reg;
+ 	u32 lanes_mask;
+@@ -1097,22 +1116,24 @@ static int samsung_dsim_init_link(struct samsung_dsim *dsi)
+ 
+ 	switch (dsi->format) {
+ 	case MIPI_DSI_FMT_RGB888:
+-		reg |= DSIM_MAIN_PIX_FORMAT_RGB888;
++		pix_format = DSIM_PIX_FORMAT_RGB888;
+ 		break;
+ 	case MIPI_DSI_FMT_RGB666:
+-		reg |= DSIM_MAIN_PIX_FORMAT_RGB666;
++		pix_format = DSIM_PIX_FORMAT_RGB666;
+ 		break;
+ 	case MIPI_DSI_FMT_RGB666_PACKED:
+-		reg |= DSIM_MAIN_PIX_FORMAT_RGB666_P;
++		pix_format = DSIM_PIX_FORMAT_RGB666_P;
+ 		break;
+ 	case MIPI_DSI_FMT_RGB565:
+-		reg |= DSIM_MAIN_PIX_FORMAT_RGB565;
++		pix_format = DSIM_PIX_FORMAT_RGB565;
+ 		break;
+ 	default:
+ 		dev_err(dsi->dev, "invalid pixel format\n");
+ 		return -EINVAL;
+ 	}
+ 
++	reg |= pix_formats[pix_format];
++
+ 	/*
+ 	 * Use non-continuous clock mode if the periparal wants and
+ 	 * host controller supports
+diff --git a/include/drm/bridge/samsung-dsim.h b/include/drm/bridge/samsung-dsim.h
+index 03005e47470..1c6535d014e 100644
+--- a/include/drm/bridge/samsung-dsim.h
++++ b/include/drm/bridge/samsung-dsim.h
+@@ -78,6 +78,7 @@ struct samsung_dsim_driver_data {
+ 	unsigned int pll_s_offset;
+ 	unsigned int main_vsa_offset;
+ 	const unsigned int *reg_values;
++	const unsigned int *pix_formats;
+ 	unsigned int pll_fin_min;
+ 	unsigned int pll_fin_max;
+ 	u16 m_min;

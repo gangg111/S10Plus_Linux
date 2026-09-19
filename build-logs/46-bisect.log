@@ -1,0 +1,28 @@
+OK    drm/bridge: samsung-dsim: Do not mark the host initi  
+OK    pinctrl: samsung: Add Exynos9820 pin controller supp  
+OK    clk: samsung: Add the PLL_0817X and PLL_1018X types   
+OK    clk: samsung: Add the Exynos9820 clock driver         
+OK    arm64: dts: exynos: Add initial support for the Exyn  
+OK    arm64: dts: exynos: Add initial support for the Sams  
+OK    drm/panel: Add Samsung S6E3HA9 panel driver           
+OK    drm/panel: s6e3ha9: Add brightness control            
+OK    drm/panel: s6e3ha9: Compute the gamma from the panel  
+OK    pmdomain: samsung: Add Exynos9820 power domain suppo  
+OK    clk: samsung: exynos9820: Add the CMU_DPU and CMU_CM  
+OK    phy: samsung: Add the Exynos9820 MIPI DSI D-PHY driv  
+OK    drm/bridge: samsung-dsim: Give the register tables a  
+OK    drm/bridge: samsung-dsim: Look the pixel format up i  
+OK    drm/bridge: samsung-dsim: Take the escape clock refe  
+OK    drm/bridge: samsung-dsim: Give the lane re-enable af  
+OK    drm/bridge: samsung-dsim: Hand the peripheral's DSC   
+OK    drm/bridge: samsung-dsim: Support a PLL that lives i  
+OK    drm/bridge: samsung-dsim: Make the lazy host init an  
+OK    drm/bridge: samsung-dsim: Add Exynos9820 support      
+OK    drm/exynos: dsi: Add Exynos9820 support               
+OK    drm/exynos: Add the Exynos9820 DECON driver           
+OK    arm64: dts: exynos: exynos9820: Add the DPU power do  
+OK    arm64: dts: exynos: exynos9820: Add CMU_DPU and the   
+OK    arm64: dts: exynos: exynos9820: Add the display pipe  
+
+sprawdzonych punktow serii: 25, w tym z budowaniem DT: 4
+SERIA BISECTOWALNA: kazdy sprawdzony punkt kompiluje sie

@@ -1,0 +1,19 @@
+# UWAGA: pierwszy wpis ponizej (4fcba6b6...) jest NIEAKTUALNY i pochodzi
+# z zepsutego przebiegu. Stary verify.sh laczyl "git apply --check" i "git apply"
+# operatorem &&, wiec gdy sprawdzenie padalo (drzewo bylo juz zapatchowane
+# z poprzedniego uruchomienia), seria NIE byla nakladana, a build szedl dalej
+# na starym stanie drzewa. Widac to w build-logs/43-verify-24-patches.log:1-20.
+#
+# Aktualny, potwierdzony hash DTB lezy w scripts/golden/dtb.sha256 i jest
+# pilnowany przez bramke w verify.sh. Ten sam hash wyszedl niezaleznie
+# na dwoch toolchainach: clang+kbuild w Termuxie i mingw cpp + lokalnie
+# zbudowany dtc na PC (szczegoly w docs/PC-PIPELINE.md).
+
+mainline base: 1200d84f4c0a929a0780180d25063d93773be79c (7.2.0)
+artifact head: f90413b303d121eaadfaf166b4dea162bd5eb6b0
+.rw------- 16k u0_a386 19 Aug 00:13 arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+4fcba6b623d07f8e6549c6c64661155944d3b3e3242896ea87e67cf80ab7fdb3  arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+
+clang: clang version 21.1.8
+dtschema: 2026.6
+date: 2026-08-18T22:16:31Z

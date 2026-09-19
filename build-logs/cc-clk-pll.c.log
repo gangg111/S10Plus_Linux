@@ -1,0 +1,7 @@
+drivers/clk/samsung/clk-pll.c:1652:7: error: use of undeclared identifier 'pll_0817x'
+ 1652 |         case pll_0817x:
+      |              ^~~~~~~~~
+drivers/clk/samsung/clk-pll.c:1661:7: error: use of undeclared identifier 'pll_1018x'
+ 1661 |         case pll_1018x:
+      |              ^~~~~~~~~
+2 errors generated.

@@ -1,0 +1,37 @@
+# Krzyzowa weryfikacja bajtow PPS (LineageOS/android_kernel_samsung_exynos9820@7d08ec36)
+# panel framework: drivers/video/fbdev/exynos/panel/s6e3ha9/s6e3ha9_beyond2_a3_s0_panel.h
+# stary dpu20:     drivers/video/fbdev/exynos/dpu20/panels/s6e3ha9_param.h
+
+panel[0] beyond2_a3_s0_pps_table: PPS For DSU MODE 1 : 1440x2960 (Original) Slice Info : 720x40
+panel[1] beyond2_a3_s0_pps_table: PPS For DSU MODE 2 : 1080x2220 Slice Info : 540x30
+panel[2] beyond2_a3_s0_pps_table: PPS For DSU MODE 3 : 720x1480 Slice Info : 360x74
+panel[3] beyond2_a3_s0_pps_table: PPS For DSU MODE 1 : 1440x3040 (Original) Slice Info : 720x40
+panel[4] beyond2_a3_s0_pps_table: PPS For DSU MODE 2 : 1080x2280 Slice Info : 540x40
+panel[5] beyond2_a3_s0_pps_table: PPS For DSU MODE 3 : 720x1520 Slice Info : 360x76
+panel[6] BEYOND2_A3_S0_PPS: WQHD : 1440x2960
+panel[7] BEYOND2_A3_S0_PPS: WQHD : 1440x3040
+
+param[0] SEQ_PPS_SLICE2: WQHD+ :1440x3040
+param[1] PPS_TABLE: PPS MODE0 : 1440x3040, Slice Info : 720x40
+param[2] PPS_TABLE: PPS MODE1 : 1080x2280, Slice Info : 540x30
+param[3] PPS_TABLE: PPS MODE2 : 720x1520, Slice Info : 360x74
+
+panel[3] (pps_table 1440x3040 mode1) == panel[7] (BEYOND2_A3_S0_PPS WQHD 1440x3040): True
+panel[3] == param[0] (SEQ_PPS_SLICE2): True
+panel[3] == param[1] (PPS_TABLE MODE0): True
+panel[4] (1080x2280) == param[2]: False   <- rozne: slice_h 40 vs 30
+panel[5] (720x1520)  == param[3]: False   <- rozne: slice_h 76 vs 74
+
+# slice per tryb:
+  panel[0] 1440x2960 slice 720x40 bpp 128 -> 8 bpp
+  panel[1] 1080x2220 slice 540x30 bpp 128 -> 8 bpp
+  panel[2] 720x1480 slice 360x74 bpp 128 -> 8 bpp
+  panel[3] 1440x3040 slice 720x40 bpp 128 -> 8 bpp
+  panel[4] 1080x2280 slice 540x40 bpp 128 -> 8 bpp
+  panel[5] 720x1520 slice 360x76 bpp 128 -> 8 bpp
+  panel[6] 1440x2960 slice 720x40 bpp 128 -> 8 bpp
+  panel[7] 1440x3040 slice 720x40 bpp 128 -> 8 bpp
+  param[0] 1440x3040 slice 720x40 bpp 128 -> 8 bpp
+  param[1] 1440x3040 slice 720x40 bpp 128 -> 8 bpp
+  param[2] 1080x2280 slice 540x30 bpp 128 -> 8 bpp
+  param[3] 720x1520 slice 360x74 bpp 128 -> 8 bpp

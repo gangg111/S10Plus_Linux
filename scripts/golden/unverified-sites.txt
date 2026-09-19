@@ -1,0 +1,33 @@
+# Mapa adnotacji UNVERIFIED w serii na pozycje w docs/HW-BLOCKED.md.
+#
+# Numery pozycji nie moga zostac w kodzie idacym na liste: docs/HW-BLOCKED.md
+# nigdy nie trafi do jadra, wiec dla czytelnika upstream "HW-26" nic nie
+# znaczy, a dwa z tych komentarzy siedza we wspolnym samsung-dsim.c, ktorego
+# uzywaja i.MX i exynos5433. Sam komentarz zostaje, bo niesie tresc: co jest
+# niesprawdzone i jak to sprawdzic. Sledzenie przejmuje ta mapa.
+#
+# Bramka [6] w scripts/verify.sh pilnuje jej w obie strony:
+#   - kazdy wiersz musi wskazywac na istniejaca fraze w pliku serii,
+#   - kazda pozycja HW musi miec naglowek w docs/HW-BLOCKED.md,
+#   - liczba adnotacji dodanych przez seria musi sie zgadzac z liczba wierszy,
+#     wiec nowej adnotacji nie da sie dopisac bez wpisu tutaj,
+#   - pozycja w HW-BLOCKED musi wskazywac ten sam plik co wiersz tutaj
+#     (linia "Miejsce w serii" tam).
+#
+# Czego bramka NIE zlapie: zamiany identyfikatorow miedzy dwoma wierszami,
+# ktore wskazuja TEN SAM plik (dzis HW-26 i HW-30 w samsung-dsim.c). Zeby to
+# domknac, trzeba by powtorzyc fraze po stronie dokumentu, a powtorzona tresc
+# rozjezdza sie szybciej, niz przybywa z niej pozytku.
+#
+# format: sciezka w sources/linux | pozycje HW po przecinku | fraza po "UNVERIFIED: "
+drivers/gpu/drm/bridge/samsung-dsim.c|HW-26|The PHY has a lock bit of its own
+drivers/gpu/drm/bridge/samsung-dsim.c|HW-30|none of the three expressions below is explained
+drivers/gpu/drm/exynos/exynos9820_drm_decon.c|HW-12|The vendor writes 0x1b4
+drivers/gpu/drm/panel/panel-samsung-s6e3ha9-main.c|HW-04|the value is transcribed from the vendor table
+drivers/phy/samsung/phy-exynos9820-dsim.c|HW-01|the unit is unknown and the sanity check
+drivers/phy/samsung/phy-exynos9820-dsim.c|HW-25|Whether a second controller sits behind this
+drivers/phy/samsung/phy-exynos9820-dsim.c|HW-27|The block has an isolation bit of its own
+arch/arm64/boot/dts/exynos/exynos9820.dtsi|HW-07,HW-08|The mask is the vendor's own
+arch/arm64/boot/dts/exynos/exynos9820.dtsi|HW-03|the sources give both 18 and 20 MHz
+arch/arm64/boot/dts/exynos/exynos9820.dtsi|HW-39|every interrupt here is described as level high
+drivers/clk/samsung/clk-exynos9820.c|HW-33|one mux of a block this driver covers has a register

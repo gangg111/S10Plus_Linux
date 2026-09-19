@@ -1,0 +1,65 @@
+From 1c9c00c3ad81f5f5921583d95ff44194895c057f Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 18 Sep 2026 23:14:45 +0200
+Subject: [PATCH 2/8] clk: exynos: add the PLL_0817X, PLL_0818X and PLL_1018X
+ types
+
+Exynos9820 drives its shared PLLs with three IP revisions this driver does
+not name yet: PLL_0817X (fout_pll_shared0, fout_pll_shared1), PLL_0818X
+(fout_pll_g3d, fout_pll_shared2, fout_pll_shared3) and PLL_1018X
+(fout_pll_shared4).
+
+All three belong to a family the driver already handles.  The vendor clock
+abstraction layer puts them in the same buckets as types that are already
+supported: PLL_0817X shares its spec with PLL_0822X and PLL_1017X, and
+PLL_1018X shares its spec with PLL_0818X (cal-if/pll_spec.c:293-301 of
+LineageOS/android_kernel_samsung_exynos9820 at 7d08ec364a06).  Those specs
+describe the same register layout, an integer PLL with P in 1..63, M in
+64..1023, S in 0..6 and no K field (:158-177); they differ only in the
+allowed input and VCO frequency ranges, which this driver does not encode.
+
+So add the three names to the branch that already selects the PLL0822X
+implementation rather than duplicating it.  The Linux driver reaches the
+same conclusion and puts these types on samsung_pll0822x_clk_ops with the
+same enable and lock bit offsets.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/clk/exynos/clk-pll.c | 3 +++
+ drivers/clk/exynos/clk-pll.h | 3 +++
+ 2 files changed, 6 insertions(+)
+
+diff --git a/drivers/clk/exynos/clk-pll.c b/drivers/clk/exynos/clk-pll.c
+index 4b67591a..da75b3c9 100644
+--- a/drivers/clk/exynos/clk-pll.c
++++ b/drivers/clk/exynos/clk-pll.c
+@@ -116,7 +116,10 @@ static struct clk *_samsung_clk_register_pll(void __iomem *base,
+ 	clk->flags = pll_clk->flags;
+ 
+ 	switch (pll_clk->type) {
++	case pll_0817x:
++	case pll_0818x:
+ 	case pll_0822x:
++	case pll_1018x:
+ 	case pll_1417x:
+ 		drv_name = UBOOT_DM_CLK_SAMSUNG_PLL0822X;
+ 		break;
+diff --git a/drivers/clk/exynos/clk-pll.h b/drivers/clk/exynos/clk-pll.h
+index d5dfc893..f5a86c0a 100644
+--- a/drivers/clk/exynos/clk-pll.h
++++ b/drivers/clk/exynos/clk-pll.h
+@@ -18,8 +18,11 @@
+ struct samsung_pll_clock;
+ 
+ enum samsung_pll_type {
++	pll_0817x,
++	pll_0818x,
+ 	pll_0822x,
+ 	pll_0831x,
++	pll_1018x,
+ 	pll_1417x,
+ };
+ 
+-- 
+2.47.3
+

@@ -1,0 +1,39 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:48:03 +0200
+Subject: [PATCH] dt-bindings: pinctrl: samsung: Add Exynos9820
+
+The pin controller and its wake-up interrupt controller reuse the
+register layout of an already documented SoC, so only the compatible
+strings are added.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../bindings/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml       | 1 +
+ Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.yaml   | 1 +
+ 2 files changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml b/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml
+index 2b88f25e80a..75361e311bb 100644
+--- a/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml
++++ b/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml
+@@ -50,6 +50,7 @@ properties:
+               - samsung,exynos2200-wakeup-eint
+               - samsung,exynos9610-wakeup-eint
+               - samsung,exynos9810-wakeup-eint
++              - samsung,exynos9820-wakeup-eint
+               - samsung,exynos990-wakeup-eint
+               - samsung,exynosautov9-wakeup-eint
+           - const: samsung,exynos850-wakeup-eint
+diff --git a/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.yaml b/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.yaml
+index 7b006009ca0..e26727dd7b3 100644
+--- a/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.yaml
++++ b/Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.yaml
+@@ -57,6 +57,7 @@ properties:
+       - samsung,exynos8895-pinctrl
+       - samsung,exynos9610-pinctrl
+       - samsung,exynos9810-pinctrl
++      - samsung,exynos9820-pinctrl
+       - samsung,exynos990-pinctrl
+       - samsung,exynosautov9-pinctrl
+       - samsung,exynosautov920-pinctrl

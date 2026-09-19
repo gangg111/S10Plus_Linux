@@ -1,0 +1,1185 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 8 Sep 2026 21:44:46 +0200
+Subject: [PATCH] arm64: dts: exynos: Add initial support for the Exynos9820
+ SoC
+
+Add a minimal device tree for the Exynos9820: the eight CPUs, PSCI, the
+GIC, the system timer, CMU_TOP, CMU_APM, CMU_PERIS and CMU_PERIC0, the
+eight pin controllers, the debug UART and the HSI2C buses the board
+needs. Everything else the SoC has is left out rather than described and
+disabled, because a node nobody drives is a claim nobody checks.
+
+Both files are transcriptions of the vendor sources. For the pin
+controller that means the bank names and their order, which the driver
+has to agree with, and the wakeup interrupt numbers the SoC wires to the
+GIC. For the SoC file it means every address, interrupt number and clock
+index, with the nodes under soc@0 ordered by unit address. Nothing here
+is carried over from another port without that check.
+
+The SoC gets its own MAINTAINERS section. The clock driver, its binding
+and the device trees would otherwise fall through to the subsystem wide
+entries, and get_maintainer.pl would name nobody who knows this part.
+The pin controller tables are not listed there: they live in files that
+already have an owner.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                                   |  10 +
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   | 651 ++++++++++++++++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 467 +++++++++++++
+ 3 files changed, 1128 insertions(+)
+ create mode 100644 arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+ create mode 100644 arch/arm64/boot/dts/exynos/exynos9820.dtsi
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 8f4f9f11713..69196616788 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -23987,6 +23987,16 @@ F:	arch/arm64/boot/dts/exynos/exynos850*
+ F:	drivers/clk/samsung/clk-exynos850.c
+ F:	include/dt-bindings/clock/exynos850.h
+ 
++SAMSUNG EXYNOS9820 SoC SUPPORT
++M:	Artur Szafraniec <ganggg111@gmail.com>
++L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
++L:	linux-samsung-soc@vger.kernel.org
++S:	Maintained
++F:	Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
++F:	arch/arm64/boot/dts/exynos/exynos9820*
++F:	drivers/clk/samsung/clk-exynos9820.c
++F:	include/dt-bindings/clock/samsung,exynos9820.h
++
+ SAMSUNG EXYNOS ACPM MAILBOX PROTOCOL
+ M:	Tudor Ambarus <tudor.ambarus@linaro.org>
+ L:	linux-kernel@vger.kernel.org
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+new file mode 100644
+index 00000000000..52757a29a55
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -0,0 +1,651 @@
++// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
++/*
++ * Samsung Exynos9820 SoC pin-mux and pin-config device tree source
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The bank names and their order are the ones the pin controller driver
++ * expects, and the wakeup interrupt numbers are the ones the SoC wires to the
++ * GIC; both are transcribed from the vendor sources rather than from another
++ * port.  Only the banks that can wake the system carry an interrupt list: the
++ * rest reach the CPU through their own controller.
++ *
++ * The three pin groups at the end are the ones this SoC needs before anything
++ * can talk: the two I2C buses and the panel tearing effect line.
++ */
++
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++#include "exynos-pinctrl.h"
++
++&pinctrl_alive {
++	gpa0: gpa0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 5 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 6 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 7 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 8 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 11 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 12 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpa1: gpa1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 13 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 14 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 15 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 16 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 17 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 18 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 19 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpa2: gpa2-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 22 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 23 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 26 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 27 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 28 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpa3: gpa3-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 29 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 30 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 33 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 34 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 35 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 36 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpa4: gpa4-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 37 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpq0: gpq0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++	};
++
++	etc0: etc0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++	};
++};
++
++&pinctrl_aud {
++	gpb0: gpb0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpb1: gpb1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpb2: gpb2-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++};
++
++&pinctrl_cmgp {
++	gpm0: gpm0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 85 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm1: gpm1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 86 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm2: gpm2-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 87 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm3: gpm3-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 88 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm4: gpm4-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 89 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm5: gpm5-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 90 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm6: gpm6-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 91 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm7: gpm7-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 92 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm8: gpm8-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 93 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm9: gpm9-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 94 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm10: gpm10-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 95 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm11: gpm11-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 96 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm12: gpm12-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 97 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm13: gpm13-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm14: gpm14-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 99 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm15: gpm15-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 100 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm16: gpm16-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 101 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm17: gpm17-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 102 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm18: gpm18-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 103 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm19: gpm19-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 104 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm20: gpm20-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 105 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm21: gpm21-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 106 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm22: gpm22-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm23: gpm23-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 108 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm24: gpm24-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm25: gpm25-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm26: gpm26-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 111 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm27: gpm27-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm28: gpm28-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 113 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm29: gpm29-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 114 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm30: gpm30-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 115 IRQ_TYPE_LEVEL_HIGH>;
++	};
++
++	gpm31: gpm31-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		interrupt-parent = <&gic>;
++		interrupts = <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
++	};
++};
++
++&pinctrl_fsys0 {
++	gpf0: gpf0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++};
++
++&pinctrl_fsys1 {
++	gpf1: gpf1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpf2: gpf2-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpf3: gpf3-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++};
++
++&pinctrl_peric0 {
++	gpp0: gpp0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpp1: gpp1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpp2: gpp2-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpp3: gpp3-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpg0: gpg0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpg1: gpg1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpg2: gpg2-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpg4: gpg4-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	/* to the touchscreen */
++	hsi2c10_bus: hsi2c10-bus-pins {
++		samsung,pins = "gpp1-4", "gpp1-5";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++};
++
++&pinctrl_peric1 {
++	gpp4: gpp4-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpp5: gpp5-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpp6: gpp6-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpc0: gpc0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpc1: gpc1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpd0: gpd0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gpg3: gpg3-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gph0: gph0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++
++	gph1: gph1-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++};
++
++&pinctrl_vts {
++	gpv0: gpv0-gpio-bank {
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		interrupt-controller;
++		#interrupt-cells = <2>;
++	};
++};
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+new file mode 100644
+index 00000000000..c269ae97a21
+--- /dev/null
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -0,0 +1,467 @@
++// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
++/*
++ * Samsung Exynos9820 SoC device tree source
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * This describes the part of the SoC that the drivers in this series can
++ * actually reach: the eight CPUs, the clock controllers, the pin controllers,
++ * the system timer, the interrupt controller, the debug UART and the buses the
++ * board needs.  Everything else the SoC has is left out rather than described
++ * and disabled, because a node nobody drives is a claim nobody checks.
++ *
++ * Addresses, interrupt numbers and clock indices come from the vendor sources
++ * listed in SOURCES.md.  Nodes under soc@0 are ordered by their unit address.
++ *
++ * UNVERIFIED: every interrupt here is described as level high, the way every
++ * other Exynos SoC in this tree describes its own, but that is not the shape
++ * the phone runs with: the vendor tree sets no type at all and its kernel ends
++ * up with the lines as edge.  The numbers are confirmed against the running
++ * system, only the type is open, and getting it wrong gives either a storm or
++ * an interrupt that never arrives.  Each block has to be made to raise its
++ * line.  Copying the vendor's unset type is not the fix.
++ */
++
++#include <dt-bindings/clock/samsung,exynos9820.h>
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++
++/ {
++	compatible = "samsung,exynos9820";
++	#address-cells = <2>;
++	#size-cells = <1>;
++
++	interrupt-parent = <&gic>;
++
++	/*
++	 * The pin controller driver picks its bank tables by this alias, so the
++	 * numbering is not cosmetic: pinctrlN has to name the Nth entry of
++	 * exynos9820_pin_ctrl[].
++	 */
++	aliases {
++		pinctrl0 = &pinctrl_alive;
++		pinctrl1 = &pinctrl_aud;
++		pinctrl2 = &pinctrl_cmgp;
++		pinctrl3 = &pinctrl_fsys0;
++		pinctrl4 = &pinctrl_fsys1;
++		pinctrl5 = &pinctrl_peric0;
++		pinctrl6 = &pinctrl_peric1;
++		pinctrl7 = &pinctrl_vts;
++	};
++
++	/*
++	 * Three clusters: four Cortex-A55, two Cortex-A75 and two Mongoose M4.
++	 * The M4 pair sits behind its own affinity level, hence the 0x100 in its
++	 * MPIDR rather than a flat numbering.
++	 */
++	cpus {
++		#address-cells = <1>;
++		#size-cells = <0>;
++
++		cpu-map {
++			cluster0 {
++				core0 {
++					cpu = <&cpu0>;
++				};
++				core1 {
++					cpu = <&cpu1>;
++				};
++				core2 {
++					cpu = <&cpu2>;
++				};
++				core3 {
++					cpu = <&cpu3>;
++				};
++			};
++
++			cluster1 {
++				core0 {
++					cpu = <&cpu4>;
++				};
++				core1 {
++					cpu = <&cpu5>;
++				};
++			};
++
++			cluster2 {
++				core0 {
++					cpu = <&cpu6>;
++				};
++				core1 {
++					cpu = <&cpu7>;
++				};
++			};
++		};
++
++		cpu0: cpu@0 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a55";
++			reg = <0x0>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <272>;
++			dynamic-power-coefficient = <160>;
++		};
++
++		cpu1: cpu@1 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a55";
++			reg = <0x1>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <272>;
++			dynamic-power-coefficient = <160>;
++		};
++
++		cpu2: cpu@2 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a55";
++			reg = <0x2>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <272>;
++			dynamic-power-coefficient = <160>;
++		};
++
++		cpu3: cpu@3 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a55";
++			reg = <0x3>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <272>;
++			dynamic-power-coefficient = <160>;
++		};
++
++		cpu4: cpu@4 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a75";
++			reg = <0x4>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <531>;
++			dynamic-power-coefficient = <320>;
++		};
++
++		cpu5: cpu@5 {
++			device_type = "cpu";
++			compatible = "arm,cortex-a75";
++			reg = <0x5>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <531>;
++			dynamic-power-coefficient = <320>;
++		};
++
++		cpu6: cpu@100 {
++			device_type = "cpu";
++			compatible = "samsung,mongoose-m4";
++			reg = <0x100>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <785>;
++			dynamic-power-coefficient = <760>;
++		};
++
++		cpu7: cpu@101 {
++			device_type = "cpu";
++			compatible = "samsung,mongoose-m4";
++			reg = <0x101>;
++			enable-method = "psci";
++			capacity-dmips-mhz = <785>;
++			dynamic-power-coefficient = <760>;
++		};
++	};
++
++	/*
++	 * The 26 MHz crystal every clock controller takes as its reference.  The
++	 * rate is a property of the board, so the board file fills it in.
++	 */
++	oscclk: osc-clock {
++		compatible = "fixed-clock";
++		#clock-cells = <0>;
++		clock-output-names = "oscclk";
++	};
++
++	/* One performance monitor node per core type, as the PMUs differ. */
++	pmu-a55 {
++		compatible = "arm,cortex-a55-pmu";
++		interrupts = <GIC_SPI 141 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 142 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 143 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 144 IRQ_TYPE_LEVEL_HIGH>;
++		interrupt-affinity = <&cpu0>, <&cpu1>, <&cpu2>, <&cpu3>;
++	};
++
++	pmu-a75 {
++		compatible = "arm,cortex-a75-pmu";
++		interrupts = <GIC_SPI 145 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 146 IRQ_TYPE_LEVEL_HIGH>;
++		interrupt-affinity = <&cpu4>, <&cpu5>;
++	};
++
++	pmu-mongoose {
++		compatible = "samsung,mongoose-pmu";
++		interrupts = <GIC_SPI 174 IRQ_TYPE_LEVEL_HIGH>,
++			     <GIC_SPI 175 IRQ_TYPE_LEVEL_HIGH>;
++		interrupt-affinity = <&cpu6>, <&cpu7>;
++	};
++
++	psci {
++		compatible = "arm,psci";
++		method = "smc";
++		cpu_suspend = <0xc4000001>;
++		cpu_off = <0x84000002>;
++		cpu_on = <0xc4000003>;
++	};
++
++	soc: soc@0 {
++		compatible = "simple-bus";
++		#address-cells = <1>;
++		#size-cells = <1>;
++		ranges = <0x0 0x0 0x0 0x20000000>;
++
++		chipid@10000000 {
++			compatible = "samsung,exynos9820-chipid",
++				     "samsung,exynos850-chipid";
++			reg = <0x10000000 0x100>;
++		};
++
++		cmu_peris: clock-controller@10020000 {
++			compatible = "samsung,exynos9820-cmu-peris";
++			reg = <0x10020000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_PERIS_BUS>;
++			clock-names = "oscclk", "bus";
++		};
++
++		/*
++		 * Twelve comparators, one per core plus four global ones; the
++		 * driver takes them in that order.
++		 */
++		timer@10040000 {
++			compatible = "samsung,exynos9820-mct",
++				     "samsung,exynos4210-mct";
++			reg = <0x10040000 0x800>;
++			clocks = <&oscclk>,
++				 <&cmu_peris CLK_GOUT_PERIS_MCT_PCLK>;
++			clock-names = "fin_pll", "mct";
++			interrupts = <GIC_SPI 466 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 467 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 468 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 469 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 470 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 471 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 472 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 473 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 474 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 475 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 476 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 477 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
++		gic: interrupt-controller@10101000 {
++			compatible = "arm,gic-400";
++			#interrupt-cells = <3>;
++			#address-cells = <0>;
++			interrupt-controller;
++			reg = <0x10101000 0x1000>,
++			      <0x10102000 0x1000>,
++			      <0x10104000 0x2000>,
++			      <0x10106000 0x2000>;
++			interrupts = <GIC_PPI 9 (GIC_CPU_MASK_SIMPLE(8) |
++						 IRQ_TYPE_LEVEL_HIGH)>;
++		};
++
++		cmu_peric0: clock-controller@10400000 {
++			compatible = "samsung,exynos9820-cmu-peric0";
++			reg = <0x10400000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_PERIC0_BUS>,
++				 <&cmu_top CLK_DOUT_CMU_PERIC0_IP>;
++			clock-names = "oscclk", "bus", "ip";
++		};
++
++		/* Holds the mode register the USI blocks of this domain use. */
++		sysreg_peric0: syscon@10420000 {
++			compatible = "samsung,exynos9820-peric0-sysreg",
++				     "syscon";
++			reg = <0x10420000 0x2000>;
++			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_SYSREG_PERIC0_PCLK>;
++		};
++
++		pinctrl_peric0: pinctrl@10430000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x10430000 0x1000>;
++			interrupts = <GIC_SPI 380 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
++		serial0: serial@10440000 {
++			compatible = "samsung,exynos9820-uart",
++				     "samsung,exynos8895-uart";
++			reg = <0x10440000 0x100>;
++			interrupts = <GIC_SPI 381 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_UART_DBG_PCLK>,
++				 <&cmu_peric0 CLK_GOUT_PERIC0_UART_DBG_IPCLK>;
++			clock-names = "uart", "clk_uart_baud0";
++			samsung,uart-fifosize = <256>;
++			status = "disabled";
++		};
++
++		/*
++		 * A USI block is one piece of hardware that can be a UART, an SPI
++		 * master or an I2C master; the mode lives in the PERIC0 system
++		 * register, and the child node below is the mode this board picks.
++		 * The USI configuration window sits above the peripheral window,
++		 * which is why the parent address is the higher of the two.
++		 */
++		usi3: usi@104b00c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x104b00c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI03_USI_PCLK>,
++				 <&cmu_peric0 CLK_GOUT_PERIC0_USI03_USI_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_peric0 0x101c>;
++			status = "disabled";
++
++			hsi2c10: i2c@104b0000 {
++				compatible = "samsung,exynos9820-hsi2c",
++					     "samsung,exynosautov9-hsi2c";
++				reg = <0x104b0000 0xc0>;
++				interrupts = <GIC_SPI 388 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI03_USI_IPCLK>,
++					 <&cmu_peric0 CLK_GOUT_PERIC0_USI03_USI_PCLK>;
++				clock-names = "hsi2c", "hsi2c_pclk";
++				pinctrl-0 = <&hsi2c10_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
++		pinctrl_peric1: pinctrl@10830000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x10830000 0x1000>;
++			interrupts = <GIC_SPI 407 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
++		pinctrl_fsys0: pinctrl@13030000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x13030000 0x1000>;
++			interrupts = <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
++		pinctrl_fsys1: pinctrl@13c40000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x13c40000 0x1000>;
++			interrupts = <GIC_SPI 251 IRQ_TYPE_LEVEL_HIGH>;
++		};
++
++		/*
++		 * The VTS and AUD pin controllers sit inside power domains that can
++		 * be off, so they carry no interrupt and the driver leaves their
++		 * registers alone until something claims a pin.
++		 */
++		pinctrl_vts: pinctrl@15580000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x15580000 0x1000>;
++		};
++
++		cmu_apm: clock-controller@15800000 {
++			compatible = "samsung,exynos9820-cmu-apm";
++			reg = <0x15800000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_APM_BUS>;
++			clock-names = "oscclk", "bus";
++		};
++
++		/*
++		 * The banks of this controller and of CMGP keep their pads alive
++		 * across suspend, so they are the two that can wake the system.  The
++		 * interrupt lists live with the banks, in the pin controller file.
++		 */
++		pinctrl_alive: pinctrl@15850000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x15850000 0x1000>;
++
++			wakeup-interrupt-controller {
++				compatible = "samsung,exynos9820-wakeup-eint",
++					     "samsung,exynos850-wakeup-eint",
++					     "samsung,exynos7-wakeup-eint";
++			};
++		};
++
++		pmu_system_controller: system-controller@15860000 {
++			compatible = "samsung,exynos9820-pmu",
++				     "samsung,exynos7-pmu",
++				     "syscon";
++			reg = <0x15860000 0x10000>;
++
++			poweroff: syscon-poweroff {
++				compatible = "syscon-poweroff";
++				regmap = <&pmu_system_controller>;
++				offset = <0x030c>; /* PS_HOLD_CONTROL */
++				mask = <0x100>;
++				value = <0x0>;
++			};
++
++			reboot: syscon-reboot {
++				compatible = "syscon-reboot";
++				regmap = <&pmu_system_controller>;
++				offset = <0x3a00>; /* SWRESET */
++				mask = <0x2>; /* SWRESET_TRIGGER */
++				value = <0x2>;
++			};
++		};
++
++		pinctrl_cmgp: pinctrl@15c30000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x15c30000 0x1000>;
++
++			wakeup-interrupt-controller {
++				compatible = "samsung,exynos9820-wakeup-eint",
++					     "samsung,exynos850-wakeup-eint",
++					     "samsung,exynos7-wakeup-eint";
++			};
++		};
++
++		pinctrl_aud: pinctrl@18c60000 {
++			compatible = "samsung,exynos9820-pinctrl";
++			reg = <0x18c60000 0x1000>;
++		};
++
++		/*
++		 * Every other clock controller takes its input from this one, so it
++		 * is registered before them.
++		 */
++		cmu_top: clock-controller@1a240000 {
++			compatible = "samsung,exynos9820-cmu-top";
++			reg = <0x1a240000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>;
++			clock-names = "oscclk";
++		};
++	};
++
++	timer {
++		compatible = "arm,armv8-timer";
++
++		/*
++		 * Hypervisor Virtual Timer interrupt is not wired to the GIC
++		 * and S-Boot leaves CNTFRQ_EL0 unconfigured.
++		 */
++		interrupts = <GIC_PPI 13 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
++			     <GIC_PPI 14 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
++			     <GIC_PPI 11 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>,
++			     <GIC_PPI 10 (GIC_CPU_MASK_SIMPLE(8) | IRQ_TYPE_LEVEL_LOW)>;
++		clock-frequency = <26000000>;
++	};
++};
++
++#include "exynos9820-pinctrl.dtsi"

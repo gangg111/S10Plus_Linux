@@ -1,0 +1,416 @@
+===== blok 0 — beyond2_a3_s0_pps_table: PPS For DSU MODE 1 : 1440x2960 (Original) Slice Info : 720x40
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 2960
+  pic_width (PPS8-9): 1440
+  slice_height (PPS10-11): 40
+  slice_width (PPS12-13): 720
+  chunk_size (PPS14-15): 720
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 616
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 1132
+  scale_decrement_interval (PPS24-25): 10
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 631
+  slice_bpg_offset (PPS30-31): 489
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+
+===== blok 1 — beyond2_a3_s0_pps_table: PPS For DSU MODE 2 : 1080x2220 Slice Info : 540x30
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 2220
+  pic_width (PPS8-9): 1080
+  slice_height (PPS10-11): 30
+  slice_width (PPS12-13): 540
+  chunk_size (PPS14-15): 540
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 526
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 739
+  scale_decrement_interval (PPS24-25): 7
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 848
+  slice_bpg_offset (PPS30-31): 868
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+
+===== blok 2 — beyond2_a3_s0_pps_table: PPS For DSU MODE 3 : 720x1480 Slice Info : 360x74
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 1480
+  pic_width (PPS8-9): 720
+  slice_height (PPS10-11): 74
+  slice_width (PPS12-13): 360
+  chunk_size (PPS14-15): 360
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 436
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 1466
+  scale_decrement_interval (PPS24-25): 5
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 337
+  slice_bpg_offset (PPS30-31): 528
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+
+===== blok 3 — beyond2_a3_s0_pps_table: PPS For DSU MODE 1 : 1440x3040 (Original) Slice Info : 720x40
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 3040
+  pic_width (PPS8-9): 1440
+  slice_height (PPS10-11): 40
+  slice_width (PPS12-13): 720
+  chunk_size (PPS14-15): 720
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 616
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 1132
+  scale_decrement_interval (PPS24-25): 10
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 631
+  slice_bpg_offset (PPS30-31): 489
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+
+===== blok 4 — beyond2_a3_s0_pps_table: PPS For DSU MODE 2 : 1080x2280 Slice Info : 540x40
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 2280
+  pic_width (PPS8-9): 1080
+  slice_height (PPS10-11): 40
+  slice_width (PPS12-13): 540
+  chunk_size (PPS14-15): 540
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 526
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 989
+  scale_decrement_interval (PPS24-25): 7
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 631
+  slice_bpg_offset (PPS30-31): 651
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+
+===== blok 5 — beyond2_a3_s0_pps_table: PPS For DSU MODE 3 : 720x1520 Slice Info : 360x76
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 1520
+  pic_width (PPS8-9): 720
+  slice_height (PPS10-11): 76
+  slice_width (PPS12-13): 360
+  chunk_size (PPS14-15): 360
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 436
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 1506
+  scale_decrement_interval (PPS24-25): 5
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 328
+  slice_bpg_offset (PPS30-31): 514
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+
+===== blok 6 — BEYOND2_A3_S0_PPS: WQHD : 1440x2960
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 2960
+  pic_width (PPS8-9): 1440
+  slice_height (PPS10-11): 40
+  slice_width (PPS12-13): 720
+  chunk_size (PPS14-15): 720
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 616
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 1132
+  scale_decrement_interval (PPS24-25): 10
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 631
+  slice_bpg_offset (PPS30-31): 489
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+
+===== blok 7 — BEYOND2_A3_S0_PPS: WQHD : 1440x3040
+  dsc_version_major (PPS0[7:4]): 1
+  dsc_version_minor (PPS0[3:0]): 1
+  pps_identifier (PPS1): 0
+  bits_per_component (PPS3[7:4]): 8
+  linebuf_depth (PPS3[3:0]): 9
+  block_pred_enable (PPS4[5]): 1
+  convert_rgb (PPS4[4]): 1
+  simple_422 (PPS4[3]): 0
+  vbr_enable (PPS4[2]): 0
+  bits_per_pixel /16 (PPS4-5): 128 -> 8 bpp
+  pic_height (PPS6-7): 3040
+  pic_width (PPS8-9): 1440
+  slice_height (PPS10-11): 40
+  slice_width (PPS12-13): 720
+  chunk_size (PPS14-15): 720
+  initial_xmit_delay (PPS16-17): 512
+  initial_dec_delay (PPS18-19): 616
+  initial_scale_value (PPS21): 32
+  scale_increment_interval (PPS22-23): 1132
+  scale_decrement_interval (PPS24-25): 10
+  first_line_bpg_offset (PPS27): 12
+  nfl_bpg_offset (PPS28-29): 631
+  slice_bpg_offset (PPS30-31): 489
+  initial_offset (PPS32-33): 6144
+  final_offset (PPS34-35): 4336
+  flatness_min_qp (PPS36): 3
+  flatness_max_qp (PPS37): 12
+  rc_model_size (PPS38-39): 8192
+  rc_edge_factor (PPS40): 6
+  rc_quant_incr_limit0 (PPS41): 11
+  rc_quant_incr_limit1 (PPS42): 11
+  rc_tgt_offset_high (PPS43[7:4]): 3
+  rc_tgt_offset_low (PPS43[3:0]): 3
+  rc_buf_thresh (PPS44-57): [14, 28, 42, 56, 70, 84, 98, 105, 112, 119, 121, 123, 125, 126]
+  rc_range_parameters (PPS58-87):
+    [ 0] min_qp= 0 max_qp= 4 bpg_offset=+2
+    [ 1] min_qp= 0 max_qp= 4 bpg_offset=+0
+    [ 2] min_qp= 1 max_qp= 5 bpg_offset=+0
+    [ 3] min_qp= 1 max_qp= 6 bpg_offset=-2
+    [ 4] min_qp= 3 max_qp= 7 bpg_offset=-4
+    [ 5] min_qp= 3 max_qp= 7 bpg_offset=-6
+    [ 6] min_qp= 3 max_qp= 7 bpg_offset=-8
+    [ 7] min_qp= 3 max_qp= 8 bpg_offset=-8
+    [ 8] min_qp= 3 max_qp= 9 bpg_offset=-8
+    [ 9] min_qp= 3 max_qp=10 bpg_offset=-10
+    [10] min_qp= 5 max_qp=11 bpg_offset=-10
+    [11] min_qp= 5 max_qp=12 bpg_offset=-12
+    [12] min_qp= 5 max_qp=13 bpg_offset=-12
+    [13] min_qp= 7 max_qp=13 bpg_offset=-12
+    [14] min_qp=13 max_qp=15 bpg_offset=-12
+

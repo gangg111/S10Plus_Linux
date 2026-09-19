@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 8 Sep 2026 20:30:58 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Make the lazy host init an explicit
+ capability
+
+Whether the host is brought up in pre_enable or left to come up during
+the first DSI transfer is decided by samsung_dsim_hw_is_exynos(), which
+is a range over the variant enum: DSIM_TYPE_EXYNOS3250 through
+DSIM_TYPE_EXYNOS5433.
+
+A range over an enum answers by position, not by property. Every variant
+added after DSIM_TYPE_EXYNOS5433 falls outside it whether or not that is
+what its hardware wants, and the name says the opposite of what the test
+does for an Exynos part added later. DSIM_TYPE_EXYNOS7870 is already in
+that position today.
+
+Give the property a name and put it in driver_data, where the rest of
+the per variant behaviour of this driver lives. The flag is set on
+exactly the five variants the range covers, so nothing changes for any
+of them, and nothing changes for the variants outside it either.
+
+The other user of the macro, the DSIM_NON_CONTINUOUS_CLKLANE bit, is a
+different property of a different register and is left alone.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 13 ++++++++++---
+ include/drm/bridge/samsung-dsim.h     |  8 ++++++++
+ 2 files changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index 44b8e2ade3a..9ac309e57a3 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -480,6 +480,7 @@ static const unsigned int imx8mm_dsim_reg_values[NUM_REG_VALUES] = {
+ };
+ 
+ static const struct samsung_dsim_driver_data exynos3_dsi_driver_data = {
++	.init_on_first_transfer = 1,
+ 	.reg_ofs = exynos_reg_ofs,
+ 	.plltmr_reg = 0x50,
+ 	.has_legacy_status_reg = 1,
+@@ -512,6 +513,7 @@ static const struct samsung_dsim_driver_data exynos3_dsi_driver_data = {
+ };
+ 
+ static const struct samsung_dsim_driver_data exynos4_dsi_driver_data = {
++	.init_on_first_transfer = 1,
+ 	.reg_ofs = exynos_reg_ofs,
+ 	.plltmr_reg = 0x50,
+ 	.has_legacy_status_reg = 1,
+@@ -544,6 +546,7 @@ static const struct samsung_dsim_driver_data exynos4_dsi_driver_data = {
+ };
+ 
+ static const struct samsung_dsim_driver_data exynos5_dsi_driver_data = {
++	.init_on_first_transfer = 1,
+ 	.reg_ofs = exynos_reg_ofs,
+ 	.plltmr_reg = 0x58,
+ 	.has_legacy_status_reg = 1,
+@@ -573,6 +576,7 @@ static const struct samsung_dsim_driver_data exynos5_dsi_driver_data = {
+ };
+ 
+ static const struct samsung_dsim_driver_data exynos5433_dsi_driver_data = {
++	.init_on_first_transfer = 1,
+ 	.reg_ofs = exynos5433_reg_ofs,
+ 	.plltmr_reg = 0xa0,
+ 	.has_legacy_status_reg = 1,
+@@ -604,6 +608,7 @@ static const struct samsung_dsim_driver_data exynos5433_dsi_driver_data = {
+ };
+ 
+ static const struct samsung_dsim_driver_data exynos5422_dsi_driver_data = {
++	.init_on_first_transfer = 1,
+ 	.reg_ofs = exynos5433_reg_ofs,
+ 	.plltmr_reg = 0xa0,
+ 	.has_legacy_status_reg = 1,
+@@ -1790,10 +1795,12 @@ static void samsung_dsim_atomic_pre_enable(struct drm_bridge *bridge,
+ 	dsi->state |= DSIM_STATE_ENABLED;
+ 
+ 	/*
+-	 * For Exynos-DSIM the downstream bridge, or panel are expecting
+-	 * the host initialization during DSI transfer.
++	 * Some peripherals expect the host to come up during the first
++	 * DSI transfer instead of here.  The rest, including every
++	 * panel that asks for the previous bridge to be enabled
++	 * first, want the link up before they are prepared.
+ 	 */
+-	if (!samsung_dsim_hw_is_exynos(dsi->plat_data->hw_type)) {
++	if (!dsi->driver_data->init_on_first_transfer) {
+ 		ret = samsung_dsim_init(dsi);
+ 		if (ret)
+ 			return;
+diff --git a/include/drm/bridge/samsung-dsim.h b/include/drm/bridge/samsung-dsim.h
+index baee4338e54..a26864fc777 100644
+--- a/include/drm/bridge/samsung-dsim.h
++++ b/include/drm/bridge/samsung-dsim.h
+@@ -64,6 +64,14 @@ struct samsung_dsim_driver_data {
+ 	unsigned int has_external_phy:1;
+ 	/* the software reset also drops the lanes, so re-enable them */
+ 	unsigned int reset_drops_lanes:1;
++	/*
++	 * The peripheral expects the link to come up during the first
++	 * DSI transfer rather than at pre_enable time.  A panel that
++	 * asks for the previous bridge to be enabled first does not
++	 * need that, because the link is already up when it is
++	 * prepared.
++	 */
++	unsigned int init_on_first_transfer:1;
+ 	struct clk_bulk_data *clk_data;
+ 	unsigned int num_clks;
+ 	unsigned int min_freq;

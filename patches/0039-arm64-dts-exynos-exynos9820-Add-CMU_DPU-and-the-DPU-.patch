@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 19 Aug 2026 04:27:29 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add CMU_DPU and the DPU
+ System MMUs
+
+The display pipeline sits behind three System MMUs. They are SysMMU v7,
+which the existing exynos-iommu driver already handles; all they need is
+a device tree description.
+
+Addresses, interrupts and the clock of every SysMMU come from the vendor
+device tree (LineageOS/android_kernel_samsung_exynos9820, commit
+7d08ec364a06, arch/arm64/boot/dts/exynos/exynos9820.dts):
+sysmmu@190A0000 with interrupts 212/211, sysmmu@190B0000 with 214/213
+and sysmmu@190C0000 with 216/215, where the first interrupt of each pair
+is the non-secure one. Only the non-secure interrupt is described, as
+the mainline driver does not use the secure one.
+
+The clock controller node comes with them. Its window is the CMU_DPU base
+of the vendor register map, and its input is the DPU bus clock CMU_TOP
+divides down; it sits outside the power domain switch because the domain
+cannot be brought up without it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 46 ++++++++++++++++++++++
+ 1 file changed, 46 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index eeebd1c6bd6..00da8504c53 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -451,6 +451,52 @@ pinctrl_aud: pinctrl@18c60000 {
+ 			reg = <0x18c60000 0x1000>;
+ 		};
+ 
++		cmu_dpu: clock-controller@19000000 {
++			compatible = "samsung,exynos9820-cmu-dpu";
++			reg = <0x19000000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_DPU_BUS>;
++			clock-names = "oscclk", "bus";
++			power-domains = <&pd_dpu>;
++		};
++
++		/*
++		 * One system MMU per display data path.  All three have to be
++		 * listed by the controller, because a frame is fetched through
++		 * whichever of them the window happens to use.
++		 */
++		sysmmu_dpud0: iommu@190a0000 {
++			compatible = "samsung,exynos-sysmmu";
++			reg = <0x190a0000 0x9000>;
++			interrupts = <GIC_SPI 212 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_dpu CLK_GOUT_DPU_SYSMMU_DPUD0_CLK>;
++			clock-names = "sysmmu";
++			power-domains = <&pd_dpu>;
++			#iommu-cells = <0>;
++		};
++
++		sysmmu_dpud1: iommu@190b0000 {
++			compatible = "samsung,exynos-sysmmu";
++			reg = <0x190b0000 0x9000>;
++			interrupts = <GIC_SPI 214 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_dpu CLK_GOUT_DPU_SYSMMU_DPUD1_CLK>;
++			clock-names = "sysmmu";
++			power-domains = <&pd_dpu>;
++			#iommu-cells = <0>;
++		};
++
++		sysmmu_dpud2: iommu@190c0000 {
++			compatible = "samsung,exynos-sysmmu";
++			reg = <0x190c0000 0x9000>;
++			interrupts = <GIC_SPI 216 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_dpu CLK_GOUT_DPU_SYSMMU_DPUD2_CLK>;
++			clock-names = "sysmmu";
++			power-domains = <&pd_dpu>;
++			#iommu-cells = <0>;
++		};
++
+ 		/*
+ 		 * Every other clock controller takes its input from this one, so it
+ 		 * is registered before them.

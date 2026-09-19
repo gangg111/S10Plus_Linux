@@ -1,0 +1,22 @@
+# R3 evidence
+repo: LineageOS/android_kernel_samsung_exynos9820@7d08ec364a0659edcf90a8dae4453b21e4542311
+
+$ wc -l drivers/input/touchscreen/sec_ts/y771/*
+    22 ds/y771/Kconfig
+     6 ds/y771/Makefile
+  3251 ds/y771/sec_ts.c
+   965 ds/y771/sec_ts.h
+  6666 ds/y771/sec_ts_fn.c
+  1013 ds/y771/sec_ts_fw.c
+   333 ds/y771/sec_ts_ioctl.c
+   296 ds/y771/sec_ts_only_vendor.c
+ 12552 total
+
+$ grep -c "S6SY" sec_ts.c ->
+0
+
+# mainline: linux@1200d84f4c0a
+$ wc -l drivers/input/touchscreen/s6sy761.c
+544 linux/drivers/input/touchscreen/s6sy761.c
+$ grep -n "samsung,s6sy761" s6sy761.c
+516:	{ .compatible = "samsung,s6sy761", },

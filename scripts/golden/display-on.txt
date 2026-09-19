@@ -1,0 +1,5 @@
+# beyond2_a3_s0_display_on_cmdtbl  (s6e3ha9_beyond2_a3_s0_panel.h)
+
+  1. klucz CMD_LEVEL_1 KEY_ENABLE: 0x9F 0xA5 0xA5
+  2. DCS 0x29
+  3. klucz CMD_LEVEL_1 KEY_DISABLE: 0x9F 0x5A 0x5A

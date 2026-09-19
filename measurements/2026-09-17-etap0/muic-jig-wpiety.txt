@@ -1,0 +1,48 @@
+Stan MUIC i bloku CC przy wpietym jigu 619 kOhm, telefon na stockowym Androidzie 12
+z rootem, polaczenie adb po WiFi (port USB zajety przez jig).
+
+Odczyty przepisane z transkryptu sesji, bo telefon zostal potem zrestartowany i adb po
+sieci padlo razem z nim. Transkrypt:
+C:\Users\Artur\.claude\projects\C--Users-Artur-Documents-Serwis-Programowanie-S10Plus-Linux\f97bcab3-ebc2-49a0-ba70-3693c635051d.jsonl
+Znaczniki czasu wynikow: 2026-09-17T01:26:49Z i 2026-09-17T01:28:37Z (UTC).
+
+=== komenda ===
+for a in adc attached_dev uart_en uart_sel usb_sel usb_state vbus_value; do
+    printf "%-14s " "$a"
+    adb shell "su -c 'cat /sys/class/sec/switch/$a'" | tr -d '\r' | head -1
+done
+
+=== wynik ===
+adc            adc: 0x1f
+attached_dev   No VPS
+uart_en        1
+uart_sel       AP
+usb_sel        PDA
+usb_state      USB_STATE_NOTCONFIGURED
+vbus_value     0
+
+=== komenda ===
+for a in rid cc_pin_status sbu_adc state water; do
+    printf "%-16s " "$a"
+    adb shell "su -c 'cat /sys/class/sec/ccic/$a'" | tr -d '\r' | head -1
+done
+
+=== wynik ===
+rid              7
+cc_pin_status    0
+sbu_adc          10 10
+state            0
+water            0
+
+=== jak to czytac ===
+rid 7 to RID_OPEN (sources/ds/max77705-muic-ccic.c:137 i enum w naglowku producenta:
+RID_UNDEFINED 0, RID_000K 1, RID_001K 2, RID_255K 3, RID_301K 4, RID_523K 5,
+RID_619K 6, RID_OPEN 7). Dzialajacy jig 619 kOhm dalby 6.
+
+attached_dev "No VPS" znaczy, ze sterownik nie dopasowal zadnego akcesorium.
+Wpis dla 619 kOhm (sources/ds/max77705-muic.c:144-149) wymaga VB_LOW i CHGTYP_NO_VOLTAGE,
+czyli dokladnie tych warunkow, ktore tu byly (vbus_value 0).
+
+adc 0x1f to surowy pin UID, nie CC (sources/ds/max77705-muic.c:562-576, mapowanie
+:752-773). W trybie USB-C do dopasowania i tak podstawiana jest wartosc z RID
+(:1526-1561), wiec ten odczyt jest zgodny, ale sam nie rozstrzyga.

@@ -1,0 +1,1705 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:44:45 +0200
+Subject: [PATCH] drm/exynos: Add the Exynos9820 DECON driver
+
+DECON_F blends the output of the DPP windows and pushes it, optionally
+through the DSC encoders, into DSIM. This covers the single window
+command mode path the Galaxy S10 family uses: DPP0 into window 0, then
+DSCC and the two DSC encoders, then OUTFIFO0 and OUTFIFO1, then
+DSIM_IF0.
+
+It is a component of the existing exynos_drm master rather than a driver
+with a drm_device of its own: the SoC has one display pipeline, and a
+second card would mean a second set of GEM and IOMMU state on the same
+hardware.
+
+The DSC parameters are not computed here. The panel already runs the
+picture through the DSC core helpers, so this asks the same helpers for
+the half of the picture one encoder sees, and keeps only what the core
+has no field for: the component configuration word, the range parameter
+selector and the width the encoder emits. Two copies of the VESA
+arithmetic could drift apart while both still looked plausible.
+
+Scanout is started on the first atomic flush rather than in
+atomic_enable. drm_atomic_helper_commit_tail_rpm() runs
+commit_modeset_enables() before commit_planes(), so at enable time the
+bridge chain has not brought the link up and the panel is still in
+reset; arming the block against the tearing effect signal there points
+it at a peripheral that cannot answer. For the same reason the interrupt
+is requested with IRQF_NO_AUTOEN and enabled only once the block is
+powered and the pending bits the bootloader left are cleared: the line
+is level triggered, so an unacknowledged source is not a lost interrupt
+but a screaming one.
+
+UNVERIFIED: initial_dec_delay.  The vendor writes 0x1b4 rather than the
+computed delay because VESA_SCR_V4 is not defined in its build
+(LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
+drivers/video/fbdev/exynos/dpu20/cal_9820/decon_reg.c:1073), while the
+PPS the panel receives carries the computed 616 for the same field. One
+of the two ends is misconfigured on the vendor kernel as well, and only
+a test pattern on the panel can say which.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                                   |    9 +
+ drivers/gpu/drm/exynos/Kconfig                |   19 +-
+ drivers/gpu/drm/exynos/Makefile               |    1 +
+ drivers/gpu/drm/exynos/exynos9820_drm_decon.c | 1115 +++++++++++++++++
+ drivers/gpu/drm/exynos/exynos9820_regs.h      |  421 +++++++
+ drivers/gpu/drm/exynos/exynos_drm_drv.c       |    3 +
+ drivers/gpu/drm/exynos/exynos_drm_drv.h       |    1 +
+ 7 files changed, 1568 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/gpu/drm/exynos/exynos9820_drm_decon.c
+ create mode 100644 drivers/gpu/drm/exynos/exynos9820_regs.h
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 69196616788..995cb5cd331 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -8677,6 +8677,15 @@ F:	Documentation/devicetree/bindings/display/samsung/
+ F:	drivers/gpu/drm/exynos/
+ F:	include/uapi/drm/exynos_drm.h
+ 
++DRM DRIVERS FOR EXYNOS9820
++M:	Artur Szafraniec <ganggg111@gmail.com>
++L:	dri-devel@lists.freedesktop.org
++S:	Maintained
++F:	Documentation/devicetree/bindings/display/samsung/samsung,exynos9820-decon.yaml
++F:	Documentation/devicetree/bindings/phy/samsung,exynos9820-mipi-dphy.yaml
++F:	drivers/gpu/drm/exynos/exynos9820_drm_decon.c
++F:	drivers/phy/samsung/phy-exynos9820-dsim.c
++
+ DRM DRIVERS FOR FREESCALE DCU
+ M:	Stefan Agner <stefan@agner.ch>
+ M:	Alison Wang <alison.wang@nxp.com>
+diff --git a/drivers/gpu/drm/exynos/Kconfig b/drivers/gpu/drm/exynos/Kconfig
+index a59131ae122..bdc5f66973e 100644
+--- a/drivers/gpu/drm/exynos/Kconfig
++++ b/drivers/gpu/drm/exynos/Kconfig
+@@ -6,6 +6,7 @@ config DRM_EXYNOS
+ 	depends on MMU
+ 	select DRM_CLIENT_SELECTION
+ 	select DRM_DISPLAY_HELPER if DRM_EXYNOS_DP
++	select DRM_DISPLAY_HELPER if DRM_EXYNOS9820_DECON
+ 	select DRM_KMS_HELPER
+ 	select VIDEOMODE_HELPERS
+ 	select FB_DMAMEM_HELPERS if DRM_FBDEV_EMULATION
+@@ -30,6 +31,22 @@ config DRM_EXYNOS5433_DECON
+ 	help
+ 	  Choose this option if you want to use Exynos5433 DECON for DRM.
+ 
++config DRM_EXYNOS9820_DECON
++	bool "DECON on Exynos9820"
++	depends on PM
++	select DRM_DISPLAY_DSC_HELPER
++	select DRM_SAMSUNG_DSIM
++	imply DRM_EXYNOS_DSI
++	help
++	  Choose this option if you want to use the Exynos9820 DECON for DRM.
++	  It drives the display of the Galaxy S10 family: one window fed by a
++	  DPP channel, compressed by the two DSC encoders and pushed into the
++	  MIPI DSI host in command mode.
++
++	  The DSI host is turned on with it by default and has to stay on;
++	  the D-PHY driver has to be enabled as well, or the pipeline has
++	  no output.
++
+ config DRM_EXYNOS7_DECON
+ 	bool "DECON on Exynos7"
+ 	depends on !FB_S3C
+@@ -58,7 +75,7 @@ config DRM_EXYNOS_DPI
+ 
+ config DRM_EXYNOS_DSI
+ 	bool "MIPI-DSI host"
+-	depends on DRM_EXYNOS_FIMD || DRM_EXYNOS5433_DECON || DRM_EXYNOS7_DECON
++	depends on DRM_EXYNOS_FIMD || DRM_EXYNOS5433_DECON || DRM_EXYNOS7_DECON || DRM_EXYNOS9820_DECON
+ 	select DRM_MIPI_DSI
+ 	select DRM_PANEL
+ 	select DRM_SAMSUNG_DSIM
+diff --git a/drivers/gpu/drm/exynos/Makefile b/drivers/gpu/drm/exynos/Makefile
+index 2fd2f3ee4fc..1cd0b0e9427 100644
+--- a/drivers/gpu/drm/exynos/Makefile
++++ b/drivers/gpu/drm/exynos/Makefile
+@@ -10,6 +10,7 @@ exynosdrm-$(CONFIG_DRM_FBDEV_EMULATION) += exynos_drm_fbdev.o
+ exynosdrm-$(CONFIG_DRM_EXYNOS_FIMD)	+= exynos_drm_fimd.o
+ exynosdrm-$(CONFIG_DRM_EXYNOS5433_DECON)	+= exynos5433_drm_decon.o
+ exynosdrm-$(CONFIG_DRM_EXYNOS7_DECON)	+= exynos7_drm_decon.o
++exynosdrm-$(CONFIG_DRM_EXYNOS9820_DECON)	+= exynos9820_drm_decon.o
+ exynosdrm-$(CONFIG_DRM_EXYNOS_DPI)	+= exynos_drm_dpi.o
+ exynosdrm-$(CONFIG_DRM_EXYNOS_DSI)	+= exynos_drm_dsi.o
+ exynosdrm-$(CONFIG_DRM_EXYNOS_DP)	+= exynos_dp.o
+diff --git a/drivers/gpu/drm/exynos/exynos9820_drm_decon.c b/drivers/gpu/drm/exynos/exynos9820_drm_decon.c
+new file mode 100644
+index 00000000000..073c36f0647
+--- /dev/null
++++ b/drivers/gpu/drm/exynos/exynos9820_drm_decon.c
+@@ -0,0 +1,1115 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Samsung Exynos9820 DECON display controller
++ *
++ * DECON_F blends the output of the DPP windows and pushes it, optionally
++ * through the DSC encoders, into DSIM.  This driver covers the single window
++ * command mode path used by the Galaxy S10 family: DPP0 -> window 0 ->
++ * DSCC/DSC_ENC0+1 -> OUTFIFO0/1 -> DSIM_IF0.
++ *
++ * Sequences follow the vendor kernel:
++ * LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
++ * drivers/video/fbdev/exynos/dpu20/cal_9820/{decon_reg.c,dpp_reg.c}
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ */
++
++#include <linux/clk.h>
++#include <linux/component.h>
++#include <linux/io.h>
++#include <linux/iopoll.h>
++#include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <linux/pm_runtime.h>
++
++#include <drm/display/drm_dsc.h>
++#include <drm/display/drm_dsc_helper.h>
++#include <drm/drm_atomic_helper.h>
++#include <drm/drm_framebuffer.h>
++#include <drm/drm_print.h>
++#include <drm/drm_bridge.h>
++#include <drm/drm_vblank.h>
++
++#include <drm/bridge/samsung-dsim.h>
++
++#include "exynos_drm_crtc.h"
++#include "exynos_drm_drv.h"
++#include "exynos_drm_fb.h"
++#include "exynos_drm_plane.h"
++#include "exynos9820_regs.h"
++
++#define DECON_WIN		0	/* the only window this driver uses */
++#define DECON_DPP_CHANNEL	0	/* DPP0 feeds window 0 */
++#define DECON_RUN_TIMEOUT_US	20000
++/* the vendor polls the same bit for a whole second (dpp_reg.c:86-101) */
++#define IDMA_RESET_TIMEOUT_US	1000000
++/* one frame at the lowest rate this panel runs, with margin */
++#define DECON_UPDATE_TIMEOUT_US	20000
++#define DECON_WINDOWS_NR	1
++#define DECON_DSC_ENCODERS	2
++
++/*
++ * Three gates: the DECON bus clock, the DPU DMA bus clock and the DPP bus
++ * clock.  All three have to run before either register range is touched; the
++ * second range is the IDMA of the DPP channel, gated by the last two.
++ */
++#define DECON_NR_CLOCKS		3
++
++struct exynos9820_decon {
++	struct device *dev;
++	struct drm_device *drm_dev;
++	struct exynos_drm_crtc *crtc;
++	struct exynos_drm_plane planes[DECON_WINDOWS_NR];
++	struct exynos_drm_plane_config configs[DECON_WINDOWS_NR];
++	void *dma_priv;
++
++	void __iomem *regs;	/* DECON_F */
++	void __iomem *dma_regs;		/* DPU_DMA, the global part */
++	void __iomem *idma_regs;	/* IDMA GF0, the input of window 0 */
++	struct clk_bulk_data clks[DECON_NR_CLOCKS];
++	/* set before any interrupt source is enabled, see decon_atomic_enable() */
++	bool enabled;
++	/* the scanout is armed on the first flush, not on enable */
++	bool started;
++	int irq;
++
++	/* output bridge, held from probe, read for its DSC configuration */
++	struct drm_bridge *bridge;
++
++	/* DSC encoders used for the attached panel, 0 when uncompressed */
++	unsigned int dsc_count;
++};
++
++static void decon_write_mask(struct exynos9820_decon *decon, u32 reg, u32 val,
++			     u32 mask)
++{
++	u32 tmp = readl(decon->regs + reg);
++
++	tmp = (tmp & ~mask) | (val & mask);
++	writel(tmp, decon->regs + reg);
++}
++
++/* ----------------------------------------------------------------- IDMA */
++
++static void decon_idma_write_mask(struct exynos9820_decon *decon, u32 reg,
++				  u32 val, u32 mask)
++{
++	u32 tmp = readl(decon->idma_regs + reg);
++
++	tmp = (tmp & ~mask) | (val & mask);
++	writel(tmp, decon->idma_regs + reg);
++}
++
++/*
++ * Everything the vendor's dpp_reg_init() does for an input channel
++ * (dpp_reg.c:993-1001), in its order.  None of it depends on the frame, so
++ * none of it belongs in the per commit path: the reset in particular clears
++ * itself only when the block is done, and writes issued inside that window
++ * are not guaranteed to land.
++ */
++static int decon_idma_init(struct exynos9820_decon *decon)
++{
++	u32 val;
++	int ret;
++
++	writel(IDMA_SRESET, decon->idma_regs + IDMA_ENABLE);
++	ret = readl_poll_timeout(decon->idma_regs + IDMA_ENABLE, val,
++				 !(val & IDMA_SRESET), 10, IDMA_RESET_TIMEOUT_US);
++	if (ret) {
++		dev_err(decon->dev, "IDMA did not come out of reset\n");
++		return ret;
++	}
++
++	/* pending sources are cleared by writing a one, the masks by a zero */
++	decon_idma_write_mask(decon, IDMA_IRQ, IDMA_ALL_IRQ_CLEAR,
++			      IDMA_ALL_IRQ_CLEAR);
++	decon_idma_write_mask(decon, IDMA_IRQ, 0, IDMA_ALL_IRQ_MASK);
++	decon_idma_write_mask(decon, IDMA_IRQ, IDMA_IRQ_ENABLE,
++			      IDMA_IRQ_ENABLE);
++
++	decon_idma_write_mask(decon, IDMA_ENABLE, 0,
++			      IDMA_ALL_CLOCK_GATE_EN_MASK);
++	writel(DPU_DMA_QOS_LUT_DEFAULT, decon->dma_regs + DPU_DMA_QOS_LUT07_00);
++	writel(DPU_DMA_QOS_LUT_DEFAULT, decon->dma_regs + DPU_DMA_QOS_LUT15_08);
++	decon_idma_write_mask(decon, IDMA_DYNAMIC_GATING_EN, 0, IDMA_DG_EN_ALL);
++
++	/*
++	 * A frame in a format without an alpha channel takes its alpha from
++	 * here.  Left at zero the window blends nothing in and the screen
++	 * stays black with no error anywhere.
++	 */
++	decon_idma_write_mask(decon, IDMA_OUT_CON, IDMA_OUT_FRAME_ALPHA(0xff),
++			      IDMA_OUT_FRAME_ALPHA_MASK);
++
++	return 0;
++}
++
++static void decon_idma_setup(struct exynos9820_decon *decon,
++			     struct exynos_drm_plane_state *state)
++{
++	struct drm_framebuffer *fb = state->base.fb;
++	u32 format = fb->format->format == DRM_FORMAT_ARGB8888 ?
++		 IDMA_IMG_FORMAT_ARGB8888 : IDMA_IMG_FORMAT_XRGB8888;
++
++	/*
++	 * Only the format field, as the vendor does (dpp_reg.c:133-138).  A
++	 * whole register write would also clear IN_IC_MAX, the limit on
++	 * outstanding bus transactions, which the vendor never touches.
++	 */
++	decon_idma_write_mask(decon, IDMA_IN_CON, IDMA_IMG_FORMAT(format),
++			      IDMA_IMG_FORMAT_MASK);
++
++	/* source buffer geometry; the stride is expressed in pixels */
++	writel(IDMA_SRC_WIDTH(fb->pitches[0] / (fb->format->cpp[0])) |
++	       IDMA_SRC_HEIGHT(fb->height), decon->idma_regs + IDMA_SRC_SIZE);
++	/* the part of the buffer the plane state asks for, not all of it */
++	writel(IDMA_SRC_OFFSET_X(state->src.x) | IDMA_SRC_OFFSET_Y(state->src.y),
++	       decon->idma_regs + IDMA_SRC_OFFSET);
++	writel(IDMA_IMG_WIDTH(state->src.w) | IDMA_IMG_HEIGHT(state->src.h),
++	       decon->idma_regs + IDMA_IMG_SIZE);
++
++	/*
++	 * One 32 bit register, as in the vendor driver (dpp_reg.c:716):
++	 * the buffer is reached through the display System MMU, so what
++	 * the channel is given is a 32 bit address it maps.
++	 *
++	 * Truncating is safe with the System MMU turned off as well, which
++	 * is not obvious: the allocation goes through dma_alloc_attrs() on
++	 * this device, and a platform device built from the device tree
++	 * carries a 32 bit coherent mask, so the allocator cannot hand out
++	 * anything above 4 GiB in the first place.
++	 */
++	writel(lower_32_bits(exynos_drm_fb_dma_addr(fb, 0)),
++	       decon->idma_regs + IDMA_IN_BASE_ADDR_Y);
++
++	/*
++	 * TODO: the vendor driver also programs the AFBC decompressor,
++	 * rotation, block mode, CSC, the scale ratio and the HDR path
++	 * here (dpp_reg.c:1085).
++	 */
++}
++
++/* ----------------------------------------------------------------- DECON */
++
++static void decon_setup_window(struct exynos9820_decon *decon,
++			       const struct drm_display_mode *mode)
++{
++	writel(DECON_WIN_ALPHA1_F(0xff) | DECON_WIN_ALPHA0_F(0xff) |
++	       DECON_WIN_FUNC_F(DECON_WIN_FUNC_COPY),
++	       decon->regs + DECON_WIN_CONTROL_0(DECON_WIN));
++
++	writel(DECON_WIN_STRPTR_X_F(0) | DECON_WIN_STRPTR_Y_F(0),
++	       decon->regs + DECON_WIN_START_POSITION(DECON_WIN));
++	writel(DECON_WIN_ENDPTR_X_F(mode->hdisplay - 1) |
++	       DECON_WIN_ENDPTR_Y_F(mode->vdisplay - 1),
++	       decon->regs + DECON_WIN_END_POSITION(DECON_WIN));
++
++	/* window 0 takes its pixels from DPP channel 0 */
++	decon_write_mask(decon, DECON_DATA_PATH_CONTROL_1,
++			 DECON_WIN_CHMAP_F(DECON_WIN, DECON_DPP_CHANNEL),
++			 DECON_WIN_CHMAP_MASK(DECON_WIN));
++	decon_write_mask(decon, DECON_DATA_PATH_CONTROL_0,
++			 DECON_WIN_EN_F(DECON_WIN), DECON_WIN_EN_F(DECON_WIN));
++}
++
++/* ------------------------------------------------------------------ DSC */
++
++/*
++ * The DSC encoders inside DECON are programmed with their own PPS, computed
++ * for the part of the picture a single encoder handles - which is not the
++ * same as the PPS the panel gets.  The maths below is the vendor's
++ * dsc_calc_pps_info() (decon_reg.c:906-1058); the values that the vendor
++ * hardcodes are hardcoded here as well and marked.
++ */
++struct decon_dsc_enc {
++	u32 comp_cfg;
++	u32 bits_per_pixel;
++	u32 pic_width, pic_height;
++	u32 slice_width, slice_height;
++	u32 chunk_size;
++	u32 initial_xmit_delay, initial_dec_delay;
++	u32 initial_scale_value;
++	u32 scale_increment_interval, scale_decrement_interval;
++	u32 first_line_bpg_offset;
++	u32 nfl_bpg_offset, slice_bpg_offset;
++	u32 initial_offset, final_offset;
++	u32 rc_range_parameters;
++	u32 width_per_enc;
++	bool dual_slice;
++	bool slice_mode_change;
++};
++
++/*
++ * Number of pixels a compressed slice occupies on the DECON output bus.
++ *
++ * The vendor counts in bytes first: three bytes per pixel, divided by three
++ * for the 1/3 compression ratio, then divided by three again to come back to
++ * pixels.  The answer is rounded up to an even number of pixels, and when the
++ * byte count did not divide evenly the rounding starts one pixel higher
++ * (decon_reg.c:992-1028).
++ */
++static u32 decon_dsc_compressed_width(u32 slice_width)
++{
++	u32 pixels = slice_width / 3;
++
++	if (slice_width % 3)
++		pixels++;
++
++	return round_up(pixels, 2);
++}
++
++static int decon_dsc_calc(const struct drm_display_mode *mode,
++			  const struct drm_dsc_config *panel_dsc, u32 dsc_count,
++			  struct decon_dsc_enc *enc)
++{
++	struct drm_dsc_config cfg = *panel_dsc;
++	u32 width_eff;
++	int ret;
++
++	/* two encoders split the picture in half */
++	width_eff = (dsc_count == 2) ? mode->hdisplay / 2 : mode->hdisplay;
++
++	enc->dual_slice = (panel_dsc->slice_count / dsc_count == 2);
++	enc->slice_mode_change = (dsc_count == 2 && panel_dsc->slice_count == 2);
++
++	/*
++	 * Same picture, same compression, but only the part one encoder sees.
++	 * Everything below it is the plain VESA model, so it comes from the
++	 * core helpers rather than from a second copy of the arithmetic.
++	 */
++	cfg.pic_width = width_eff;
++	cfg.pic_height = mode->vdisplay;
++	cfg.slice_width = enc->dual_slice ? width_eff / 2 : width_eff;
++	cfg.slice_count = panel_dsc->slice_count / dsc_count;
++
++	drm_dsc_set_const_params(&cfg);
++	drm_dsc_set_rc_buf_thresh(&cfg);
++
++	ret = drm_dsc_setup_rc_params(&cfg, DRM_DSC_1_1_PRE_SCR);
++	if (ret)
++		return ret;
++
++	cfg.initial_scale_value = drm_dsc_initial_scale_value(&cfg);
++
++	ret = drm_dsc_compute_rc_parameters(&cfg);
++	if (ret)
++		return ret;
++
++	enc->pic_width = cfg.pic_width;
++	enc->pic_height = cfg.pic_height;
++	enc->slice_width = cfg.slice_width;
++	enc->slice_height = cfg.slice_height;
++	enc->chunk_size = cfg.slice_chunk_size;
++	enc->bits_per_pixel = cfg.bits_per_pixel;
++	enc->initial_xmit_delay = cfg.initial_xmit_delay;
++	enc->initial_scale_value = cfg.initial_scale_value;
++	enc->first_line_bpg_offset = cfg.first_line_bpg_offset;
++	enc->initial_offset = cfg.initial_offset;
++	enc->final_offset = cfg.final_offset;
++	enc->nfl_bpg_offset = cfg.nfl_bpg_offset;
++	enc->slice_bpg_offset = cfg.slice_bpg_offset;
++	enc->scale_increment_interval = cfg.scale_increment_interval;
++	enc->scale_decrement_interval = cfg.scale_decrement_interval;
++
++	/*
++	 * Register layout rather than DSC model: the component configuration
++	 * word and the range parameter selector are what this block expects,
++	 * and the core has no field for either.
++	 */
++	enc->comp_cfg = 0x30;
++	enc->rc_range_parameters = 0x0102;
++
++	/*
++	 * UNVERIFIED: The vendor writes 0x1b4 rather than the computed
++	 * delay because VESA_SCR_V4 is not defined in its build
++	 * (decon_reg.c:1073), while the PPS the panel receives carries the
++	 * computed 616 for the same field.  One of the two ends is therefore
++	 * misconfigured on the vendor kernel as well, and which one only a
++	 * test pattern on the panel can say.
++	 */
++	enc->initial_dec_delay = 0x1b4;
++
++	enc->width_per_enc = decon_dsc_compressed_width(enc->slice_width);
++	if (enc->dual_slice)
++		enc->width_per_enc *= 2;
++
++	return 0;
++}
++
++static void decon_dsc_write_mask(struct exynos9820_decon *decon, unsigned int id,
++				 u32 reg, u32 val, u32 mask)
++{
++	decon_write_mask(decon, DECON_DSC_OFFSET(id) + reg, val, mask);
++}
++
++static void decon_dsc_setup_encoder(struct exynos9820_decon *decon,
++				    unsigned int id,
++				    const struct decon_dsc_enc *enc)
++{
++	u32 remainder = enc->slice_width % 3 ? enc->slice_width % 3 : 3;
++	u32 grpcntline = (enc->slice_width + 2) / 3;
++	u32 base = DECON_DSC_OFFSET(id);
++
++	/* no clock gating, bit/byte/word swap as the vendor sets it */
++	decon_dsc_write_mask(decon, id, DSC_CONTROL0, 0, DSC_DCG_EN_ALL_MASK);
++	decon_dsc_write_mask(decon, id, DSC_CONTROL0, DSC_SWAP(0, 1, 0),
++			     DSC_SWAP_MASK);
++	/* flatness threshold is fixed at 2 for 8 bpc */
++	decon_dsc_write_mask(decon, id, DSC_CONTROL0,
++			     DSC_FLATNESS_DET_TH_F(2),
++			     DSC_FLATNESS_DET_TH_MASK);
++	decon_dsc_write_mask(decon, id, DSC_CONTROL0, DSC_CG_EN_F(0),
++			     DSC_CG_EN_MASK);
++	decon_dsc_write_mask(decon, id, DSC_CONTROL0,
++			     DSC_DUAL_SLICE_EN_F(enc->dual_slice),
++			     DSC_DUAL_SLICE_EN_MASK);
++	decon_dsc_write_mask(decon, id, DSC_CONTROL0,
++			     DSC_SLICE_MODE_CH_F(enc->slice_mode_change),
++			     DSC_SLICE_MODE_CH_MASK);
++
++	decon_dsc_write_mask(decon, id, DSC_CONTROL3,
++			     DSC_REMAINDER_F(remainder) |
++			     DSC_GRPCNTLINE_F(grpcntline),
++			     DSC_REMAINDER_MASK | DSC_GRPCNTLINE_MASK);
++
++	decon_dsc_write_mask(decon, id, DSC_PPS04_07,
++			     PPS04_COMP_CFG(enc->comp_cfg) |
++			     PPS05_BPP(enc->bits_per_pixel) |
++			     PPS06_07_PIC_HEIGHT(enc->pic_height),
++			     PPS04_COMP_CFG_MASK | PPS05_BPP_MASK |
++			     PPS06_07_PIC_HEIGHT_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS08_11,
++			     PPS08_09_PIC_WIDTH(enc->pic_width) |
++			     PPS10_11_SLICE_HEIGHT(enc->slice_height),
++			     PPS08_09_PIC_WIDTH_MASK |
++			     PPS10_11_SLICE_HEIGHT_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS12_15,
++			     PPS12_13_SLICE_WIDTH(enc->slice_width) |
++			     PPS14_15_CHUNK_SIZE(enc->chunk_size),
++			     PPS12_13_SLICE_WIDTH_MASK |
++			     PPS14_15_CHUNK_SIZE_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS16_19,
++			     PPS16_17_INIT_XMIT_DELAY(enc->initial_xmit_delay) |
++			     PPS18_19_INIT_DEC_DELAY(enc->initial_dec_delay),
++			     PPS16_17_INIT_XMIT_DELAY_MASK |
++			     PPS18_19_INIT_DEC_DELAY_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS20_23,
++			     PPS21_INIT_SCALE_VALUE(enc->initial_scale_value) |
++			     PPS22_23_SCALE_INC_INTERVAL(enc->scale_increment_interval),
++			     PPS21_INIT_SCALE_VALUE_MASK |
++			     PPS22_23_SCALE_INC_INTERVAL_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS24_27,
++			     PPS24_25_SCALE_DEC_INTERVAL(enc->scale_decrement_interval) |
++			     PPS27_FL_BPG_OFFSET(enc->first_line_bpg_offset),
++			     PPS24_25_SCALE_DEC_INTERVAL_MASK |
++			     PPS27_FL_BPG_OFFSET_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS28_31,
++			     PPS28_29_NFL_BPG_OFFSET(enc->nfl_bpg_offset) |
++			     PPS30_31_SLICE_BPG_OFFSET(enc->slice_bpg_offset),
++			     PPS28_29_NFL_BPG_OFFSET_MASK |
++			     PPS30_31_SLICE_BPG_OFFSET_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS32_35,
++			     PPS32_33_INIT_OFFSET(enc->initial_offset) |
++			     PPS34_35_FINAL_OFFSET(enc->final_offset),
++			     PPS32_33_INIT_OFFSET_MASK |
++			     PPS34_35_FINAL_OFFSET_MASK);
++	decon_dsc_write_mask(decon, id, DSC_PPS56_59,
++			     PPS58_59_RC_RANGE_PARAM(enc->rc_range_parameters),
++			     PPS58_59_RC_RANGE_PARAM_MASK);
++
++	/* PPS79..87, written verbatim by the vendor (decon_reg.c:1101-1103) */
++	writel(0x1ab62af6, decon->regs + base + DSC_PPS76_79);
++	writel(0x2b342b74, decon->regs + base + DSC_PPS80_83);
++	writel(0x3b746bf4, decon->regs + base + DSC_PPS84_87);
++}
++
++static void decon_dsc_init(struct exynos9820_decon *decon,
++			   const struct drm_display_mode *mode,
++			   const struct decon_dsc_enc *enc)
++{
++	unsigned int i;
++
++	for (i = 0; i < decon->dsc_count; i++)
++		decon_dsc_setup_encoder(decon, i, enc);
++
++	/* OUTFIFO carries compressed pixels, one FIFO per encoder */
++	writel(DECON_OUTFIFO_WIDTH_F(enc->width_per_enc) |
++	       DECON_OUTFIFO_HEIGHT_F(mode->vdisplay),
++	       decon->regs + DECON_OUTFIFO_SIZE_CONTROL_0);
++	if (decon->dsc_count == 2)
++		writel(DECON_OUTFIFO_WIDTH_F(enc->width_per_enc),
++		       decon->regs + DECON_OUTFIFO_SIZE_CONTROL_1);
++	writel(DECON_OUTFIFO_COMP_SLICE_WIDTH_F(decon_dsc_compressed_width(enc->slice_width)) |
++	       DECON_OUTFIFO_COMP_SLICE_HEIGHT_F(enc->slice_height),
++	       decon->regs + DECON_OUTFIFO_SIZE_CONTROL_2);
++
++	drm_dbg_kms(decon->drm_dev,
++		    "DSC: %u encoders, %ux%u per encoder, slice %ux%u, %u compressed pixels\n",
++		    decon->dsc_count, enc->pic_width, enc->pic_height,
++		    enc->slice_width, enc->slice_height, enc->width_per_enc);
++}
++
++static void decon_put_bridge(void *data)
++{
++	drm_bridge_put(data);
++}
++
++/*
++ * The bridge is not on the global list until a peripheral attaches to the
++ * DSI host, and on this SoC that host only registers from its own component
++ * bind, which waits for this driver to add its component first.  Looking the
++ * bridge up from probe would therefore never resolve.  It is resolved on
++ * first use instead, by which time the whole pipeline exists.
++ */
++static const struct drm_dsc_config *decon_get_dsc(struct exynos9820_decon *decon)
++{
++	struct drm_bridge *bridge;
++
++	if (!decon->bridge) {
++		bridge = of_drm_get_bridge_by_endpoint(decon->dev->of_node, 0, 0);
++		if (IS_ERR(bridge)) {
++			dev_warn_once(decon->dev,
++				      "no output to read a DSC configuration from\n");
++			return NULL;
++		}
++
++		if (devm_add_action_or_reset(decon->dev, decon_put_bridge, bridge))
++			return NULL;
++
++		decon->bridge = bridge;
++	}
++
++	return samsung_dsim_get_dsc(decon->bridge);
++}
++
++static void decon_setup_output(struct exynos9820_decon *decon,
++			       const struct drm_display_mode *mode)
++{
++	const struct drm_dsc_config *dsc = decon_get_dsc(decon);
++	struct decon_dsc_enc enc = {};
++	u32 path;
++
++	/*
++	 * The block can also compress through a single encoder, but this
++	 * driver only ever programs the pair, and only the data path that
++	 * goes with it.  The panel this covers sends two slices, one per
++	 * encoder; decon_mode_valid() turns away what the pair cannot do.
++	 */
++	decon->dsc_count = dsc ? DECON_DSC_ENCODERS : 0;
++
++	/*
++	 * Computed before the data path is chosen.  A failure here has
++	 * already been refused by decon_mode_valid(), so it means the
++	 * output changed underneath; going on with the compressed path
++	 * would point the block at encoders nobody programmed, which
++	 * shows as a black screen and nothing else.
++	 */
++	if (dsc && decon_dsc_calc(mode, dsc, decon->dsc_count, &enc)) {
++		dev_err(decon->dev, "cannot compute DSC parameters\n");
++		dsc = NULL;
++		decon->dsc_count = 0;
++	}
++
++	/*
++	 * Clock gating of the blocks inside DECON and the two QACTIVE bits
++	 * go first, before anything is configured.  Whatever the reset or the
++	 * boot loader left there decides whether the OUTFIFO, the encoders
++	 * and the blender see a clock at all, so a write that lands in a
++	 * gated block is simply lost (decon_reg.c:1781).
++	 */
++	decon_write_mask(decon, DECON_CLOCK_CONTROL_0, 0,
++			 DECON_CLOCK_CONTROL_0_CG_MASK |
++			 DECON_CLOCK_CONTROL_0_QACTIVE_MASK);
++
++	/*
++	 * One SRAM block, which is what the vendor gives DECON0
++	 * (decon_reg.c:1786, DECON_FIFO_04K).  Taking all four would starve
++	 * the other two DECONs if a boot loader left one running.
++	 */
++	decon_write_mask(decon, DECON_SRAM_SHARE_ENABLE,
++			 DECON_SRAM0_SHARE_ENABLE_F,
++			 DECON_ALL_SRAM_SHARE_ENABLE);
++
++	/* command mode, driven by the panel's TE */
++	decon_write_mask(decon, DECON_GLOBAL_CONTROL,
++			 DECON_GLOBAL_CONTROL_OPERATION_MODE_CMD,
++			 DECON_GLOBAL_CONTROL_OPERATION_MODE_CMD);
++
++	writel(DECON_BLENDER_BG_WIDTH(mode->hdisplay) |
++	       DECON_BLENDER_BG_HEIGHT(mode->vdisplay),
++	       decon->regs + DECON_BLENDER_BG_IMAGE_SIZE);
++
++	/*
++	 * Size of the picture that leaves the blender.  The vendor writes it
++	 * in every path, scaler or no scaler (decon_reg.c:1795), because it is
++	 * what the OUTFIFO is told to expect and not a property of the scaler.
++	 */
++	decon_write_mask(decon, DECON_SCALED_SIZE_CONTROL_0,
++			 DECON_SCALED_SIZE_WIDTH_F(mode->hdisplay) |
++			 DECON_SCALED_SIZE_HEIGHT_F(mode->vdisplay),
++			 DECON_SCALED_SIZE_WIDTH_MASK |
++			 DECON_SCALED_SIZE_HEIGHT_MASK);
++
++	/*
++	 * The scaler field goes with the path.  This driver never puts a
++	 * scaler in the way, but a boot loader that did leaves it set, and
++	 * writing only the lower field would keep it (decon_reg.c:304-306).
++	 */
++	path = dsc ? DECON_DPATH_DSCC_ENC01_OUTFIFO01_DSIMIF0
++		   : DECON_DPATH_NOCOMP_OUTFIFO0_DSIMIF0;
++	decon_write_mask(decon, DECON_DATA_PATH_CONTROL_2,
++			 path | DECON_SCALER_PATH_F(DECON_SCALER_PATH_OFF),
++			 DECON_COMP_OUTIF_PATH_MASK | DECON_SCALER_PATH_MASK);
++
++	if (dsc)
++		decon_dsc_init(decon, mode, &enc);
++	else
++		writel(DECON_OUTFIFO_WIDTH_F(mode->hdisplay) |
++		       DECON_OUTFIFO_HEIGHT_F(mode->vdisplay),
++		       decon->regs + DECON_OUTFIFO_SIZE_CONTROL_0);
++
++	/* transfer threshold, one line, the only value the vendor uses */
++	decon_write_mask(decon, DECON_OUTFIFO_TH_CONTROL_0,
++			 DECON_OUTFIFO_TH_1H_F, DECON_OUTFIFO_TH_MASK);
++
++	/*
++	 * Channel order.  The vendor swaps to BGR on an uncompressed DSI path
++	 * and leaves RGB on a compressed one (decon_reg.c:1382-1387).  The
++	 * uncompressed path here is the fallback taken when the DSC
++	 * parameters cannot be computed, and getting this wrong there shows
++	 * as a picture with red and blue exchanged.
++	 */
++	decon_write_mask(decon, DECON_OUTFIFO_DATA_ORDER_CONTROL,
++			 DECON_OUTFIFO_PIXEL_ORDER_SWAP_F(dsc ?
++				DECON_RGB_ORDER_RGB : DECON_RGB_ORDER_BGR),
++			 DECON_OUTFIFO_PIXEL_ORDER_SWAP_MASK);
++
++	/*
++	 * Which DSIM interface drives which link.  The vendor writes it last,
++	 * after the data path, and always (decon_reg.c:1816).  Interface 0
++	 * drives link 0, which is the only combination this driver supports.
++	 */
++	decon_write_mask(decon, DECON_DSIM_CONNECTION_CONTROL,
++			 DECON_DSIM_CONNECTION_DSIM0_F(DECON_DSIM_CONNECTION_DSIMIF0),
++			 DECON_DSIM_CONNECTION_DSIM0_MASK);
++}
++
++/*
++ * Arming and disarming the trigger.  The vendor leaves the two bits in
++ * opposite states rather than only adding the mask: enabled is EN set and
++ * MASK clear, disabled is EN clear and MASK set (decon_reg.c:1955-1957).
++ */
++static void decon_set_trigger(struct exynos9820_decon *decon, bool enable)
++{
++	u32 val = DECON_HW_TRIG_SEL_FROM_DDI0;
++
++	val |= enable ? DECON_HW_TRIG_EN : DECON_HW_TRIG_MASK_DECON;
++
++	decon_write_mask(decon, DECON_HW_SW_TRIG_CONTROL, val,
++			 DECON_HW_TRIG_SEL_FROM_DDI0 | DECON_HW_TRIG_EN |
++			 DECON_HW_TRIG_MASK_DECON);
++}
++
++static void decon_shadow_update(struct exynos9820_decon *decon)
++{
++	writel(DECON_SHADOW_REG_UPDATE_REQ_GLOBAL,
++	       decon->regs + DECON_SHADOW_REG_UPDATE_REQ);
++}
++
++static int decon_start(struct exynos9820_decon *decon)
++{
++	u32 val;
++
++	decon_write_mask(decon, DECON_GLOBAL_CONTROL,
++			 DECON_GLOBAL_CONTROL_DECON_EN_F,
++			 DECON_GLOBAL_CONTROL_DECON_EN_F);
++	decon_shadow_update(decon);
++
++	return readl_poll_timeout(decon->regs + DECON_GLOBAL_CONTROL, val,
++				  val & DECON_GLOBAL_CONTROL_RUN_STATUS,
++				  100, DECON_RUN_TIMEOUT_US);
++}
++
++static void decon_stop(struct exynos9820_decon *decon)
++{
++	u32 val;
++	int ret;
++
++	decon_set_trigger(decon, false);
++
++	/*
++	 * DECON_EN_F is a shadowed field, so clearing it changes nothing
++	 * until a global shadow update carries the new value across.  The
++	 * vendor pairs the two in every stop path it has
++	 * (decon_reg.c:1515-1521, :1546-1548, :2087-2088); without the
++	 * request the poll below can only time out.
++	 */
++	decon_write_mask(decon, DECON_GLOBAL_CONTROL, 0,
++			 DECON_GLOBAL_CONTROL_DECON_EN_F);
++	decon_shadow_update(decon);
++
++	ret = readl_poll_timeout(decon->regs + DECON_GLOBAL_CONTROL, val,
++				 val & DECON_GLOBAL_CONTROL_IDLE_STATUS,
++				 100, DECON_RUN_TIMEOUT_US);
++	if (ret) {
++		/*
++		 * The vendor falls back to an immediate stop here
++		 * (decon_reg.c:1872-1883), which clears both enable bits at
++		 * once instead of waiting for the frame to end.
++		 */
++		dev_warn(decon->dev,
++			 "per frame stop timed out, stopping at once\n");
++		decon_write_mask(decon, DECON_GLOBAL_CONTROL, 0,
++				 DECON_GLOBAL_CONTROL_DECON_EN |
++				 DECON_GLOBAL_CONTROL_DECON_EN_F);
++		decon_shadow_update(decon);
++		ret = readl_poll_timeout(decon->regs + DECON_GLOBAL_CONTROL,
++					 val,
++					 val & DECON_GLOBAL_CONTROL_IDLE_STATUS,
++					 100, DECON_RUN_TIMEOUT_US);
++		if (ret)
++			dev_err(decon->dev,
++				"DECON is still running, powering it off anyway\n");
++	}
++
++	writel(0, decon->regs + DECON_INTERRUPT_ENABLE);
++	writel(~0, decon->regs + DECON_INTERRUPT_PENDING);
++}
++
++/* ------------------------------------------------------------- KMS pipe */
++
++/* ----------------------------------------------------------------- CRTC */
++
++static void decon_atomic_enable(struct exynos_drm_crtc *crtc)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++	const struct drm_display_mode *mode = &crtc->base.state->adjusted_mode;
++	int ret;
++
++	ret = pm_runtime_resume_and_get(decon->dev);
++	if (ret < 0) {
++		dev_err(decon->dev, "failed to resume: %d\n", ret);
++		return;
++	}
++
++	/*
++	 * The input channel is brought up once per power on, not per commit:
++	 * its reset clears itself only when the block is done and everything
++	 * else here is frame independent (dpp_reg.c:993-1001).  A failure is
++	 * not fatal to the rest of the pipeline, so it is reported and the
++	 * mode set goes on; what follows will simply not show a picture.
++	 */
++	if (decon_idma_init(decon))
++		dev_err(decon->dev, "the input channel did not come up\n");
++
++	decon_setup_output(decon, mode);
++	decon_setup_window(decon, mode);
++
++	/*
++	 * The state has to say "powered" before anything can raise an
++	 * interrupt, and the pending bits left by the bootloader have to go,
++	 * or the first frame done arrives while the handler still refuses to
++	 * acknowledge it.  The line is level triggered, so an unacknowledged
++	 * source is not a lost interrupt but a screaming one, and the spurious
++	 * detector would take vblank down for good.
++	 */
++	decon->enabled = true;
++
++	writel(~0, decon->regs + DECON_INTERRUPT_PENDING);
++	/*
++	 * The block has a second pending register, for the resource conflict
++	 * and time out sources.  Nothing here listens to them, but the vendor
++	 * clears both unconditionally (decon_reg.c:1358-1369) and a bit left
++	 * set there by the boot loader would keep its line asserted.
++	 */
++	writel(~0, decon->regs + DECON_EXTRA_INTERRUPT_PENDING);
++	/*
++	 * Only frame done is wired to a handler.  Frame start and the extra
++	 * sources are separate GIC lines with nothing listening, and leaving
++	 * them enabled would assert a line nobody acknowledges.
++	 */
++	writel(DECON_INT_EN | DECON_FRAME_DONE_INT_EN,
++	       decon->regs + DECON_INTERRUPT_ENABLE);
++	enable_irq(decon->irq);
++}
++
++static void decon_atomic_disable(struct exynos_drm_crtc *crtc)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++
++	/*
++	 * pm_runtime_resume_and_get() drops its own reference when it fails, so
++	 * a disable that follows a failed enable must not put it again, and must
++	 * not touch the registers either.
++	 */
++	if (!decon->enabled)
++		return;
++
++	disable_irq(decon->irq);
++	decon->enabled = false;
++	decon->started = false;
++
++	decon_stop(decon);
++	pm_runtime_put(decon->dev);
++}
++
++static int decon_enable_vblank(struct exynos_drm_crtc *crtc)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++
++	if (!decon->enabled)
++		return -EPERM;
++
++	decon_write_mask(decon, DECON_INTERRUPT_ENABLE,
++			 DECON_FRAME_DONE_INT_EN, DECON_FRAME_DONE_INT_EN);
++
++	return 0;
++}
++
++static void decon_disable_vblank(struct exynos_drm_crtc *crtc)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++
++	if (!decon->enabled)
++		return;
++
++	decon_write_mask(decon, DECON_INTERRUPT_ENABLE, 0,
++			 DECON_FRAME_DONE_INT_EN);
++}
++
++static void decon_update_plane(struct exynos_drm_crtc *crtc,
++			       struct exynos_drm_plane *plane)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++	struct exynos_drm_plane_state *state =
++			to_exynos_plane_state(plane->base.state);
++
++	if (!decon->enabled || !state->base.fb)
++		return;
++
++	decon_idma_setup(decon, state);
++
++	/*
++	 * Where the window lands on the CRTC comes from the same state, so a
++	 * plane smaller than the mode shows the blender background around it
++	 * instead of starving the output FIFO.
++	 */
++	writel(DECON_WIN_STRPTR_X_F(state->crtc.x) |
++	       DECON_WIN_STRPTR_Y_F(state->crtc.y),
++	       decon->regs + DECON_WIN_START_POSITION(DECON_WIN));
++	writel(DECON_WIN_ENDPTR_X_F(state->crtc.x + state->crtc.w - 1) |
++	       DECON_WIN_ENDPTR_Y_F(state->crtc.y + state->crtc.h - 1),
++	       decon->regs + DECON_WIN_END_POSITION(DECON_WIN));
++}
++
++static void decon_disable_plane(struct exynos_drm_crtc *crtc,
++				struct exynos_drm_plane *plane)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++
++	if (!decon->enabled)
++		return;
++
++	decon_write_mask(decon, DECON_DATA_PATH_CONTROL_0, 0,
++			 DECON_WIN_EN_F(DECON_WIN));
++}
++
++static void decon_atomic_flush(struct exynos_drm_crtc *crtc)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++	u32 val;
++
++	if (!decon->enabled) {
++		struct drm_crtc *base = &crtc->base;
++
++		/*
++		 * Nothing is going to be scanned out, so the event cannot be
++		 * armed on a vblank that will not arrive.  The one belonging
++		 * to a commit that turns the CRTC off is handed back by
++		 * exynos_drm_crtc_atomic_disable(); this is what is left, and
++		 * it has to be answered at once or the commit never finishes.
++		 */
++		spin_lock_irq(&base->dev->event_lock);
++		if (base->state->event) {
++			drm_crtc_send_vblank_event(base, base->state->event);
++			base->state->event = NULL;
++		}
++		spin_unlock_irq(&base->dev->event_lock);
++		return;
++	}
++
++	/*
++	 * drm_atomic_helper_commit_tail_rpm() runs commit_modeset_enables()
++	 * before commit_planes(), so this is the first point at which the
++	 * bridge chain has brought the link up and taken the panel out of
++	 * reset.  Starting the scanout or arming the trigger any earlier
++	 * points the block at a panel that cannot answer yet.
++	 */
++	if (!decon->started) {
++		if (decon_start(decon)) {
++			dev_err(decon->dev, "DECON did not reach run status\n");
++			/*
++			 * Nothing will scan out, so the event cannot wait for a
++			 * vblank.  Hand it back at once and try again on the
++			 * next commit rather than latching the failure in.
++			 */
++			spin_lock_irq(&crtc->base.dev->event_lock);
++			if (crtc->base.state->event) {
++				drm_crtc_send_vblank_event(&crtc->base,
++							   crtc->base.state->event);
++				crtc->base.state->event = NULL;
++			}
++			spin_unlock_irq(&crtc->base.dev->event_lock);
++			return;
++		}
++
++		decon_set_trigger(decon, true);
++		decon->started = true;
++	}
++
++	/*
++	 * A request that the hardware has not taken yet means the trigger has
++	 * not fired since the last commit.  Issuing a second one on top would
++	 * hand the block half of one frame's window parameters and half of
++	 * the next.  The vendor waits for the register to read back zero
++	 * before it asks again (decon_reg.c:1971-1985); in a healthy pipeline
++	 * this reads zero on the first try.
++	 */
++	if (readl_poll_timeout(decon->regs + DECON_SHADOW_REG_UPDATE_REQ, val,
++			       !val, 100, DECON_UPDATE_TIMEOUT_US))
++		dev_warn_ratelimited(decon->dev,
++				     "previous shadow update was not taken\n");
++
++	writel(DECON_SHADOW_REG_UPDATE_REQ_WIN(DECON_WIN),
++	       decon->regs + DECON_SHADOW_REG_UPDATE_REQ);
++
++	exynos_crtc_handle_event(crtc);
++}
++
++static enum drm_mode_status decon_mode_valid(struct exynos_drm_crtc *crtc,
++					     const struct drm_display_mode *mode)
++{
++	struct exynos9820_decon *decon = crtc->ctx;
++	const struct drm_dsc_config *dsc;
++	struct decon_dsc_enc enc = {};
++
++	/*
++	 * Only the command mode path is implemented, and the video mode porch
++	 * registers of this block differ between silicon revisions, so an
++	 * interlaced or otherwise unusual mode has nothing to fall back on.
++	 */
++	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
++		return MODE_NO_INTERLACE;
++
++	/*
++	 * This driver splits a compressed stream between both encoders,
++	 * and each of them carries one or two slices.  What that pair
++	 * cannot be programmed for has to be refused here: by the time
++	 * such a mode reached the commit the picture would come out
++	 * wrong, silently.
++	 */
++	dsc = decon_get_dsc(decon);
++	if (dsc) {
++		if (dsc->slice_count != DECON_DSC_ENCODERS &&
++		    dsc->slice_count != 2 * DECON_DSC_ENCODERS)
++			return MODE_BAD;
++
++		if (mode->hdisplay % dsc->slice_count)
++			return MODE_H_ILLEGAL;
++
++		/*
++		 * The rate control parameters are the rest of the answer, and
++		 * computing them is the only way to ask.  A mode that cannot
++		 * be compressed is refused here, where the caller still gets
++		 * an error, rather than during the commit, where it would not.
++		 */
++		if (decon_dsc_calc(mode, dsc, DECON_DSC_ENCODERS, &enc))
++			return MODE_BAD;
++	}
++
++	return MODE_OK;
++}
++
++static const struct exynos_drm_crtc_ops decon_crtc_ops = {
++	.atomic_enable		= decon_atomic_enable,
++	.atomic_disable		= decon_atomic_disable,
++	.enable_vblank		= decon_enable_vblank,
++	.disable_vblank		= decon_disable_vblank,
++	.update_plane		= decon_update_plane,
++	.disable_plane		= decon_disable_plane,
++	.atomic_flush		= decon_atomic_flush,
++	.mode_valid		= decon_mode_valid,
++};
++
++static const u32 decon_formats[] = {
++	DRM_FORMAT_XRGB8888,
++	DRM_FORMAT_ARGB8888,
++};
++
++static irqreturn_t decon_irq(int irq, void *data)
++{
++	struct exynos9820_decon *decon = data;
++	u32 status;
++
++	/*
++	 * The interrupt is only ever enabled between atomic_enable() and
++	 * atomic_disable(), so the block is powered and clocked whenever this
++	 * runs.  A pending bit is still acknowledged when the source is not one
++	 * this driver handles, because the line is level triggered.
++	 */
++	status = readl(decon->regs + DECON_INTERRUPT_PENDING);
++	if (!status)
++		return IRQ_NONE;
++
++	writel(status, decon->regs + DECON_INTERRUPT_PENDING);
++
++	if (status & DECON_FRAME_DONE_INT_PEND)
++		drm_crtc_handle_vblank(&decon->crtc->base);
++
++	return IRQ_HANDLED;
++}
++
++/* ------------------------------------------------------------ component */
++
++static int decon_bind(struct device *dev, struct device *master, void *data)
++{
++	struct exynos9820_decon *decon = dev_get_drvdata(dev);
++	struct drm_device *drm_dev = data;
++	struct exynos_drm_plane *exynos_plane;
++	int ret;
++
++	decon->drm_dev = drm_dev;
++
++	decon->configs[DECON_WIN].pixel_formats = decon_formats;
++	decon->configs[DECON_WIN].num_pixel_formats = ARRAY_SIZE(decon_formats);
++	decon->configs[DECON_WIN].zpos = 0;
++	decon->configs[DECON_WIN].type = DRM_PLANE_TYPE_PRIMARY;
++
++	ret = exynos_plane_init(drm_dev, &decon->planes[DECON_WIN], DECON_WIN,
++				&decon->configs[DECON_WIN]);
++	if (ret)
++		return ret;
++
++	exynos_plane = &decon->planes[DECON_WIN];
++	decon->crtc = exynos_drm_crtc_create(drm_dev, &exynos_plane->base,
++					     EXYNOS_DISPLAY_TYPE_LCD,
++					     &decon_crtc_ops, decon);
++	if (IS_ERR(decon->crtc))
++		return PTR_ERR(decon->crtc);
++
++	return exynos_drm_register_dma(drm_dev, dev, &decon->dma_priv);
++}
++
++static void decon_unbind(struct device *dev, struct device *master, void *data)
++{
++	struct exynos9820_decon *decon = dev_get_drvdata(dev);
++
++	decon_atomic_disable(decon->crtc);
++	exynos_drm_unregister_dma(decon->drm_dev, decon->dev, &decon->dma_priv);
++}
++
++static const struct component_ops decon_component_ops = {
++	.bind	= decon_bind,
++	.unbind	= decon_unbind,
++};
++
++static int decon_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct exynos9820_decon *decon;
++	void __iomem *regs;
++	int ret;
++
++	decon = devm_kzalloc(dev, sizeof(*decon), GFP_KERNEL);
++	if (!decon)
++		return -ENOMEM;
++
++	decon->dev = dev;
++
++	decon->regs = devm_platform_ioremap_resource_byname(pdev, "decon");
++	if (IS_ERR(decon->regs))
++		return PTR_ERR(decon->regs);
++
++	regs = devm_platform_ioremap_resource_byname(pdev, "dma");
++	if (IS_ERR(regs))
++		return PTR_ERR(regs);
++	/*
++	 * Two views of the same window: the quality of service tables live in
++	 * the global part, everything else in the channel (regs-dpp.h:17-25).
++	 */
++	decon->dma_regs = regs;
++	decon->idma_regs = regs + DPU_DMA_IDMA_GF0;
++
++	decon->clks[0].id = "aclk";
++	decon->clks[1].id = "aclk-dma";
++	decon->clks[2].id = "aclk-dpp";
++	ret = devm_clk_bulk_get(dev, DECON_NR_CLOCKS, decon->clks);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to get clocks\n");
++
++	/* the frame done interrupt is the one that drives vblank */
++	decon->irq = platform_get_irq_byname(pdev, "frame-done");
++	if (decon->irq < 0)
++		return decon->irq;
++
++	/*
++	 * Left disabled until the block is powered: the bootloader can leave
++	 * the source asserted, and this line is shared with whatever it set up.
++	 */
++	ret = devm_request_irq(dev, decon->irq, decon_irq, IRQF_NO_AUTOEN,
++			       dev_name(dev), decon);
++	if (ret)
++		return ret;
++
++	platform_set_drvdata(pdev, decon);
++	ret = devm_pm_runtime_enable(dev);
++	if (ret)
++		return ret;
++
++	return component_add(dev, &decon_component_ops);
++}
++
++static void decon_remove(struct platform_device *pdev)
++{
++	component_del(&pdev->dev, &decon_component_ops);
++}
++
++static int decon_runtime_suspend(struct device *dev)
++{
++	struct exynos9820_decon *decon = dev_get_drvdata(dev);
++
++	clk_bulk_disable_unprepare(DECON_NR_CLOCKS, decon->clks);
++
++	return 0;
++}
++
++static int decon_runtime_resume(struct device *dev)
++{
++	struct exynos9820_decon *decon = dev_get_drvdata(dev);
++
++	return clk_bulk_prepare_enable(DECON_NR_CLOCKS, decon->clks);
++}
++
++static const struct dev_pm_ops decon_pm_ops = {
++	RUNTIME_PM_OPS(decon_runtime_suspend, decon_runtime_resume, NULL)
++	SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
++			    pm_runtime_force_resume)
++};
++
++static const struct of_device_id decon_of_match[] = {
++	{ .compatible = "samsung,exynos9820-decon" },
++	{ /* sentinel */ }
++};
++MODULE_DEVICE_TABLE(of, decon_of_match);
++
++struct platform_driver exynos9820_decon_driver = {
++	.probe = decon_probe,
++	.remove = decon_remove,
++	.driver = {
++		.name = "exynos9820-decon",
++		.of_match_table = decon_of_match,
++		.pm = pm_ptr(&decon_pm_ops),
++	},
++};
+diff --git a/drivers/gpu/drm/exynos/exynos9820_regs.h b/drivers/gpu/drm/exynos/exynos9820_regs.h
+new file mode 100644
+index 00000000000..fe393d7d582
+--- /dev/null
++++ b/drivers/gpu/drm/exynos/exynos9820_regs.h
+@@ -0,0 +1,421 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++/*
++ * Register definitions for the Exynos9820 display pipeline (DECON / DPP / DSIM).
++ *
++ * Offsets and bit fields transcribed from the vendor kernel:
++ * LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
++ *   drivers/video/fbdev/exynos/dpu20/cal_9820/regs-decon.h
++ *   drivers/video/fbdev/exynos/dpu20/cal_9820/regs-dpp.h
++ *   drivers/video/fbdev/exynos/dpu20/cal_9820/regs-dsim.h
++ *
++ * Only the subset used by this driver is defined here.
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ */
++
++#ifndef __EXYNOS9820_REGS_H__
++#define __EXYNOS9820_REGS_H__
++
++/* ------------------------------------------------------------------ DECON */
++
++#define DECON_GLOBAL_CONTROL			0x0000
++#define DECON_GLOBAL_CONTROL_SRESET		BIT(28)
++#define DECON_GLOBAL_CONTROL_OPERATION_MODE_CMD	BIT(8)
++#define DECON_GLOBAL_CONTROL_IDLE_STATUS	BIT(5)
++#define DECON_GLOBAL_CONTROL_RUN_STATUS		BIT(4)
++#define DECON_GLOBAL_CONTROL_DECON_EN		BIT(1)
++#define DECON_GLOBAL_CONTROL_DECON_EN_F		BIT(0)
++
++#define DECON_SRAM_SHARE_ENABLE			0x0030
++#define DECON_SRAM0_SHARE_ENABLE_F		BIT(12)
++#define DECON_ALL_SRAM_SHARE_ENABLE		(0x1111 << 12)
++
++/*
++ * Clock gating of the blocks inside DECON, plus the two QACTIVE bits.  The
++ * vendor clears all of them before it configures anything (decon_reg.c:148-157,
++ * called from decon_reg.c:1781), with the comment "In bring-up, all bits are
++ * disabled".
++ */
++#define DECON_CLOCK_CONTROL_0			0x00f0
++#define DECON_CLOCK_CONTROL_0_CG_MASK		(0x11111 << 0)
++#define DECON_CLOCK_CONTROL_0_QACTIVE_MASK	(BIT(24) | BIT(28))
++
++/* size of the picture that leaves the blender, whether a scaler is in the path or not */
++#define DECON_SCALED_SIZE_CONTROL_0		0x00a0
++#define DECON_SCALED_SIZE_HEIGHT_F(v)		((v) << 16)
++#define DECON_SCALED_SIZE_HEIGHT_MASK		(0x3fff << 16)
++#define DECON_SCALED_SIZE_WIDTH_F(v)		((v) << 0)
++#define DECON_SCALED_SIZE_WIDTH_MASK		(0x3fff << 0)
++
++#define DECON_INTERRUPT_ENABLE			0x0040
++#define DECON_FRAME_DONE_INT_EN			BIT(13)
++#define DECON_FRAME_START_INT_EN		BIT(12)
++#define DECON_EXTRA_INT_EN			BIT(4)
++#define DECON_INT_EN				BIT(0)
++
++#define DECON_INTERRUPT_PENDING			0x004c
++/* second pending register, for the resource and error sources */
++#define DECON_EXTRA_INTERRUPT_PENDING		0x0050
++#define DECON_FRAME_DONE_INT_PEND		BIT(13)
++#define DECON_FRAME_START_INT_PEND		BIT(12)
++#define DECON_EXTRA_INT_PEND			BIT(4)
++
++#define DECON_SHADOW_REG_UPDATE_REQ		0x0060
++#define DECON_SHADOW_REG_UPDATE_REQ_GLOBAL	BIT(31)
++#define DECON_SHADOW_REG_UPDATE_REQ_WIN(w)	BIT(w)
++
++#define DECON_HW_SW_TRIG_CONTROL		0x0070
++#define DECON_HW_TRIG_SEL_FROM_DDI0		(0 << 24)
++#define DECON_HW_TRIG_ACTIVE_VALUE		BIT(13)
++#define DECON_HW_TRIG_EDGE_POLARITY		BIT(12)
++#define DECON_HW_TRIG_MASK_DECON		BIT(4)
++#define DECON_HW_TRIG_EN			BIT(0)
++
++#define DECON_BLENDER_BG_IMAGE_SIZE		0x0200
++#define DECON_BLENDER_BG_HEIGHT(v)		((v) << 16)
++#define DECON_BLENDER_BG_WIDTH(v)		((v) << 0)
++
++#define DECON_DATA_PATH_CONTROL_0		0x0214
++#define DECON_WIN_EN_F(w)			BIT(4 * (w))
++
++#define DECON_DATA_PATH_CONTROL_1		0x0218
++#define DECON_WIN_CHMAP_F(w, ch)		(((ch) & 0x7) << (4 * (w)))
++#define DECON_WIN_CHMAP_MASK(w)			(0x7 << (4 * (w)))
++
++#define DECON_DATA_PATH_CONTROL_2		0x0230
++#define DECON_COMP_OUTIF_PATH_MASK		(0xff << 0)
++/* the scaler is not in this driver's path, but the field has to be cleared */
++#define DECON_SCALER_PATH_F(v)			((v) << 24)
++#define DECON_SCALER_PATH_MASK			(0x3 << 24)
++#define DECON_SCALER_PATH_OFF			0x0
++/* DSCC + DSC_ENC0/1 -> OUTFIFO0/1 -> DSIM_IF0, the path this driver uses */
++#define DECON_DPATH_DSCC_ENC01_OUTFIFO01_DSIMIF0	0x0b1
++/* no compression -> OUTFIFO0 -> DSIM_IF0 */
++#define DECON_DPATH_NOCOMP_OUTFIFO0_DSIMIF0		0x001
++
++#define DECON_FRAME_COUNT			0x02a0
++
++#define DECON_WIN_CONTROL_0(w)			(0x1000 + ((w) * 0x30))
++#define DECON_WIN_ALPHA1_F(v)			(((v) & 0xff) << 24)
++#define DECON_WIN_ALPHA0_F(v)			(((v) & 0xff) << 16)
++#define DECON_WIN_FUNC_F(v)			(((v) & 0xf) << 8)
++#define DECON_WIN_FUNC_COPY			0x1
++
++#define DECON_WIN_START_POSITION(w)		(0x1008 + ((w) * 0x30))
++#define DECON_WIN_STRPTR_Y_F(v)			(((v) & 0x3fff) << 16)
++#define DECON_WIN_STRPTR_X_F(v)			(((v) & 0x3fff) << 0)
++
++#define DECON_WIN_END_POSITION(w)		(0x100c + ((w) * 0x30))
++#define DECON_WIN_ENDPTR_Y_F(v)			(((v) & 0x3fff) << 16)
++#define DECON_WIN_ENDPTR_X_F(v)			(((v) & 0x3fff) << 0)
++
++#define DECON_OUTFIFO_SIZE_CONTROL_0		0x0120
++#define DECON_OUTFIFO_SIZE_CONTROL_1		0x0124
++#define DECON_OUTFIFO_SIZE_CONTROL_2		0x0128
++#define DECON_OUTFIFO_HEIGHT_F(v)		((v) << 16)
++#define DECON_OUTFIFO_WIDTH_F(v)		((v) << 0)
++#define DECON_OUTFIFO_COMP_SLICE_HEIGHT_F(v)	((v) << 16)
++#define DECON_OUTFIFO_COMP_SLICE_WIDTH_F(v)	((v) << 0)
++
++/* transfer threshold; the vendor picks 1H every time (decon_reg.c:234-248) */
++#define DECON_OUTFIFO_TH_CONTROL_0		0x012c
++#define DECON_OUTFIFO_TH_1H_F			(0x5 << 0)
++#define DECON_OUTFIFO_TH_MASK			(0x7 << 0)
++
++/*
++ * Channel order on the way out.  The vendor asks for BGR on an uncompressed
++ * DSI path and for RGB on a compressed one (decon_reg.c:1382-1387); the
++ * values are its enum decon_rgb_order (decon_cal.h:122-129).
++ */
++#define DECON_OUTFIFO_DATA_ORDER_CONTROL	0x0130
++#define DECON_OUTFIFO_PIXEL_ORDER_SWAP_F(v)	((v) << 4)
++#define DECON_OUTFIFO_PIXEL_ORDER_SWAP_MASK	(0x7 << 4)
++#define DECON_RGB_ORDER_RGB			0x0
++#define DECON_RGB_ORDER_BGR			0x4
++
++/* which DSIM interface drives which DSIM link (decon_reg.c:453-495) */
++#define DECON_DSIM_CONNECTION_CONTROL		0x0250
++#define DECON_DSIM_CONNECTION_DSIM0_F(v)	((v) << 0)
++#define DECON_DSIM_CONNECTION_DSIM0_MASK	(0x7 << 0)
++#define DECON_DSIM_CONNECTION_DSIMIF0		0x0
++
++/* ------------------------------------------------------- DSC encoders */
++
++/* the DSC encoders live inside the DECON register window */
++#define DECON_DSC_OFFSET(enc)			(0x4000 + (enc) * 0x1000)
++
++#define DSC_CONTROL0				0x0000
++#define DSC_SW_RESET				BIT(28)
++#define DSC_DCG_EN_ALL_MASK			(0x7 << 17)
++#define DSC_SWAP(b, c, w)			(((b) << 10) | ((c) << 9) | ((w) << 8))
++#define DSC_SWAP_MASK				(BIT(10) | BIT(9) | BIT(8))
++#define DSC_FLATNESS_DET_TH_F(v)		((v) << 4)
++#define DSC_FLATNESS_DET_TH_MASK		(0xf << 4)
++#define DSC_SLICE_MODE_CH_F(v)			((v) << 3)
++#define DSC_SLICE_MODE_CH_MASK			BIT(3)
++#define DSC_CG_EN_F(v)				((v) << 1)
++#define DSC_CG_EN_MASK				BIT(1)
++#define DSC_DUAL_SLICE_EN_F(v)			((v) << 0)
++#define DSC_DUAL_SLICE_EN_MASK			BIT(0)
++
++#define DSC_CONTROL3				0x000c
++#define DSC_REMAINDER_F(v)			((v) << 12)
++#define DSC_REMAINDER_MASK			(0x3 << 12)
++#define DSC_GRPCNTLINE_F(v)			((v) << 0)
++#define DSC_GRPCNTLINE_MASK			(0x7ff << 0)
++
++#define DSC_PPS04_07				0x0024
++#define PPS04_COMP_CFG(v)			((v) << 24)
++#define PPS04_COMP_CFG_MASK			(0x3f << 24)
++#define PPS05_BPP(v)				((v) << 16)
++#define PPS05_BPP_MASK				(0xff << 16)
++#define PPS06_07_PIC_HEIGHT(v)			((v) << 0)
++#define PPS06_07_PIC_HEIGHT_MASK		(0xffff << 0)
++
++#define DSC_PPS08_11				0x0028
++#define PPS08_09_PIC_WIDTH(v)			((v) << 16)
++#define PPS08_09_PIC_WIDTH_MASK			(0xffff << 16)
++#define PPS10_11_SLICE_HEIGHT(v)		((v) << 0)
++#define PPS10_11_SLICE_HEIGHT_MASK		(0xffff << 0)
++
++#define DSC_PPS12_15				0x002c
++#define PPS12_13_SLICE_WIDTH(v)			((v) << 16)
++#define PPS12_13_SLICE_WIDTH_MASK		(0xffff << 16)
++#define PPS14_15_CHUNK_SIZE(v)			((v) << 0)
++#define PPS14_15_CHUNK_SIZE_MASK		(0xffff << 0)
++
++#define DSC_PPS16_19				0x0030
++#define PPS16_17_INIT_XMIT_DELAY(v)		((v) << 16)
++#define PPS16_17_INIT_XMIT_DELAY_MASK		(0x3ff << 16)
++#define PPS18_19_INIT_DEC_DELAY(v)		((v) << 0)
++#define PPS18_19_INIT_DEC_DELAY_MASK		(0xffff << 0)
++
++#define DSC_PPS20_23				0x0034
++#define PPS21_INIT_SCALE_VALUE(v)		((v) << 16)
++#define PPS21_INIT_SCALE_VALUE_MASK		(0x3f << 16)
++#define PPS22_23_SCALE_INC_INTERVAL(v)		((v) << 0)
++#define PPS22_23_SCALE_INC_INTERVAL_MASK	(0xffff << 0)
++
++#define DSC_PPS24_27				0x0038
++#define PPS24_25_SCALE_DEC_INTERVAL(v)		((v) << 16)
++#define PPS24_25_SCALE_DEC_INTERVAL_MASK	(0xfff << 16)
++#define PPS27_FL_BPG_OFFSET(v)			((v) << 0)
++#define PPS27_FL_BPG_OFFSET_MASK		(0x1f << 0)
++
++#define DSC_PPS28_31				0x003c
++#define PPS28_29_NFL_BPG_OFFSET(v)		((v) << 16)
++#define PPS28_29_NFL_BPG_OFFSET_MASK		(0xffff << 16)
++#define PPS30_31_SLICE_BPG_OFFSET(v)		((v) << 0)
++#define PPS30_31_SLICE_BPG_OFFSET_MASK		(0xffff << 0)
++
++#define DSC_PPS32_35				0x0040
++#define PPS32_33_INIT_OFFSET(v)			((v) << 16)
++#define PPS32_33_INIT_OFFSET_MASK		(0xffff << 16)
++#define PPS34_35_FINAL_OFFSET(v)		((v) << 0)
++#define PPS34_35_FINAL_OFFSET_MASK		(0xffff << 0)
++
++#define DSC_PPS56_59				0x0058
++#define PPS58_59_RC_RANGE_PARAM(v)		((v) << 0)
++#define PPS58_59_RC_RANGE_PARAM_MASK		(0xffff << 0)
++
++/* PPS76..87: the vendor writes these three words verbatim */
++#define DSC_PPS76_79				0x006c
++#define DSC_PPS80_83				0x0070
++#define DSC_PPS84_87				0x0074
++
++/* --------------------------------------------------------------- DPU_DMA */
++
++/*
++ * Offset of the channel that feeds window 0 inside the DPU_DMA block.
++ * The block holds a global part, six input channels and the writeback
++ * output channel (regs-dpp.h:17-25).
++ */
++#define DPU_DMA_IDMA_GF0			0x1000
++
++/* quality of service tables, in the global part rather than in a channel */
++#define DPU_DMA_QOS_LUT07_00			0x0070
++#define DPU_DMA_QOS_LUT15_08			0x0074
++#define DPU_DMA_QOS_LUT_DEFAULT			0x44444444
++
++#define IDMA_ENABLE				0x0000
++#define IDMA_SRESET				BIT(24)
++#define IDMA_ALL_CLOCK_GATE_EN_MASK		BIT(9)
++
++/*
++ * One register holds the enable, the per source masks and the pending bits.
++ * The masks sit at 10:1 and the pending bits at 25:16, and the pending bits
++ * are cleared by writing a one, so the whole register has to be touched
++ * through masks (regs-dpp.h:119-144).
++ */
++#define IDMA_IRQ				0x0004
++#define IDMA_ALL_IRQ_CLEAR			(0x3fb << 16)
++#define IDMA_ALL_IRQ_MASK			(0x3fb << 1)
++#define IDMA_IRQ_ENABLE				BIT(0)
++
++#define IDMA_IN_CON				0x0008
++#define IDMA_IMG_FORMAT(v)			((v) << 11)
++#define IDMA_IMG_FORMAT_MASK			(0x3f << 11)
++#define IDMA_IMG_FORMAT_ARGB8888		0
++#define IDMA_IMG_FORMAT_XRGB8888		4
++
++/* alpha the channel puts on a frame whose format carries none */
++#define IDMA_OUT_CON				0x000c
++#define IDMA_OUT_FRAME_ALPHA(v)			((v) << 24)
++#define IDMA_OUT_FRAME_ALPHA_MASK		(0xff << 24)
++
++#define IDMA_SRC_SIZE				0x0010
++#define IDMA_SRC_HEIGHT(v)			((v) << 16)
++#define IDMA_SRC_WIDTH(v)			((v) << 0)
++
++#define IDMA_SRC_OFFSET				0x0014
++#define IDMA_SRC_OFFSET_Y(v)			((v) << 16)
++#define IDMA_SRC_OFFSET_X(v)			((v) << 0)
++
++#define IDMA_IMG_SIZE				0x0018
++#define IDMA_IMG_HEIGHT(v)			((v) << 16)
++#define IDMA_IMG_WIDTH(v)			((v) << 0)
++
++#define IDMA_IN_BASE_ADDR_Y			0x0040
++#define IDMA_IN_BASE_ADDR_C			0x0044
++
++#define IDMA_DYNAMIC_GATING_EN			0x0058
++#define IDMA_DG_EN_ALL				(0x7ffffff << 0)
++
++/* ------------------------------------------------------------------ DSIM */
++
++#define DSIM_VERSION				0x0000
++#define DSIM_SWRST				0x0004
++#define DSIM_SWRST_FUNCRST			BIT(8)
++#define DSIM_SWRST_RESET			BIT(0)
++
++#define DSIM_LINK_STATUS0			0x0008
++#define DSIM_DPHY_STATUS			0x001c
++#define DSIM_DPHY_STATUS_STOP_STATE_DAT(x)	(((x) >> 0) & 0xf)
++#define DSIM_DPHY_STATUS_STOP_STATE_CLK		BIT(8)
++
++#define DSIM_CLK_CTRL				0x0020
++#define DSIM_CLK_CTRL_CLOCK_SEL			BIT(26)
++#define DSIM_CLK_CTRL_NONCONT_CLOCK_LANE	BIT(25)
++#define DSIM_CLK_CTRL_CLKLANE_ONOFF		BIT(24)
++#define DSIM_CLK_CTRL_TX_REQUEST_HSCLK		BIT(20)
++#define DSIM_CLK_CTRL_ESCCLK_EN			BIT(16)
++#define DSIM_CLK_CTRL_LANE_ESCCLK_EN(x)		((x) << 8)
++#define DSIM_CLK_CTRL_ESC_PRESCALER(x)		((x) << 0)
++
++#define DSIM_TIMEOUT				0x0028
++#define DSIM_TIMEOUT_BTA_TOUT(x)		((x) << 16)
++#define DSIM_TIMEOUT_LPDR_TOUT(x)		((x) << 0)
++
++#define DSIM_ESCMODE				0x002c
++#define DSIM_ESCMODE_STOP_STATE_CNT(x)		((x) << 21)
++#define DSIM_ESCMODE_FORCE_STOP_STATE		BIT(20)
++#define DSIM_ESCMODE_CMD_LPDT			BIT(7)
++
++#define DSIM_NUM_OF_TRANSFER			0x0030
++#define DSIM_NUM_OF_TRANSFER_PER_FRAME(x)	((x) << 0)
++
++#define DSIM_UNDERRUN_CTRL			0x0034
++#define DSIM_UNDERRUN_CTRL_CM_UNDERRUN_LP_REF(x) ((x) << 0)
++
++#define DSIM_THRESHOLD				0x0038
++#define DSIM_THRESHOLD_LEVEL(x)			((x) << 0)
++
++#define DSIM_RESOL				0x003c
++#define DSIM_RESOL_LINEVAL(x)			((x) << 16)
++#define DSIM_RESOL_HOZVAL(x)			((x) << 0)
++
++#define DSIM_CONFIG				0x004c
++#define DSIM_CONFIG_CPRS_EN			BIT(19)
++#define DSIM_CONFIG_VIDEO_MODE			BIT(18)
++#define DSIM_CONFIG_PIXEL_FORMAT(x)		((x) << 9)
++#define DSIM_CONFIG_PIXEL_FORMAT_RGB24		0x3e
++#define DSIM_CONFIG_EOTP_EN			BIT(7)
++#define DSIM_CONFIG_NUM_OF_DATA_LANE(x)		((x) << 5)
++#define DSIM_CONFIG_LANES_EN(x)			(((x) & 0x1f) << 0)
++
++#define DSIM_INTSRC				0x0050
++#define DSIM_INTSRC_PLL_STABLE			BIT(31)
++#define DSIM_INTSRC_SFR_PL_FIFO_EMPTY		BIT(29)
++#define DSIM_INTSRC_SFR_PH_FIFO_EMPTY		BIT(28)
++#define DSIM_INTSRC_FRAME_DONE			BIT(24)
++#define DSIM_INTSRC_RX_DATA_DONE		BIT(18)
++
++#define DSIM_INTMSK				0x0054
++#define DSIM_PKTHDR				0x0058
++#define DSIM_PKTHDR_BTA_TYPE(x)			((x) << 24)
++#define DSIM_PKTHDR_DATA1(x)			((x) << 16)
++#define DSIM_PKTHDR_DATA0(x)			((x) << 8)
++#define DSIM_PKTHDR_ID(x)			((x) << 0)
++#define DSIM_PAYLOAD				0x005c
++#define DSIM_RXFIFO				0x0060
++
++#define DSIM_FIFOCTRL				0x0068
++#define DSIM_FIFOCTRL_EMPTY_RX			BIT(12)
++
++#define DSIM_CMD_CONFIG				0x0080
++#define DSIM_CMD_CONFIG_PKT_GO_EN		BIT(16)
++
++#define DSIM_CMD_TE_CTRL0			0x0084
++#define DSIM_CMD_TE_CTRL0_TIME_STABLE_VFP(x)	((x) << 0)
++
++#define DSIM_CMD_TE_CTRL1			0x0088
++#define DSIM_CMD_TE_CTRL1_TIME_TE_PROTECT_ON(x)	((x) << 16)
++#define DSIM_CMD_TE_CTRL1_TIME_TE_TOUT(x)	((x) << 0)
++
++/* DSIM D-PHY (M4S0 block, second reg range of the dsim node) */
++
++#define DSIM_PHY_BIAS_CON(i)			(0x0000 + 4 * (i))
++
++#define DSIM_PHY_PLL_CON(i)			(0x0100 + 4 * (i))
++#define DSIM_PHY_PLL_CON0			0x0100
++#define DSIM_PHY_PLL_EN				BIT(12)
++#define DSIM_PHY_PMS_S(x)			(((x) & 0x7) << 8)
++#define DSIM_PHY_PMS_S_MASK			(0x7 << 8)
++#define DSIM_PHY_PMS_P(x)			(((x) & 0x3f) << 0)
++#define DSIM_PHY_PMS_P_MASK			(0x3f << 0)
++#define DSIM_PHY_PLL_CON1			0x0104
++#define DSIM_PHY_PMS_K(x)			(((x) & 0xffff) << 0)
++#define DSIM_PHY_PMS_K_MASK			(0xffff << 0)
++#define DSIM_PHY_PLL_CON2			0x0108
++#define DSIM_PHY_PMS_M(x)			(((x) & 0x3ff) << 0)
++#define DSIM_PHY_PMS_M_MASK			(0x3ff << 0)
++#define DSIM_PHY_PLL_CON3			0x010c
++#define DSIM_PHY_DITHER_MRR(x)			(((x) & 0x3f) << 8)
++#define DSIM_PHY_DITHER_MRR_MASK		(0x3f << 8)
++#define DSIM_PHY_DITHER_MFR(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_DITHER_MFR_MASK		(0xff << 0)
++#define DSIM_PHY_PLL_CON4			0x0110
++#define DSIM_PHY_DITHER_EN			BIT(11)
++
++#define DSIM_PHY_MC_GNR_CON(i)			(0x0300 + 4 * (i))
++#define DSIM_PHY_MC_ANA_CON(i)			(0x0308 + 4 * (i))
++
++#define DSIM_PHY_MC_TIME_CON0			0x0330
++#define DSIM_PHY_TLPX(x)			(((x) & 0xff) << 4)
++#define DSIM_PHY_HSTX_CLK_SEL			BIT(12)
++#define DSIM_PHY_MC_TIME_CON1			0x0334
++#define DSIM_PHY_TCLK_ZERO(x)			(((x) & 0xff) << 8)
++#define DSIM_PHY_TCLK_PREPARE(x)		(((x) & 0xff) << 0)
++#define DSIM_PHY_MC_TIME_CON2			0x0338
++#define DSIM_PHY_THS_EXIT(x)			(((x) & 0xff) << 8)
++#define DSIM_PHY_TCLK_TRAIL(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MC_TIME_CON3			0x033c
++#define DSIM_PHY_TCLK_POST(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MC_TIME_CON4			0x0340
++#define DSIM_PHY_ULPS_EXIT(x)			(((x) & 0x3ff) << 0)
++
++#define DSIM_PHY_MD_GNR_CON(n, i)		(0x0400 + 0x100 * (n) + 4 * (i))
++#define DSIM_PHY_MD_ANA_CON(n, i)		(0x0408 + 0x100 * (n) + 4 * (i))
++
++#define DSIM_PHY_MD_TIME_CON0(n)		(0x0430 + 0x100 * (n))
++#define DSIM_PHY_MD_TIME_CON1(n)		(0x0434 + 0x100 * (n))
++#define DSIM_PHY_THS_ZERO(x)			(((x) & 0xff) << 8)
++#define DSIM_PHY_THS_PREPARE(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MD_TIME_CON2(n)		(0x0438 + 0x100 * (n))
++#define DSIM_PHY_THS_TRAIL(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MD_TIME_CON3(n)		(0x043c + 0x100 * (n))
++#define DSIM_PHY_TTA_GET(x)			(((x) & 0xf) << 4)
++#define DSIM_PHY_TTA_GO(x)			(((x) & 0xf) << 0)
++#define DSIM_PHY_MD_TIME_CON4(n)		(0x0440 + 0x100 * (n))
++
++#endif /* __EXYNOS9820_REGS_H__ */
+diff --git a/drivers/gpu/drm/exynos/exynos_drm_drv.c b/drivers/gpu/drm/exynos/exynos_drm_drv.c
+index 9ee30086879..087c603a564 100644
+--- a/drivers/gpu/drm/exynos/exynos_drm_drv.c
++++ b/drivers/gpu/drm/exynos/exynos_drm_drv.c
+@@ -167,6 +167,9 @@ static struct exynos_drm_driver_info exynos_drm_drivers[] = {
+ 	}, {
+ 		DRV_PTR(decon_driver, CONFIG_DRM_EXYNOS7_DECON),
+ 		DRM_COMPONENT_DRIVER
++	}, {
++		DRV_PTR(exynos9820_decon_driver, CONFIG_DRM_EXYNOS9820_DECON),
++		DRM_COMPONENT_DRIVER
+ 	}, {
+ 		DRV_PTR(mixer_driver, CONFIG_DRM_EXYNOS_MIXER),
+ 		DRM_COMPONENT_DRIVER
+diff --git a/drivers/gpu/drm/exynos/exynos_drm_drv.h b/drivers/gpu/drm/exynos/exynos_drm_drv.h
+index b126cd12994..974cc1d3ea9 100644
+--- a/drivers/gpu/drm/exynos/exynos_drm_drv.h
++++ b/drivers/gpu/drm/exynos/exynos_drm_drv.h
+@@ -248,6 +248,7 @@ static inline int exynos_drm_check_fimc_device(struct device *dev)
+ 
+ extern struct platform_driver fimd_driver;
+ extern struct platform_driver exynos5433_decon_driver;
++extern struct platform_driver exynos9820_decon_driver;
+ extern struct platform_driver decon_driver;
+ extern struct platform_driver dp_driver;
+ extern struct platform_driver dsi_driver;

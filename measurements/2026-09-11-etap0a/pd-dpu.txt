@@ -1,0 +1,16 @@
+143099 ms
+on
+/devices/platform/190a0000.sysmmu
+/devices/platform/190b0000.sysmmu
+/devices/platform/190c0000.sysmmu
+/devices/platform/dbgdev-pd-dpu
+State          Time Spent(ms)
+S0             320224
+pd-isppre
+320224 ms
+active_time
+current_state
+devices
+idle_states
+sub_domains
+total_idle_time

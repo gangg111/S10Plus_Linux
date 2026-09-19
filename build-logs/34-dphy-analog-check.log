@@ -1,0 +1,15 @@
+  STYLE   ./Documentation/devicetree/bindings
+  DTEX    Documentation/devicetree/bindings/display/samsung/samsung,exynos9820-dsim.example.dts
+  DTC [C] Documentation/devicetree/bindings/display/samsung/samsung,exynos9820-dsim.example.dtb
+BINDING_EXIT=0
+  UPD     include/config/kernel.release
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+DTBS_EXIT=0
+# Bloki analogowe D-PHY - bramki
+# baza: linux@1200d84f4c0a + patche 0001-0017
+
+## kompilacja DSIM (i DECON dla pewnosci):
+   exynos9820_drm_dsim.c EXIT=0  uwagi z pliku: 0  obiekt: 13472 B
+   exynos9820_drm_decon.c EXIT=0  uwagi z pliku: 0  obiekt: 18696 B
+
+## dt_binding_check + CHECK_DTBS: patrz wyzej w tym logu (EXIT=0)

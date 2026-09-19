@@ -1,0 +1,964 @@
+From d2c830c2cd6d18ef1c742e74a440bfa9e27bc6e2 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sat, 19 Sep 2026 00:03:27 +0200
+Subject: [PATCH 3/8] clk: exynos: add the Exynos9820 clock driver
+
+A boot loader needs far less of this SoC's clock tree than an operating system
+does: a console and a way to read storage.  So three of the eight CMUs are
+described here, and only the paths that lead to those two things: CMU_TOP for
+the PLLs and the dividers every other block is fed from, CMU_PERIC0 for the
+debug UART, and CMU_FSYS1 for the embedded UFS.  The card UFS, MMC, PCIe, USB,
+display and audio paths are deliberately absent, because nothing in the boot
+path touches them.
+
+Every offset is the one the Linux driver for this SoC uses, where each is
+checked against the vendor's own register map by a gate.
+
+Note that the PLLs are given their CON3 offset, not CON0.  The PLL driver reads
+the M, P and S coefficients straight from the offset it is handed, and those
+live in CON3; CON0 next to it is the control and mux register.  The vendor map
+shows the pairing on a PLL where it happens to name both registers,
+PLL_CON0_PLL_AUD0 at 0x120 and PLL_CON3_PLL_AUD0 at 0x12c.  Handing over CON0
+does not fail loudly, it just produces nonsense rates, so it is worth stating.
+
+The bindings header comes along because Exynos9820 is not in the upstream device
+tree collection yet; once it lands there, this copy goes away with the usual
+dts/upstream sync.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/clk/exynos/Kconfig                    |   9 +
+ drivers/clk/exynos/Makefile                   |   1 +
+ drivers/clk/exynos/clk-exynos9820.c           | 322 ++++++++++
+ .../dt-bindings/clock/samsung,exynos9820.h    | 564 ++++++++++++++++++
+ 4 files changed, 896 insertions(+)
+ create mode 100644 drivers/clk/exynos/clk-exynos9820.c
+ create mode 100644 include/dt-bindings/clock/samsung,exynos9820.h
+
+diff --git a/drivers/clk/exynos/Kconfig b/drivers/clk/exynos/Kconfig
+index dcecbd51..fff16dad 100644
+--- a/drivers/clk/exynos/Kconfig
++++ b/drivers/clk/exynos/Kconfig
+@@ -30,3 +30,12 @@ config CLK_EXYNOS850
+ 	  on Samsung Exynos850 SoC.
+ 
+ endmenu
++
++config CLK_EXYNOS9820
++	bool "Samsung Exynos9820 clock driver"
++	depends on ARCH_EXYNOS && CLK
++	select CLK_CCF
++	help
++	  Support the CMU_TOP, CMU_PERIC0 and CMU_FSYS1 clock blocks of the
++	  Samsung Exynos9820 SoC, which is what the console and the embedded
++	  UFS are fed from.
+diff --git a/drivers/clk/exynos/Makefile b/drivers/clk/exynos/Makefile
+index f5d27d87..40acc869 100644
+--- a/drivers/clk/exynos/Makefile
++++ b/drivers/clk/exynos/Makefile
+@@ -11,3 +11,4 @@ obj-$(CONFIG_$(PHASE_)CLK_CCF)	+= clk.o clk-pll.o
+ obj-$(CONFIG_CLK_EXYNOS7420)		+= clk-exynos7420.o
+ obj-$(CONFIG_CLK_EXYNOS7870)		+= clk-exynos7870.o
+ obj-$(CONFIG_CLK_EXYNOS850)		+= clk-exynos850.o
++obj-$(CONFIG_CLK_EXYNOS9820)	+= clk-exynos9820.o
+diff --git a/drivers/clk/exynos/clk-exynos9820.c b/drivers/clk/exynos/clk-exynos9820.c
+new file mode 100644
+index 00000000..5e9e8f69
+--- /dev/null
++++ b/drivers/clk/exynos/clk-exynos9820.c
+@@ -0,0 +1,322 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Samsung Exynos9820 clock driver.
++ *
++ * Copyright (c) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * A boot loader needs far less of this SoC's clock tree than an operating
++ * system does: a console and a way to read storage.  So only three of the eight
++ * CMUs are described here, and only the paths that lead to those two things:
++ *
++ *   CMU_TOP     the PLLs and the dividers every other block is fed from
++ *   CMU_PERIC0  the debug UART, which is the console
++ *   CMU_FSYS1   the embedded UFS, which is where the kernel is read from
++ *
++ * Every offset below was taken from the Linux driver this project wrote for the
++ * same SoC, where each one is checked against the vendor's own register map
++ * (cmucal) by a gate.  The card UFS, MMC, PCIe, USB, display and audio paths are
++ * deliberately absent: nothing in the boot path touches them.
++ */
++
++#include <dm.h>
++#include <asm/io.h>
++#include <dt-bindings/clock/samsung,exynos9820.h>
++#include "clk.h"
++
++/* The order here only has to be stable; it is not tied to the device tree. */
++enum exynos9820_cmu_id {
++	CMU_TOP,
++	CMU_PERIC0,
++	CMU_FSYS1,
++};
++
++/*
++ * The oscillator is looked up by the name of its device tree node, which in
++ * this project's board tree is "osc-clock".  Upstream Exynos trees tend to call
++ * it "clock-oscclk"; a tree that does so needs this string changed to match, or
++ * every mux below loses its first parent.
++ */
++#define OSCCLK	"osc-clock"
++
++/* ---- CMU_TOP (0x1a330000) ------------------------------------------------ */
++
++/*
++ * PLL_CON3 holds the M, P and S fields; PLL_CON0 next to it is the control and
++ * mux register.  The PLL driver reads the coefficients straight from the offset
++ * it is given, so passing CON0 here silently produces nonsense rates.  The
++ * vendor map shows the pairing on a PLL where it names both registers:
++ * PLL_CON0_PLL_AUD0 is 0x120 and PLL_CON3_PLL_AUD0 is 0x12c.
++ */
++#define PLL_CON3_APLL_SHARED0			0x010c
++#define PLL_CON3_APLL_SHARED1			0x012c
++#define PLL_CON3_PLL_G3D			0x014c
++#define PLL_CON3_PLL_SHARED0			0x016c
++#define PLL_CON3_PLL_SHARED1			0x018c
++#define PLL_CON3_PLL_SHARED2			0x01ac
++#define PLL_CON3_PLL_SHARED3			0x01cc
++#define PLL_CON3_PLL_SHARED4			0x01ec
++#define CLK_CON_MUX_MUX_CLKCMU_FSYS1_BUS	0x1068
++#define CLK_CON_MUX_MUX_CLKCMU_FSYS1_UFS_EMBD	0x1078
++#define CLK_CON_MUX_MUX_CLKCMU_PERIC0_BUS	0x10b8
++#define CLK_CON_MUX_MUX_CLKCMU_PERIC0_IP	0x10bc
++#define CLK_CON_MUX_MUX_PLL_SHARED0		0x10dc
++#define CLK_CON_MUX_MUX_PLL_SHARED1		0x10e0
++#define CLK_CON_DIV_CLKCMU_FSYS1_UFS_EMBD	0x1864
++#define CLK_CON_DIV_CLKCMU_PERIC0_BUS		0x18a4
++#define CLK_CON_DIV_CLKCMU_PERIC0_IP		0x18a8
++#define CLK_CON_DIV_PLL_SHARED0_DIV2		0x18cc
++#define CLK_CON_DIV_PLL_SHARED0_DIV4		0x18d4
++#define CLK_CON_DIV_PLL_SHARED2_DIV2		0x18e4
++#define CLK_CON_DIV_PLL_SHARED3_DIV2		0x18e8
++#define CLK_CON_DIV_PLL_SHARED4_DIV2		0x18ec
++#define CLK_CON_GAT_CLKCMU_FSYS1_BUS		0x2000
++#define CLK_CON_GAT_GATE_CLKCMU_FSYS1_UFS_EMBD	0x2080
++#define CLK_CON_GAT_GATE_CLKCMU_PERIC0_BUS	0x20bc
++#define CLK_CON_GAT_GATE_CLKCMU_PERIC0_IP	0x20c0
++
++static const struct samsung_pll_clock top_pll_clks[] = {
++	PLL(pll_0822x, CLK_FOUT_APLL_SHARED0, "fout_apll_shared0", OSCCLK,
++	    PLL_CON3_APLL_SHARED0),
++	PLL(pll_0822x, CLK_FOUT_APLL_SHARED1, "fout_apll_shared1", OSCCLK,
++	    PLL_CON3_APLL_SHARED1),
++	PLL(pll_0818x, CLK_FOUT_PLL_G3D, "fout_pll_g3d", OSCCLK,
++	    PLL_CON3_PLL_G3D),
++	PLL(pll_0817x, CLK_FOUT_PLL_SHARED0, "fout_pll_shared0", OSCCLK,
++	    PLL_CON3_PLL_SHARED0),
++	PLL(pll_0817x, CLK_FOUT_PLL_SHARED1, "fout_pll_shared1", OSCCLK,
++	    PLL_CON3_PLL_SHARED1),
++	PLL(pll_0818x, CLK_FOUT_PLL_SHARED2, "fout_pll_shared2", OSCCLK,
++	    PLL_CON3_PLL_SHARED2),
++	PLL(pll_0818x, CLK_FOUT_PLL_SHARED3, "fout_pll_shared3", OSCCLK,
++	    PLL_CON3_PLL_SHARED3),
++	PLL(pll_1018x, CLK_FOUT_PLL_SHARED4, "fout_pll_shared4", OSCCLK,
++	    PLL_CON3_PLL_SHARED4),
++};
++
++PNAME(mout_pll_shared0_p)	= { "fout_pll_shared0", "fout_apll_shared0" };
++PNAME(mout_pll_shared1_p)	= { "fout_pll_shared1", "fout_apll_shared1" };
++PNAME(mout_cmu_fsys1_bus_p)	= { "dout_pll_shared0_div4",
++				    "dout_pll_shared2_div2",
++				    "dout_pll_shared4_div2",
++				    "dout_pll_shared3_div2" };
++PNAME(mout_cmu_fsys1_ufs_embd_p) = { OSCCLK, "dout_pll_shared0_div4",
++				     "dout_pll_shared2_div2",
++				     "dout_pll_shared4_div2" };
++PNAME(mout_cmu_peric0_bus_p)	= { "dout_pll_shared0_div4",
++				    "dout_pll_shared2_div2" };
++
++static const struct samsung_mux_clock top_mux_clks[] = {
++	MUX(CLK_MOUT_PLL_SHARED0, "mout_pll_shared0", mout_pll_shared0_p,
++	    CLK_CON_MUX_MUX_PLL_SHARED0, 0, 1),
++	MUX(CLK_MOUT_PLL_SHARED1, "mout_pll_shared1", mout_pll_shared1_p,
++	    CLK_CON_MUX_MUX_PLL_SHARED1, 0, 1),
++	MUX(CLK_MOUT_CMU_FSYS1_BUS, "mout_cmu_fsys1_bus", mout_cmu_fsys1_bus_p,
++	    CLK_CON_MUX_MUX_CLKCMU_FSYS1_BUS, 0, 2),
++	MUX(CLK_MOUT_CMU_FSYS1_UFS_EMBD, "mout_cmu_fsys1_ufs_embd",
++	    mout_cmu_fsys1_ufs_embd_p, CLK_CON_MUX_MUX_CLKCMU_FSYS1_UFS_EMBD,
++	    0, 2),
++	MUX(CLK_MOUT_CMU_PERIC0_BUS, "mout_cmu_peric0_bus",
++	    mout_cmu_peric0_bus_p, CLK_CON_MUX_MUX_CLKCMU_PERIC0_BUS, 0, 1),
++	MUX(CLK_MOUT_CMU_PERIC0_IP, "mout_cmu_peric0_ip",
++	    mout_cmu_peric0_bus_p, CLK_CON_MUX_MUX_CLKCMU_PERIC0_IP, 0, 1),
++};
++
++static const struct samsung_div_clock top_div_clks[] = {
++	DIV(CLK_DOUT_PLL_SHARED0_DIV2, "dout_pll_shared0_div2",
++	    "mout_pll_shared0", CLK_CON_DIV_PLL_SHARED0_DIV2, 0, 1),
++	DIV(CLK_DOUT_PLL_SHARED0_DIV4, "dout_pll_shared0_div4",
++	    "dout_pll_shared0_div2", CLK_CON_DIV_PLL_SHARED0_DIV4, 0, 1),
++	DIV(CLK_DOUT_PLL_SHARED2_DIV2, "dout_pll_shared2_div2",
++	    "fout_pll_shared2", CLK_CON_DIV_PLL_SHARED2_DIV2, 0, 1),
++	DIV(CLK_DOUT_PLL_SHARED3_DIV2, "dout_pll_shared3_div2",
++	    "fout_pll_shared3", CLK_CON_DIV_PLL_SHARED3_DIV2, 0, 1),
++	DIV(CLK_DOUT_PLL_SHARED4_DIV2, "dout_pll_shared4_div2",
++	    "fout_pll_shared4", CLK_CON_DIV_PLL_SHARED4_DIV2, 0, 1),
++	DIV(CLK_DOUT_CMU_FSYS1_UFS_EMBD, "dout_cmu_fsys1_ufs_embd",
++	    "gout_cmu_fsys1_ufs_embd", CLK_CON_DIV_CLKCMU_FSYS1_UFS_EMBD, 0, 3),
++	DIV(CLK_DOUT_CMU_PERIC0_BUS, "dout_cmu_peric0_bus",
++	    "gout_cmu_peric0_bus", CLK_CON_DIV_CLKCMU_PERIC0_BUS, 0, 4),
++	DIV(CLK_DOUT_CMU_PERIC0_IP, "dout_cmu_peric0_ip",
++	    "gout_cmu_peric0_ip", CLK_CON_DIV_CLKCMU_PERIC0_IP, 0, 4),
++};
++
++static const struct samsung_gate_clock top_gate_clks[] = {
++	GATE(CLK_GOUT_CMU_FSYS1_BUS, "gout_cmu_fsys1_bus", "mout_cmu_fsys1_bus",
++	     CLK_CON_GAT_CLKCMU_FSYS1_BUS, 21, CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_CMU_FSYS1_UFS_EMBD, "gout_cmu_fsys1_ufs_embd",
++	     "mout_cmu_fsys1_ufs_embd", CLK_CON_GAT_GATE_CLKCMU_FSYS1_UFS_EMBD,
++	     21, CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_CMU_PERIC0_BUS, "gout_cmu_peric0_bus",
++	     "mout_cmu_peric0_bus", CLK_CON_GAT_GATE_CLKCMU_PERIC0_BUS, 21,
++	     CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_CMU_PERIC0_IP, "gout_cmu_peric0_ip", "mout_cmu_peric0_ip",
++	     CLK_CON_GAT_GATE_CLKCMU_PERIC0_IP, 21, CLK_IS_CRITICAL, 0),
++};
++
++static const struct samsung_clk_group top_cmu_clks[] = {
++	{ S_CLK_PLL, top_pll_clks, ARRAY_SIZE(top_pll_clks) },
++	{ S_CLK_MUX, top_mux_clks, ARRAY_SIZE(top_mux_clks) },
++	{ S_CLK_DIV, top_div_clks, ARRAY_SIZE(top_div_clks) },
++	{ S_CLK_GATE, top_gate_clks, ARRAY_SIZE(top_gate_clks) },
++};
++
++static int exynos9820_cmu_top_probe(struct udevice *dev)
++{
++	return samsung_cmu_register_one(dev, CMU_TOP, top_cmu_clks,
++					ARRAY_SIZE(top_cmu_clks));
++}
++
++static const struct udevice_id exynos9820_cmu_top_ids[] = {
++	{ .compatible = "samsung,exynos9820-cmu-top" },
++	{ }
++};
++
++SAMSUNG_CLK_OPS(exynos9820_cmu_top, CMU_TOP);
++
++U_BOOT_DRIVER(exynos9820_cmu_top) = {
++	.name		= "exynos9820-cmu-top",
++	.id		= UCLASS_CLK,
++	.of_match	= exynos9820_cmu_top_ids,
++	.ops		= &exynos9820_cmu_top_clk_ops,
++	.probe		= exynos9820_cmu_top_probe,
++	.flags		= DM_FLAG_PRE_RELOC,
++};
++
++/* ---- CMU_PERIC0 (0x10400000) --------------------------------------------- */
++
++#define PLL_CON0_MUX_CLKCMU_PERIC0_BUS_USER	0x0100
++#define PLL_CON0_MUX_CLKCMU_PERIC0_UART_DBG	0x0120
++#define CLK_CON_DIV_DIV_CLK_PERIC0_UART_DBG	0x1800
++#define CLK_CON_GAT_UART_DBG_IPCLK		0x205c
++#define CLK_CON_GAT_UART_DBG_PCLK		0x2060
++
++PNAME(mout_peric0_bus_user_p)	= { OSCCLK, "dout_cmu_peric0_bus" };
++PNAME(mout_peric0_uart_dbg_p)	= { OSCCLK, "dout_cmu_peric0_ip" };
++
++static const struct samsung_mux_clock peric0_mux_clks[] = {
++	MUX(CLK_MOUT_PERIC0_BUS_USER, "mout_peric0_bus_user",
++	    mout_peric0_bus_user_p, PLL_CON0_MUX_CLKCMU_PERIC0_BUS_USER, 4, 1),
++	MUX(CLK_MOUT_PERIC0_UART_DBG, "mout_peric0_uart_dbg",
++	    mout_peric0_uart_dbg_p, PLL_CON0_MUX_CLKCMU_PERIC0_UART_DBG, 4, 1),
++};
++
++static const struct samsung_div_clock peric0_div_clks[] = {
++	DIV_F(CLK_DOUT_PERIC0_UART_DBG, "dout_peric0_uart_dbg",
++	      "mout_peric0_uart_dbg", CLK_CON_DIV_DIV_CLK_PERIC0_UART_DBG, 0, 4,
++	      CLK_SET_RATE_PARENT, 0),
++};
++
++static const struct samsung_gate_clock peric0_gate_clks[] = {
++	GATE(CLK_GOUT_PERIC0_UART_DBG_IPCLK, "gout_peric0_uart_dbg_ipclk",
++	     "dout_peric0_uart_dbg", CLK_CON_GAT_UART_DBG_IPCLK, 21,
++	     CLK_SET_RATE_PARENT, 0),
++	GATE(CLK_GOUT_PERIC0_UART_DBG_PCLK, "gout_peric0_uart_dbg_pclk",
++	     "mout_peric0_bus_user", CLK_CON_GAT_UART_DBG_PCLK, 21, 0, 0),
++};
++
++static const struct samsung_clk_group peric0_cmu_clks[] = {
++	{ S_CLK_MUX, peric0_mux_clks, ARRAY_SIZE(peric0_mux_clks) },
++	{ S_CLK_DIV, peric0_div_clks, ARRAY_SIZE(peric0_div_clks) },
++	{ S_CLK_GATE, peric0_gate_clks, ARRAY_SIZE(peric0_gate_clks) },
++};
++
++static int exynos9820_cmu_peric0_probe(struct udevice *dev)
++{
++	return samsung_register_cmu(dev, CMU_PERIC0, peric0_cmu_clks,
++				    exynos9820_cmu_top);
++}
++
++static const struct udevice_id exynos9820_cmu_peric0_ids[] = {
++	{ .compatible = "samsung,exynos9820-cmu-peric0" },
++	{ }
++};
++
++SAMSUNG_CLK_OPS(exynos9820_cmu_peric0, CMU_PERIC0);
++
++U_BOOT_DRIVER(exynos9820_cmu_peric0) = {
++	.name		= "exynos9820-cmu-peric0",
++	.id		= UCLASS_CLK,
++	.of_match	= exynos9820_cmu_peric0_ids,
++	.ops		= &exynos9820_cmu_peric0_clk_ops,
++	.probe		= exynos9820_cmu_peric0_probe,
++	.flags		= DM_FLAG_PRE_RELOC,
++};
++
++/* ---- CMU_FSYS1 (0x13c00000) ---------------------------------------------- */
++
++#define PLL_CON0_MUX_CLKCMU_FSYS1_BUS_USER	0x0100
++#define PLL_CON0_MUX_CLKCMU_FSYS1_UFS_EMBD_USER	0x0180
++#define PLL_CON3_PLL_MMC			0x01ac
++#define CLK_CON_MUX_MUX_CLK_FSYS1_BUS		0x1000
++#define CLK_CON_DIV_DIV_CLK_FSYS1_BUS		0x1800
++#define CLK_CON_GAT_UFS_EMBD_I_ACLK		0x2094
++#define CLK_CON_GAT_UFS_EMBD_I_CLK_UNIPRO	0x2098
++#define CLK_CON_GAT_UFS_EMBD_I_FMP_CLK		0x209c
++
++static const struct samsung_pll_clock fsys1_pll_clks[] = {
++	PLL(pll_0831x, CLK_FOUT_PLL_MMC, "fout_pll_mmc", OSCCLK,
++	    PLL_CON3_PLL_MMC),
++};
++
++PNAME(mout_fsys1_bus_user_p)	= { OSCCLK, "gout_cmu_fsys1_bus" };
++PNAME(mout_fsys1_bus_p)		= { "mout_fsys1_bus_user", "fout_pll_mmc" };
++PNAME(mout_fsys1_ufs_embd_user_p) = { OSCCLK, "dout_cmu_fsys1_ufs_embd" };
++
++static const struct samsung_mux_clock fsys1_mux_clks[] = {
++	MUX(CLK_MOUT_FSYS1_BUS_USER, "mout_fsys1_bus_user",
++	    mout_fsys1_bus_user_p, PLL_CON0_MUX_CLKCMU_FSYS1_BUS_USER, 4, 1),
++	MUX(CLK_MOUT_FSYS1_BUS, "mout_fsys1_bus", mout_fsys1_bus_p,
++	    CLK_CON_MUX_MUX_CLK_FSYS1_BUS, 0, 1),
++	MUX(CLK_MOUT_FSYS1_UFS_EMBD_USER, "mout_fsys1_ufs_embd_user",
++	    mout_fsys1_ufs_embd_user_p,
++	    PLL_CON0_MUX_CLKCMU_FSYS1_UFS_EMBD_USER, 4, 1),
++};
++
++static const struct samsung_div_clock fsys1_div_clks[] = {
++	DIV(CLK_DOUT_FSYS1_BUS, "dout_fsys1_bus", "mout_fsys1_bus",
++	    CLK_CON_DIV_DIV_CLK_FSYS1_BUS, 0, 4),
++};
++
++/*
++ * The three clocks the UFS host needs: the bus clock it is driven by, the
++ * UniPro link clock, and the clock of the inline encryption block, which sits
++ * in the same power island and is gated separately.
++ */
++static const struct samsung_gate_clock fsys1_gate_clks[] = {
++	GATE(CLK_GOUT_FSYS1_UFS_EMBD_I_ACLK, "gout_fsys1_ufs_embd_i_aclk",
++	     "dout_fsys1_bus", CLK_CON_GAT_UFS_EMBD_I_ACLK, 21, 0, 0),
++	GATE(CLK_GOUT_FSYS1_UFS_EMBD_I_CLK_UNIPRO,
++	     "gout_fsys1_ufs_embd_i_clk_unipro", "mout_fsys1_ufs_embd_user",
++	     CLK_CON_GAT_UFS_EMBD_I_CLK_UNIPRO, 21, 0, 0),
++	GATE(CLK_GOUT_FSYS1_UFS_EMBD_I_FMP_CLK, "gout_fsys1_ufs_embd_i_fmp_clk",
++	     "dout_fsys1_bus", CLK_CON_GAT_UFS_EMBD_I_FMP_CLK, 21, 0, 0),
++};
++
++static const struct samsung_clk_group fsys1_cmu_clks[] = {
++	{ S_CLK_PLL, fsys1_pll_clks, ARRAY_SIZE(fsys1_pll_clks) },
++	{ S_CLK_MUX, fsys1_mux_clks, ARRAY_SIZE(fsys1_mux_clks) },
++	{ S_CLK_DIV, fsys1_div_clks, ARRAY_SIZE(fsys1_div_clks) },
++	{ S_CLK_GATE, fsys1_gate_clks, ARRAY_SIZE(fsys1_gate_clks) },
++};
++
++static int exynos9820_cmu_fsys1_probe(struct udevice *dev)
++{
++	return samsung_register_cmu(dev, CMU_FSYS1, fsys1_cmu_clks,
++				    exynos9820_cmu_top);
++}
++
++static const struct udevice_id exynos9820_cmu_fsys1_ids[] = {
++	{ .compatible = "samsung,exynos9820-cmu-fsys1" },
++	{ }
++};
++
++SAMSUNG_CLK_OPS(exynos9820_cmu_fsys1, CMU_FSYS1);
++
++U_BOOT_DRIVER(exynos9820_cmu_fsys1) = {
++	.name		= "exynos9820-cmu-fsys1",
++	.id		= UCLASS_CLK,
++	.of_match	= exynos9820_cmu_fsys1_ids,
++	.ops		= &exynos9820_cmu_fsys1_clk_ops,
++	.probe		= exynos9820_cmu_fsys1_probe,
++	.flags		= DM_FLAG_PRE_RELOC,
++};
+diff --git a/include/dt-bindings/clock/samsung,exynos9820.h b/include/dt-bindings/clock/samsung,exynos9820.h
+new file mode 100644
+index 00000000..22a578cd
+--- /dev/null
++++ b/include/dt-bindings/clock/samsung,exynos9820.h
+@@ -0,0 +1,564 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
++/*
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * Device Tree binding constants for the Exynos9820 clock controller.
++ *
++ * The numbering follows the vendor clock tables: within every CMU the
++ * identifiers run from 1 in the order PLL, fixed rate, mux, divider,
++ * fixed factor, gate, and inside each of those by register offset.
++ */
++
++#ifndef _DT_BINDINGS_CLOCK_EXYNOS_9820_H
++#define _DT_BINDINGS_CLOCK_EXYNOS_9820_H
++
++/* CMU_PERIS */
++#define CLK_MOUT_PERIS_BUS_USER									1
++#define CLK_GOUT_PERIS_OTP_CON_BIRA_I_OSCCLK							2
++#define CLK_GOUT_PERIS_OTP_CON_BISR_I_OSCCLK							3
++#define CLK_GOUT_PERIS_OTP_CON_TOP_I_OSCCLK							4
++#define CLK_GOUT_PERIS_PERIS_CMU_PERIS_PCLK							5
++#define CLK_GOUT_PERIS_CLK_PERIS_OSCCLK_CLK							6
++#define CLK_GOUT_PERIS_AD_AXI_P_PERIS_ACLKM							7
++#define CLK_GOUT_PERIS_AD_AXI_P_PERIS_ACLKS							8
++#define CLK_GOUT_PERIS_AXI2APB_PERISP_ACLK							9
++#define CLK_GOUT_PERIS_D_TZPC_PERIS_PCLK							10
++#define CLK_GOUT_PERIS_GIC_CLK									11
++#define CLK_GOUT_PERIS_LHM_AXI_P_PERIS_I_CLK							12
++#define CLK_GOUT_PERIS_MCT_PCLK									13
++#define CLK_GOUT_PERIS_OTP_CON_BIRA_PCLK							14
++#define CLK_GOUT_PERIS_OTP_CON_BISR_PCLK							15
++#define CLK_GOUT_PERIS_OTP_CON_TOP_PCLK								16
++#define CLK_GOUT_PERIS_CLK_PERIS_BUSP_CLK							17
++#define CLK_GOUT_PERIS_CLK_PERIS_GIC_CLK							18
++#define CLK_GOUT_PERIS_SYSREG_PERIS_PCLK							19
++#define CLK_GOUT_PERIS_TMU_SUB_PCLK								20
++#define CLK_GOUT_PERIS_TMU_TOP_PCLK								21
++#define CLK_GOUT_PERIS_WDT_CLUSTER0_PCLK							22
++#define CLK_GOUT_PERIS_WDT_CLUSTER2_PCLK							23
++#define CLK_GOUT_PERIS_XIU_P_PERIS_ACLK								24
++
++/* CMU_PERIC0 */
++#define CLK_MOUT_PERIC0_BUS_USER								1
++#define CLK_MOUT_PERIC0_UART_DBG								2
++#define CLK_MOUT_PERIC0_USI13_USI_USER								3
++#define CLK_MOUT_PERIC0_USI04_USI_USER								4
++#define CLK_MOUT_PERIC0_USI00_USI_USER								5
++#define CLK_MOUT_PERIC0_USI01_USI_USER								6
++#define CLK_MOUT_PERIC0_USI02_USI_USER								7
++#define CLK_MOUT_PERIC0_USI03_USI_USER								8
++#define CLK_MOUT_PERIC0_USI05_USI_USER								9
++#define CLK_MOUT_PERIC0_USI12_USI_USER								10
++#define CLK_MOUT_PERIC0_USI14_USI_USER								11
++#define CLK_MOUT_PERIC0_USI15_USI_USER								12
++#define CLK_MOUT_PERIC0_USI_I2C_USER								13
++#define CLK_DOUT_PERIC0_UART_DBG								14
++#define CLK_DOUT_PERIC0_USI00_USI								15
++#define CLK_DOUT_PERIC0_USI01_USI								16
++#define CLK_DOUT_PERIC0_USI02_USI								17
++#define CLK_DOUT_PERIC0_USI03_USI								18
++#define CLK_DOUT_PERIC0_USI04_USI								19
++#define CLK_DOUT_PERIC0_USI05_USI								20
++#define CLK_DOUT_PERIC0_USI12_USI								21
++#define CLK_DOUT_PERIC0_USI13_USI								22
++#define CLK_DOUT_PERIC0_USI14_USI								23
++#define CLK_DOUT_PERIC0_USI15_USI								24
++#define CLK_DOUT_PERIC0_USI_I2C									25
++#define CLK_GOUT_PERIC0_PERIC0_CMU_PERIC0_PCLK							26
++#define CLK_GOUT_PERIC0_CLK_PERIC0_OSCCLK_CLK							27
++#define CLK_GOUT_PERIC0_AXI2APB_PERIC0P0_ACLK							28
++#define CLK_GOUT_PERIC0_AXI2APB_PERIC0P1_ACLK							29
++#define CLK_GOUT_PERIC0_D_TZPC_PERIC0_PCLK							30
++#define CLK_GOUT_PERIC0_GPIO_PERIC0_PCLK							31
++#define CLK_GOUT_PERIC0_LHM_AXI_P_PERIC0_I_CLK							32
++#define CLK_GOUT_PERIC0_PWM_I_PCLK_S0								33
++#define CLK_GOUT_PERIC0_CLK_PERIC0_BUSP_CLK							34
++#define CLK_GOUT_PERIC0_CLK_PERIC0_UART_DBG_CLK							35
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI00_USI_CLK						36
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI01_USI_CLK						37
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI02_USI_CLK						38
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI03_USI_CLK						39
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI04_USI_CLK						40
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI05_USI_CLK						41
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI12_USI_CLK						42
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI13_USI_CLK						43
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI14_USI_CLK						44
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI15_USI_CLK						45
++#define CLK_GOUT_PERIC0_CLK_PERIC0_USI_I2C_CLK							46
++#define CLK_GOUT_PERIC0_SYSREG_PERIC0_PCLK							47
++#define CLK_GOUT_PERIC0_UART_DBG_IPCLK								48
++#define CLK_GOUT_PERIC0_UART_DBG_PCLK								49
++#define CLK_GOUT_PERIC0_USI00_I2C_IPCLK								50
++#define CLK_GOUT_PERIC0_USI00_I2C_PCLK								51
++#define CLK_GOUT_PERIC0_USI00_USI_IPCLK								52
++#define CLK_GOUT_PERIC0_USI00_USI_PCLK								53
++#define CLK_GOUT_PERIC0_USI01_I2C_IPCLK								54
++#define CLK_GOUT_PERIC0_USI01_I2C_PCLK								55
++#define CLK_GOUT_PERIC0_USI01_USI_IPCLK								56
++#define CLK_GOUT_PERIC0_USI01_USI_PCLK								57
++#define CLK_GOUT_PERIC0_USI02_I2C_IPCLK								58
++#define CLK_GOUT_PERIC0_USI02_I2C_PCLK								59
++#define CLK_GOUT_PERIC0_USI02_USI_IPCLK								60
++#define CLK_GOUT_PERIC0_USI02_USI_PCLK								61
++#define CLK_GOUT_PERIC0_USI03_I2C_IPCLK								62
++#define CLK_GOUT_PERIC0_USI03_I2C_PCLK								63
++#define CLK_GOUT_PERIC0_USI03_USI_IPCLK								64
++#define CLK_GOUT_PERIC0_USI03_USI_PCLK								65
++#define CLK_GOUT_PERIC0_USI04_I2C_IPCLK								66
++#define CLK_GOUT_PERIC0_USI04_I2C_PCLK								67
++#define CLK_GOUT_PERIC0_USI04_USI_IPCLK								68
++#define CLK_GOUT_PERIC0_USI04_USI_PCLK								69
++#define CLK_GOUT_PERIC0_USI05_I2C_IPCLK								70
++#define CLK_GOUT_PERIC0_USI05_I2C_PCLK								71
++#define CLK_GOUT_PERIC0_USI05_USI_IPCLK								72
++#define CLK_GOUT_PERIC0_USI05_USI_PCLK								73
++#define CLK_GOUT_PERIC0_USI12_I2C_IPCLK								74
++#define CLK_GOUT_PERIC0_USI12_I2C_PCLK								75
++#define CLK_GOUT_PERIC0_USI12_USI_IPCLK								76
++#define CLK_GOUT_PERIC0_USI12_USI_PCLK								77
++#define CLK_GOUT_PERIC0_USI13_I2C_IPCLK								78
++#define CLK_GOUT_PERIC0_USI13_I2C_PCLK								79
++#define CLK_GOUT_PERIC0_USI13_USI_IPCLK								80
++#define CLK_GOUT_PERIC0_USI13_USI_PCLK								81
++#define CLK_GOUT_PERIC0_USI14_I2C_IPCLK								82
++#define CLK_GOUT_PERIC0_USI14_I2C_PCLK								83
++#define CLK_GOUT_PERIC0_USI14_USI_IPCLK								84
++#define CLK_GOUT_PERIC0_USI14_USI_PCLK								85
++#define CLK_GOUT_PERIC0_USI15_I2C_IPCLK								86
++#define CLK_GOUT_PERIC0_USI15_I2C_PCLK								87
++#define CLK_GOUT_PERIC0_USI15_USI_IPCLK								88
++#define CLK_GOUT_PERIC0_USI15_USI_PCLK								89
++#define CLK_GOUT_PERIC0_XIU_P_PERIC0_ACLK							90
++
++/* CMU_FSYS0A */
++#define CLK_MOUT_FSYS0A_BUS_USER								1
++#define CLK_MOUT_FSYS0A_USB31DRD_USER								2
++#define CLK_MOUT_FSYS0A_USBDP_DEBUG_USER							3
++#define CLK_GOUT_FSYS0A_FSYS0A_CMU_FSYS0A_PCLK							4
++#define CLK_GOUT_FSYS0A_LHM_AXI_P_USB_I_CLK							5
++#define CLK_GOUT_FSYS0A_LHS_AXI_D_USB_I_CLK							6
++#define CLK_GOUT_FSYS0A_CLK_FSYS0A_BUS_CLK							7
++#define CLK_GOUT_FSYS0A_USB31DRD_ACLK_BUS							8
++#define CLK_GOUT_FSYS0A_USB31DRD_ACLK_BUS_PHYCTRL						9
++#define CLK_GOUT_FSYS0A_USB31DRD_ACLK_PHYCTRL							10
++#define CLK_GOUT_FSYS0A_USB31DRD_BUS_CLK_EARLY							11
++#define CLK_GOUT_FSYS0A_USB31DRD_I_USB31DRD_REF_CLK_40						12
++#define CLK_GOUT_FSYS0A_USB31DRD_I_USBDPPHY_REF_SOC_PLL						13
++#define CLK_GOUT_FSYS0A_USB31DRD_I_USBDPPHY_SCL_APB_PCLK					14
++#define CLK_GOUT_FSYS0A_USB31DRD_I_USBPCS_APB_CLK						15
++
++/* CMU_FSYS1 */
++#define CLK_FOUT_PLL_MMC									1
++#define CLK_MOUT_FSYS1_BUS_USER									2
++#define CLK_MOUT_FSYS1_MMC_CARD_USER								3
++#define CLK_MOUT_FSYS1_PCIE_USER								4
++#define CLK_MOUT_FSYS1_UFS_CARD_USER								5
++#define CLK_MOUT_FSYS1_UFS_EMBD_USER								6
++#define CLK_MOUT_FSYS1_BUS									7
++#define CLK_MOUT_FSYS1_MMC_CARD									8
++#define CLK_DOUT_FSYS1_BUS									9
++#define CLK_DOUT_FSYS1_MMC_CARD									10
++#define CLK_GOUT_FSYS1_PCIE_GEN2_PHY_REFCLK_IN							11
++#define CLK_GOUT_FSYS1_ADM_AHB_SSS_HCLKM							12
++#define CLK_GOUT_FSYS1_BAAW_SSS_I_PCLK								13
++#define CLK_GOUT_FSYS1_BTM_FSYS1_I_ACLK								14
++#define CLK_GOUT_FSYS1_BTM_FSYS1_I_PCLK								15
++#define CLK_GOUT_FSYS1_D_TZPC_FSYS1_PCLK							16
++#define CLK_GOUT_FSYS1_FSYS1_CMU_FSYS1_PCLK							17
++#define CLK_GOUT_FSYS1_GPIO_FSYS1_PCLK								18
++#define CLK_GOUT_FSYS1_LHM_AXI_P_FSYS1_I_CLK							19
++#define CLK_GOUT_FSYS1_LHS_ACEL_D_FSYS1_I_CLK							20
++#define CLK_GOUT_FSYS1_MMC_CARD_I_ACLK								21
++#define CLK_GOUT_FSYS1_MMC_CARD_SDCLKIN								22
++#define CLK_GOUT_FSYS1_PCIE_GEN2_DBI_ACLK							23
++#define CLK_GOUT_FSYS1_PCIE_GEN2_IEEE1500_WRAPPER_FOR_PCIEG2_PHY_X1_INST_0_I_SCL_APB_PCLK	24
++#define CLK_GOUT_FSYS1_PCIE_GEN2_MSTR_ACLK							25
++#define CLK_GOUT_FSYS1_PCIE_GEN2_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK				26
++#define CLK_GOUT_FSYS1_PCIE_GEN2_PIPE2_DIGITAL_X1_WRAP_INST_0_I_APB_PCLK_SCL			27
++#define CLK_GOUT_FSYS1_PCIE_GEN2_SLV_ACLK							28
++#define CLK_GOUT_FSYS1_PCIE_IA_GEN2_I_CLK							29
++#define CLK_GOUT_FSYS1_PPMU_FSYS1_ACLK								30
++#define CLK_GOUT_FSYS1_PPMU_FSYS1_PCLK								31
++#define CLK_GOUT_FSYS1_PUF_I_CLK								32
++#define CLK_GOUT_FSYS1_QE_RTIC_ACLK								33
++#define CLK_GOUT_FSYS1_QE_RTIC_PCLK								34
++#define CLK_GOUT_FSYS1_QE_SSS_ACLK								35
++#define CLK_GOUT_FSYS1_QE_SSS_PCLK								36
++#define CLK_GOUT_FSYS1_CLK_FSYS1_BUS_CLK							37
++#define CLK_GOUT_FSYS1_CLK_FSYS1_OSCCLK_CLK							38
++#define CLK_GOUT_FSYS1_RTIC_I_ACLK								39
++#define CLK_GOUT_FSYS1_RTIC_I_PCLK								40
++#define CLK_GOUT_FSYS1_SSS_I_ACLK								41
++#define CLK_GOUT_FSYS1_SSS_I_PCLK								42
++#define CLK_GOUT_FSYS1_SYSMMU_FSYS1_CLK								43
++#define CLK_GOUT_FSYS1_SYSREG_FSYS1_PCLK							44
++#define CLK_GOUT_FSYS1_UFS_CARD_I_ACLK								45
++#define CLK_GOUT_FSYS1_UFS_CARD_I_CLK_UNIPRO							46
++#define CLK_GOUT_FSYS1_UFS_CARD_I_FMP_CLK							47
++#define CLK_GOUT_FSYS1_UFS_EMBD_I_ACLK								48
++#define CLK_GOUT_FSYS1_UFS_EMBD_I_CLK_UNIPRO							49
++#define CLK_GOUT_FSYS1_UFS_EMBD_I_FMP_CLK							50
++#define CLK_GOUT_FSYS1_VGEN_LITE_FSYS1_CLK							51
++#define CLK_GOUT_FSYS1_XIU_D_FSYS1_ACLK								52
++#define CLK_GOUT_FSYS1_XIU_P_FSYS1_ACLK								53
++
++/* CMU_APM */
++#define CLK_DLL_DCO										1
++#define CLK_RCO_APM										2
++#define CLK_OSCCLK_APM										3
++#define CLK_OSCCLK_RCO_APM									4
++#define CLK_MOUT_APM_BUS_USER									5
++#define CLK_MOUT_APM_RCO_USER									6
++#define CLK_MOUT_DLL_USER									7
++#define CLK_MOUT_CMU_CMGP_BUS									8
++#define CLK_MOUT_CMU_VTS_BUS									9
++#define CLK_MOUT_APM_BUS									10
++#define CLK_DOUT_CMU_CMGP_BUS									11
++#define CLK_DOUT_CMU_VTS_BUS									12
++#define CLK_DOUT_APM_BUS									13
++#define CLK_GOUT_APM_APM_CMU_APM_PCLK								14
++#define CLK_GOUT_APM_CLK_APM_OSCCLK_CLK								15
++#define CLK_GOUT_APM_CLK_APM_OSCCLK_RCO_CLK							16
++#define CLK_GOUT_CMU_CMGP_BUS									17
++#define CLK_GOUT_CMU_VTS_BUS									18
++#define CLK_GOUT_APM_APBIF_GPIO_ALIVE_PCLK							19
++#define CLK_GOUT_APM_APBIF_PMU_ALIVE_PCLK							20
++#define CLK_GOUT_APM_APBIF_RTC_PCLK								21
++#define CLK_GOUT_APM_APBIF_TOP_RTC_PCLK								22
++#define CLK_GOUT_APM_DTZPC_APM_PCLK								23
++#define CLK_GOUT_APM_GREBEINTEGRATION_DBGCORE_HCLK						24
++#define CLK_GOUT_APM_GREBEINTEGRATION_HCLK							25
++#define CLK_GOUT_APM_INTMEM_ACLK								26
++#define CLK_GOUT_APM_INTMEM_PCLK								27
++#define CLK_GOUT_APM_LHM_AXI_C_MODEM_I_CLK							28
++#define CLK_GOUT_APM_LHM_AXI_C_VTS_I_CLK							29
++#define CLK_GOUT_APM_LHM_AXI_P_APM_I_CLK							30
++#define CLK_GOUT_APM_LHS_AXI_C_CMGP_I_CLK							31
++#define CLK_GOUT_APM_LHS_AXI_D_APM_I_CLK							32
++#define CLK_GOUT_APM_LHS_AXI_G_DBGCORE_I_CLK							33
++#define CLK_GOUT_APM_LHS_AXI_G_SCAN2DRAM_I_CLK							34
++#define CLK_GOUT_APM_LHS_AXI_LP_VTS_I_CLK							35
++#define CLK_GOUT_APM_MAILBOX_APM_AP_PCLK							36
++#define CLK_GOUT_APM_MAILBOX_APM_CP_PCLK							37
++#define CLK_GOUT_APM_MAILBOX_APM_VTS_PCLK							38
++#define CLK_GOUT_APM_MAILBOX_AP_CP_PCLK								39
++#define CLK_GOUT_APM_MAILBOX_AP_CP_S_PCLK							40
++#define CLK_GOUT_APM_MAILBOX_AP_DBGCORE_PCLK							41
++#define CLK_GOUT_APM_PEM_I_CLK									42
++#define CLK_GOUT_APM_PMU_INTR_GEN_PCLK								43
++#define CLK_GOUT_APM_CLK_APM_BUS_CLK								44
++#define CLK_GOUT_APM_SPEEDY_APM_PCLK								45
++#define CLK_GOUT_APM_SPEEDY_SUB_APM_PCLK							46
++#define CLK_GOUT_APM_SYSREG_APM_PCLK								47
++#define CLK_GOUT_APM_VGEN_LITE_APM_CLK								48
++#define CLK_GOUT_APM_WDT_APM_PCLK								49
++#define CLK_GOUT_APM_XIU_DP_APM_ACLK								50
++
++/* CMU_CMGP */
++#define CLK_OSCCLK_RCO_CMGP									1
++#define CLK_MOUT_CMGP_BUS_USER									2
++#define CLK_MOUT_CMGP_ADC									3
++#define CLK_MOUT_I2C_CMGP0									4
++#define CLK_MOUT_I2C_CMGP1									5
++#define CLK_MOUT_I2C_CMGP2									6
++#define CLK_MOUT_I2C_CMGP3									7
++#define CLK_MOUT_USI_CMGP0									8
++#define CLK_MOUT_USI_CMGP1									9
++#define CLK_MOUT_USI_CMGP2									10
++#define CLK_MOUT_USI_CMGP3									11
++#define CLK_DOUT_CMGP_ADC									12
++#define CLK_DOUT_CMGP_BUS									13
++#define CLK_DOUT_I2C_CMGP0									14
++#define CLK_DOUT_I2C_CMGP1									15
++#define CLK_DOUT_I2C_CMGP2									16
++#define CLK_DOUT_I2C_CMGP3									17
++#define CLK_DOUT_USI_CMGP0									18
++#define CLK_DOUT_USI_CMGP1									19
++#define CLK_DOUT_USI_CMGP2									20
++#define CLK_DOUT_USI_CMGP3									21
++#define CLK_GOUT_CMGP_CMGP_CMU_CMGP_PCLK							22
++#define CLK_GOUT_CMGP_ADC_CMGP_PCLK_S0								23
++#define CLK_GOUT_CMGP_ADC_CMGP_PCLK_S1								24
++#define CLK_GOUT_CMGP_DTZPC_CMGP_PCLK								25
++#define CLK_GOUT_CMGP_GPIO_CMGP_PCLK								26
++#define CLK_GOUT_CMGP_I2C_CMGP0_IPCLK								27
++#define CLK_GOUT_CMGP_I2C_CMGP0_PCLK								28
++#define CLK_GOUT_CMGP_I2C_CMGP1_IPCLK								29
++#define CLK_GOUT_CMGP_I2C_CMGP1_PCLK								30
++#define CLK_GOUT_CMGP_I2C_CMGP2_IPCLK								31
++#define CLK_GOUT_CMGP_I2C_CMGP2_PCLK								32
++#define CLK_GOUT_CMGP_I2C_CMGP3_IPCLK								33
++#define CLK_GOUT_CMGP_I2C_CMGP3_PCLK								34
++#define CLK_GOUT_CMGP_LHM_AXI_C_CMGP_I_CLK							35
++#define CLK_GOUT_CMGP_CLK_CMGP_BUS_CLK								36
++#define CLK_GOUT_CMGP_CLK_CMGP_I2C0_CLK								37
++#define CLK_GOUT_CMGP_CLK_CMGP_I2C1_CLK								38
++#define CLK_GOUT_CMGP_CLK_CMGP_I2C2_CLK								39
++#define CLK_GOUT_CMGP_CLK_CMGP_I2C3_CLK								40
++#define CLK_GOUT_CMGP_CLK_CMGP_OSCCLK_RCO_CLK							41
++#define CLK_GOUT_CMGP_CLK_CMGP_USI0_CLK								42
++#define CLK_GOUT_CMGP_CLK_CMGP_USI1_CLK								43
++#define CLK_GOUT_CMGP_CLK_CMGP_USI2_CLK								44
++#define CLK_GOUT_CMGP_CLK_CMGP_USI3_CLK								45
++#define CLK_GOUT_CMGP_SYSREG_CMGP2APM_PCLK							46
++#define CLK_GOUT_CMGP_SYSREG_CMGP2CP_PCLK							47
++#define CLK_GOUT_CMGP_SYSREG_CMGP2PMU_AP_PCLK							48
++#define CLK_GOUT_CMGP_SYSREG_CMGP_PCLK								49
++#define CLK_GOUT_CMGP_USI_CMGP0_IPCLK								50
++#define CLK_GOUT_CMGP_USI_CMGP0_PCLK								51
++#define CLK_GOUT_CMGP_USI_CMGP1_IPCLK								52
++#define CLK_GOUT_CMGP_USI_CMGP1_PCLK								53
++#define CLK_GOUT_CMGP_USI_CMGP2_IPCLK								54
++#define CLK_GOUT_CMGP_USI_CMGP2_PCLK								55
++#define CLK_GOUT_CMGP_USI_CMGP3_IPCLK								56
++#define CLK_GOUT_CMGP_USI_CMGP3_PCLK								57
++
++/* CMU_DPU */
++#define CLK_MOUT_DPU_BUS_USER									1
++#define CLK_DOUT_DPU_BUSP									2
++#define CLK_GOUT_DPU_DPU_CMU_DPU_PCLK								3
++#define CLK_GOUT_DPU_CLK_DPU_OSCCLK_CLK								4
++#define CLK_GOUT_DPU_AD_APB_DECON0_PCLKM							5
++#define CLK_GOUT_DPU_AD_APB_DECON0_PCLKS							6
++#define CLK_GOUT_DPU_AD_APB_DECON1_PCLKM							7
++#define CLK_GOUT_DPU_AD_APB_DECON1_PCLKS							8
++#define CLK_GOUT_DPU_AD_APB_DECON2_PCLKM							9
++#define CLK_GOUT_DPU_AD_APB_DECON2_PCLKS							10
++#define CLK_GOUT_DPU_AD_APB_DPP_PCLKM								11
++#define CLK_GOUT_DPU_AD_APB_DPP_PCLKS								12
++#define CLK_GOUT_DPU_AD_APB_DPU_DMA_PCLKM							13
++#define CLK_GOUT_DPU_AD_APB_DPU_DMA_PCLKS							14
++#define CLK_GOUT_DPU_AD_APB_DPU_DMA_PGEN_PCLKM							15
++#define CLK_GOUT_DPU_AD_APB_DPU_DMA_PGEN_PCLKS							16
++#define CLK_GOUT_DPU_AD_APB_DPU_WB_MUX_PCLKM							17
++#define CLK_GOUT_DPU_AD_APB_DPU_WB_MUX_PCLKS							18
++#define CLK_GOUT_DPU_AD_APB_MCD_PCLKM								19
++#define CLK_GOUT_DPU_AD_APB_MCD_PCLKS								20
++#define CLK_GOUT_DPU_AD_APB_MIPI_DSIM0_PCLKS							21
++#define CLK_GOUT_DPU_AD_APB_MIPI_DSIM1_PCLKS							22
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD0_PCLKM							23
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD0_PCLKS							24
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD0_S_PCLKM						25
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD0_S_PCLKS						26
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD1_PCLKM							27
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD1_PCLKS							28
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD1_S_PCLKM						29
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD1_S_PCLKS						30
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD2_PCLKM							31
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD2_PCLKS							32
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD2_S_PCLKM						33
++#define CLK_GOUT_DPU_AD_APB_SYSMMU_DPUD2_S_PCLKS						34
++#define CLK_GOUT_DPU_AXI2APB_DPUP0_ACLK								35
++#define CLK_GOUT_DPU_AXI2APB_DPUP1_ACLK								36
++#define CLK_GOUT_DPU_BTM_DPUD0_I_ACLK								37
++#define CLK_GOUT_DPU_BTM_DPUD0_I_PCLK								38
++#define CLK_GOUT_DPU_BTM_DPUD1_I_ACLK								39
++#define CLK_GOUT_DPU_BTM_DPUD1_I_PCLK								40
++#define CLK_GOUT_DPU_BTM_DPUD2_I_ACLK								41
++#define CLK_GOUT_DPU_BTM_DPUD2_I_PCLK								42
++#define CLK_GOUT_DPU_DPU_ACLK_DECON								43
++#define CLK_GOUT_DPU_DPU_ACLK_DMA								44
++#define CLK_GOUT_DPU_DPU_ACLK_DPP								45
++#define CLK_GOUT_DPU_DPU_ACLK_DPU_WB_MUX							46
++#define CLK_GOUT_DPU_D_TZPC_DPU_PCLK								47
++#define CLK_GOUT_DPU_LHM_AXI_P_DPU_I_CLK							48
++#define CLK_GOUT_DPU_LHS_AXI_D0_DPU_I_CLK							49
++#define CLK_GOUT_DPU_LHS_AXI_D1_DPU_I_CLK							50
++#define CLK_GOUT_DPU_LHS_AXI_D2_DPU_I_CLK							51
++#define CLK_GOUT_DPU_PPMU_DPUD0_ACLK								52
++#define CLK_GOUT_DPU_PPMU_DPUD0_PCLK								53
++#define CLK_GOUT_DPU_PPMU_DPUD1_ACLK								54
++#define CLK_GOUT_DPU_PPMU_DPUD1_PCLK								55
++#define CLK_GOUT_DPU_PPMU_DPUD2_ACLK								56
++#define CLK_GOUT_DPU_PPMU_DPUD2_PCLK								57
++#define CLK_GOUT_DPU_CLK_DPU_BUSD_CLK								58
++#define CLK_GOUT_DPU_CLK_DPU_BUSP_CLK								59
++#define CLK_GOUT_DPU_SYSMMU_DPUD0_CLK								60
++#define CLK_GOUT_DPU_SYSMMU_DPUD1_CLK								61
++#define CLK_GOUT_DPU_SYSMMU_DPUD2_CLK								62
++#define CLK_GOUT_DPU_SYSREG_DPU_PCLK								63
++#define CLK_GOUT_DPU_WRAPPER_FOR_S5I6280_HSI_DCPHY_COMBO_TOP_PCLK				64
++#define CLK_GOUT_DPU_XIU_P_DPU_ACLK								65
++
++/* CMU_CMU */
++#define CLK_FOUT_APLL_SHARED0									1
++#define CLK_FOUT_APLL_SHARED1									2
++#define CLK_FOUT_PLL_G3D									3
++#define CLK_FOUT_PLL_SHARED0									4
++#define CLK_FOUT_PLL_SHARED1									5
++#define CLK_FOUT_PLL_SHARED2									6
++#define CLK_FOUT_PLL_SHARED3									7
++#define CLK_FOUT_PLL_SHARED4									8
++#define CLK_MOUT_CMU_CLKCMU_DPU_BUS								9
++#define CLK_MOUT_CMU_APM_BUS									10
++#define CLK_MOUT_CMU_AUD_CPU									11
++#define CLK_MOUT_CMU_BUSC_BUS									12
++#define CLK_MOUT_CMU_CIS_CLK0									13
++#define CLK_MOUT_CMU_CIS_CLK1									14
++#define CLK_MOUT_CMU_CIS_CLK2									15
++#define CLK_MOUT_CMU_CIS_CLK3									16
++#define CLK_MOUT_CMU_CIS_CLK4									17
++#define CLK_MOUT_CMU_CMU_BOOST									18
++#define CLK_MOUT_CMU_CORE_BUS									19
++#define CLK_MOUT_CMU_CPUCL0_DBG_BUS								20
++#define CLK_MOUT_CMU_CPUCL0_SWITCH								21
++#define CLK_MOUT_CMU_CPUCL1_SWITCH								22
++#define CLK_MOUT_CMU_CPUCL2_SWITCH								23
++#define CLK_MOUT_CMU_DPU									24
++#define CLK_MOUT_CMU_DPU_BUS									25
++#define CLK_MOUT_CMU_DSPM_BUS									26
++#define CLK_MOUT_CMU_DSPM_BUS_OTF								27
++#define CLK_MOUT_CMU_DSPS_AUD									28
++#define CLK_MOUT_CMU_FSYS0A_BUS									29
++#define CLK_MOUT_CMU_FSYS0A_USB31DRD								30
++#define CLK_MOUT_CMU_FSYS0A_USBDP_DEBUG								31
++#define CLK_MOUT_CMU_FSYS0_BUS									32
++#define CLK_MOUT_CMU_FSYS0_DPGTC								33
++#define CLK_MOUT_CMU_FSYS0_PCIE									34
++#define CLK_MOUT_CMU_FSYS1_BUS									35
++#define CLK_MOUT_CMU_FSYS1_MMC_CARD								36
++#define CLK_MOUT_CMU_FSYS1_PCIE									37
++#define CLK_MOUT_CMU_FSYS1_UFS_CARD								38
++#define CLK_MOUT_CMU_FSYS1_UFS_EMBD								39
++#define CLK_MOUT_CMU_G2D_G2D									40
++#define CLK_MOUT_CMU_G2D_MSCL									41
++#define CLK_MOUT_CMU_HPM									42
++#define CLK_MOUT_CMU_ISPHQ_BUS									43
++#define CLK_MOUT_CMU_ISPLP_BUS									44
++#define CLK_MOUT_CMU_ISPLP_GDC									45
++#define CLK_MOUT_CMU_ISPPRE_BUS									46
++#define CLK_MOUT_CMU_IVA_BUS									47
++#define CLK_MOUT_CMU_MFC_MFC									48
++#define CLK_MOUT_CMU_MFC_WFD									49
++#define CLK_MOUT_CMU_MIF_BUSP									50
++#define CLK_MOUT_CMU_MIF_SWITCH									51
++#define CLK_MOUT_CMU_NPU0_BUS									52
++#define CLK_MOUT_CMU_NPU0_CPU									53
++#define CLK_MOUT_CMU_NPU1_BUS									54
++#define CLK_MOUT_CMU_PERIC0_BUS									55
++#define CLK_MOUT_CMU_PERIC0_IP									56
++#define CLK_MOUT_CMU_PERIC1_BUS									57
++#define CLK_MOUT_CMU_PERIC1_IP									58
++#define CLK_MOUT_CMU_PERIS_BUS									59
++#define CLK_MOUT_CMU_VRA2_BUS									60
++#define CLK_MOUT_CMU_VRA2_STR									61
++#define CLK_MOUT_CMU_CLK_CMUREF									62
++#define CLK_MOUT_CMU_CMUREF									63
++#define CLK_MOUT_PLL_SHARED0									64
++#define CLK_MOUT_PLL_SHARED1									65
++#define CLK_DOUT_CMU_APM_BUS									66
++#define CLK_DOUT_CMU_AUD_CPU									67
++#define CLK_DOUT_CMU_BUSC_BUS									68
++#define CLK_DOUT_CMU_CIS_CLK0									69
++#define CLK_DOUT_CMU_CIS_CLK1									70
++#define CLK_DOUT_CMU_CIS_CLK2									71
++#define CLK_DOUT_CMU_CIS_CLK3									72
++#define CLK_DOUT_CMU_CIS_CLK4									73
++#define CLK_DOUT_CMU_CMU_BOOST									74
++#define CLK_DOUT_CMU_CORE_BUS									75
++#define CLK_DOUT_CMU_CPUCL0_DBG_BUS								76
++#define CLK_DOUT_CMU_CPUCL0_SWITCH								77
++#define CLK_DOUT_CMU_CPUCL1_SWITCH								78
++#define CLK_DOUT_CMU_CPUCL2_SWITCH								79
++#define CLK_DOUT_CMU_DSPM_BUS									80
++#define CLK_DOUT_CMU_DSPM_BUS_OTF								81
++#define CLK_DOUT_CMU_DSPS_AUD									82
++#define CLK_DOUT_CMU_FSYS0A_BUS									83
++#define CLK_DOUT_CMU_FSYS0A_USB31DRD								84
++#define CLK_DOUT_CMU_FSYS0_BUS									85
++#define CLK_DOUT_CMU_FSYS0_DPGTC								86
++#define CLK_DOUT_CMU_FSYS1_UFS_CARD								87
++#define CLK_DOUT_CMU_FSYS1_UFS_EMBD								88
++#define CLK_DOUT_CMU_G2D_G2D									89
++#define CLK_DOUT_CMU_G2D_MSCL									90
++#define CLK_DOUT_CMU_G3D_SWITCH									91
++#define CLK_DOUT_CMU_HPM									92
++#define CLK_DOUT_CMU_ISPHQ_BUS									93
++#define CLK_DOUT_CMU_ISPLP_BUS									94
++#define CLK_DOUT_CMU_ISPLP_GDC									95
++#define CLK_DOUT_CMU_ISPPRE_BUS									96
++#define CLK_DOUT_CMU_IVA_BUS									97
++#define CLK_DOUT_CMU_MFC_MFC									98
++#define CLK_DOUT_CMU_MFC_WFD									99
++#define CLK_DOUT_CMU_MIF_BUSP									100
++#define CLK_DOUT_CMU_NPU0_BUS									101
++#define CLK_DOUT_CMU_NPU1_BUS									102
++#define CLK_DOUT_CMU_PERIC0_BUS									103
++#define CLK_DOUT_CMU_PERIC0_IP									104
++#define CLK_DOUT_CMU_PERIC1_BUS									105
++#define CLK_DOUT_CMU_PERIC1_IP									106
++#define CLK_DOUT_CMU_PERIS_BUS									107
++#define CLK_DOUT_CMU_VRA2_BUS									108
++#define CLK_DOUT_CMU_VRA2_STR									109
++#define CLK_DOUT_CMU_DPU									110
++#define CLK_DOUT_CMU_DPU_BUS									111
++#define CLK_DOUT_CMU_CLK_CMUREF									112
++#define CLK_DOUT_PLL_SHARED0_DIV2								113
++#define CLK_DOUT_PLL_SHARED0_DIV3								114
++#define CLK_DOUT_PLL_SHARED0_DIV4								115
++#define CLK_DOUT_PLL_SHARED1_DIV2								116
++#define CLK_DOUT_PLL_SHARED1_DIV3								117
++#define CLK_DOUT_PLL_SHARED1_DIV4								118
++#define CLK_DOUT_PLL_SHARED2_DIV2								119
++#define CLK_DOUT_PLL_SHARED3_DIV2								120
++#define CLK_DOUT_PLL_SHARED4_DIV2								121
++#define CLK_DOUT_CMU_FSYS0A_USBDP_DEBUG								122
++#define CLK_DOUT_CMU_FSYS0_PCIE									123
++#define CLK_DOUT_CMU_FSYS1_PCIE									124
++#define CLK_DOUT_CMU_OTP									125
++#define CLK_GOUT_CMU_FSYS1_BUS									126
++#define CLK_GOUT_CMU_FSYS1_MMC_CARD								127
++#define CLK_GOUT_CMU_MIF_SWITCH									128
++#define CLK_GOUT_CMU_MODEM_SHARED0								129
++#define CLK_GOUT_CMU_MODEM_SHARED1								130
++#define CLK_GOUT_CMU_NPU0_CPU									131
++#define CLK_GOUT_CMU_APM_BUS									132
++#define CLK_GOUT_CMU_AUD_CPU									133
++#define CLK_GOUT_CMU_BUSC_BUS									134
++#define CLK_GOUT_CMU_BUS_OTF									135
++#define CLK_GOUT_CMU_CIS_CLK0									136
++#define CLK_GOUT_CMU_CIS_CLK1									137
++#define CLK_GOUT_CMU_CIS_CLK2									138
++#define CLK_GOUT_CMU_CIS_CLK3									139
++#define CLK_GOUT_CMU_CIS_CLK4									140
++#define CLK_GOUT_CMU_CORE_BUS									141
++#define CLK_GOUT_CMU_CPUCL0_DBG_BUS								142
++#define CLK_GOUT_CMU_CPUCL0_SWITCH								143
++#define CLK_GOUT_CMU_CPUCL1_SWITCH								144
++#define CLK_GOUT_CMU_CPUCL2_SWITCH								145
++#define CLK_GOUT_CMU_DPU									146
++#define CLK_GOUT_CMU_DPU_BUS									147
++#define CLK_GOUT_CMU_DSPM_BUS									148
++#define CLK_GOUT_CMU_DSPS_AUD									149
++#define CLK_GOUT_CMU_FSYS0A_BUS									150
++#define CLK_GOUT_CMU_FSYS0A_USB31DRD								151
++#define CLK_GOUT_CMU_FSYS0A_USBDP_DEBUG								152
++#define CLK_GOUT_CMU_FSYS0_BUS									153
++#define CLK_GOUT_CMU_FSYS0_DPGTC								154
++#define CLK_GOUT_CMU_FSYS0_PCIE									155
++#define CLK_GOUT_CMU_FSYS1_PCIE									156
++#define CLK_GOUT_CMU_FSYS1_UFS_CARD								157
++#define CLK_GOUT_CMU_FSYS1_UFS_EMBD								158
++#define CLK_GOUT_CMU_G2D_G2D									159
++#define CLK_GOUT_CMU_G2D_MSCL									160
++#define CLK_GOUT_CMU_G3D_SWITCH									161
++#define CLK_GOUT_CMU_HPM									162
++#define CLK_GOUT_CMU_ISPHQ_BUS									163
++#define CLK_GOUT_CMU_ISPLP_BUS									164
++#define CLK_GOUT_CMU_ISPLP_GDC									165
++#define CLK_GOUT_CMU_ISPPRE_BUS									166
++#define CLK_GOUT_CMU_IVA_BUS									167
++#define CLK_GOUT_CMU_MFC_MFC									168
++#define CLK_GOUT_CMU_MFC_WFD									169
++#define CLK_GOUT_CMU_MIF_BUSP									170
++#define CLK_GOUT_CMU_NPU0_BUS									171
++#define CLK_GOUT_CMU_NPU1_BUS									172
++#define CLK_GOUT_CMU_PERIC0_BUS									173
++#define CLK_GOUT_CMU_PERIC0_IP									174
++#define CLK_GOUT_CMU_PERIC1_BUS									175
++#define CLK_GOUT_CMU_PERIC1_IP									176
++#define CLK_GOUT_CMU_PERIS_BUS									177
++#define CLK_GOUT_CMU_VRA2_BUS									178
++#define CLK_GOUT_CMU_VRA2_STR									179
++
++#endif /* _DT_BINDINGS_CLOCK_EXYNOS_9820_H */
+-- 
+2.47.3
+

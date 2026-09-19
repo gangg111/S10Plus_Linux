@@ -1,0 +1,105 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 15:42:40 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Hand the peripheral's DSC
+ configuration on
+
+A display controller feeding this host has to program its own compression
+encoders to the parameters the peripheral asked for. It cannot read them
+from the DSI device, because it is not the one the peripheral attached
+to; only this host sees them.
+
+Keep the pointer the peripheral supplied and offer it behind an
+accessor. It is cleared on detach: the configuration belongs to the
+peripheral, and after it goes away the pointer would be stale.
+
+This changes what the host does for every variant, not just for one:
+each of them now records the pointer and drops it again. Nothing reads
+it here yet; the first user is the display controller added later in
+this series, which is why the accessor is exported.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 27 +++++++++++++++++++++++++++
+ include/drm/bridge/samsung-dsim.h     |  4 ++++
+ 2 files changed, 31 insertions(+)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index a43c5b3cdaf..f7f617ace9d 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -2021,6 +2021,7 @@ static int samsung_dsim_host_attach(struct mipi_dsi_host *host,
+ 	dsi->lanes = device->lanes;
+ 	dsi->format = device->format;
+ 	dsi->mode_flags = device->mode_flags;
++	dsi->dsc = device->dsc;
+ 
+ 	return 0;
+ 
+@@ -2039,6 +2040,9 @@ static int samsung_dsim_host_detach(struct mipi_dsi_host *host,
+ 	struct samsung_dsim *dsi = host_to_dsi(host);
+ 	const struct samsung_dsim_plat_data *pdata = dsi->plat_data;
+ 
++	/* the configuration belongs to the peripheral that is going away */
++	dsi->dsc = NULL;
++
+ 	if (pdata->host_ops && pdata->host_ops->detach)
+ 		pdata->host_ops->detach(dsi, device);
+ 
+@@ -2077,6 +2081,29 @@ static ssize_t samsung_dsim_host_transfer(struct mipi_dsi_host *host,
+ 	return (ret < 0) ? ret : xfer.rx_done;
+ }
+ 
++/**
++ * samsung_dsim_get_dsc - DSC configuration of the attached peripheral
++ * @bridge: bridge to query, may be any bridge
++ *
++ * Returns the compression configuration the peripheral asked for, or NULL
++ * when the bridge is not a DSIM or the peripheral sends uncompressed
++ * pixels.  A display controller feeding this host needs it to program its
++ * own encoders to the same parameters.
++ *
++ * The answer holds while a peripheral is attached to the host, that is
++ * from mipi_dsi_attach() until the matching detach clears it, so it is
++ * meant to be read from the display pipeline rather than cached.
++ */
++const struct drm_dsc_config *samsung_dsim_get_dsc(struct drm_bridge *bridge)
++{
++	/* the same test drm_bridge_is_panel() uses to recognise its own */
++	if (!bridge || bridge->funcs != &samsung_dsim_bridge_funcs)
++		return NULL;
++
++	return bridge_to_dsi(bridge)->dsc;
++}
++EXPORT_SYMBOL_GPL(samsung_dsim_get_dsc);
++
+ static const struct mipi_dsi_host_ops samsung_dsim_ops = {
+ 	.attach = samsung_dsim_host_attach,
+ 	.detach = samsung_dsim_host_detach,
+diff --git a/include/drm/bridge/samsung-dsim.h b/include/drm/bridge/samsung-dsim.h
+index 1391e1375bc..f3258088e8a 100644
+--- a/include/drm/bridge/samsung-dsim.h
++++ b/include/drm/bridge/samsung-dsim.h
+@@ -17,6 +17,7 @@
+ 
+ struct platform_device;
+ struct samsung_dsim;
++struct drm_dsc_config;
+ 
+ #define DSIM_STATE_ENABLED		BIT(0)
+ #define DSIM_STATE_INITIALIZED		BIT(1)
+@@ -125,6 +126,7 @@ struct samsung_dsim {
+ 	u32 esc_clk_rate;
+ 	u32 lanes;
+ 	u32 mode_flags;
++	const struct drm_dsc_config *dsc;
+ 	u32 format;
+ 
+ 	bool swap_dn_dp_clk;
+@@ -146,4 +148,6 @@ extern int samsung_dsim_probe(struct platform_device *pdev);
+ extern void samsung_dsim_remove(struct platform_device *pdev);
+ extern const struct dev_pm_ops samsung_dsim_pm_ops;
+ 
++const struct drm_dsc_config *samsung_dsim_get_dsc(struct drm_bridge *bridge);
++
+ #endif /* __SAMSUNG_DSIM__ */

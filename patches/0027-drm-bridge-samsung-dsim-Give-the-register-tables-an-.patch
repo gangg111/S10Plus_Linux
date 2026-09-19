@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:16:33 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Give the register tables an
+ explicit size
+
+Both sets of tables, the register offsets indexed with enum reg_idx and
+the register values indexed with enum reg_value_idx, are declared without
+a size, so each one ends at its highest initialised entry. A variant that
+does not define the entry with the highest index gets a shorter array,
+and an index past its end reads whatever follows it in .rodata instead of
+failing to build.
+
+No variant reads past the end today. Declaring the tables [NUM_REGS] and
+[NUM_REG_VALUES] turns the next entry added to either enum into a
+question the compiler answers, rather than one that has to be remembered.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 19 ++++++++++---------
+ 1 file changed, 10 insertions(+), 9 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index aafc2b32f8c..40f3b7e1baa 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -279,7 +279,7 @@ enum reg_idx {
+ 	NUM_REGS
+ };
+ 
+-static const unsigned int exynos_reg_ofs[] = {
++static const unsigned int exynos_reg_ofs[NUM_REGS] = {
+ 	[DSIM_STATUS_REG] =  0x00,
+ 	[DSIM_SWRST_REG] =  0x04,
+ 	[DSIM_CLKCTRL_REG] =  0x08,
+@@ -303,7 +303,7 @@ static const unsigned int exynos_reg_ofs[] = {
+ 	[DSIM_PHYTIMING2_REG] =  0x6c,
+ };
+ 
+-static const unsigned int exynos5433_reg_ofs[] = {
++static const unsigned int exynos5433_reg_ofs[NUM_REGS] = {
+ 	[DSIM_STATUS_REG] = 0x04,
+ 	[DSIM_SWRST_REG] = 0x0C,
+ 	[DSIM_CLKCTRL_REG] = 0x10,
+@@ -327,7 +327,7 @@ static const unsigned int exynos5433_reg_ofs[] = {
+ 	[DSIM_PHYTIMING2_REG] = 0xBC,
+ };
+ 
+-static const unsigned int exynos7870_reg_ofs[] = {
++static const unsigned int exynos7870_reg_ofs[NUM_REGS] = {
+ 	[DSIM_LINK_STATUS_REG] = 0x04,
+ 	[DSIM_DPHY_STATUS_REG] = 0x08,
+ 	[DSIM_SWRST_REG] = 0x0C,
+@@ -368,10 +368,11 @@ enum reg_value_idx {
+ 	PHYTIMING_CLK_TRAIL,
+ 	PHYTIMING_HS_PREPARE,
+ 	PHYTIMING_HS_ZERO,
+-	PHYTIMING_HS_TRAIL
++	PHYTIMING_HS_TRAIL,
++	NUM_REG_VALUES
+ };
+ 
+-static const unsigned int reg_values[] = {
++static const unsigned int reg_values[NUM_REG_VALUES] = {
+ 	[RESET_TYPE] = DSIM_SWRST,
+ 	[PLL_TIMER] = 500,
+ 	[STOP_STATE_CNT] = 0xf,
+@@ -389,7 +390,7 @@ static const unsigned int reg_values[] = {
+ 	[PHYTIMING_HS_TRAIL] = DSIM_PHYTIMING2_HS_TRAIL(0x0b),
+ };
+ 
+-static const unsigned int exynos5422_reg_values[] = {
++static const unsigned int exynos5422_reg_values[NUM_REG_VALUES] = {
+ 	[RESET_TYPE] = DSIM_SWRST,
+ 	[PLL_TIMER] = 500,
+ 	[STOP_STATE_CNT] = 0xf,
+@@ -407,7 +408,7 @@ static const unsigned int exynos5422_reg_values[] = {
+ 	[PHYTIMING_HS_TRAIL] = DSIM_PHYTIMING2_HS_TRAIL(0x0d),
+ };
+ 
+-static const unsigned int exynos5433_reg_values[] = {
++static const unsigned int exynos5433_reg_values[NUM_REG_VALUES] = {
+ 	[RESET_TYPE] = DSIM_FUNCRST,
+ 	[PLL_TIMER] = 22200,
+ 	[STOP_STATE_CNT] = 0xa,
+@@ -425,7 +426,7 @@ static const unsigned int exynos5433_reg_values[] = {
+ 	[PHYTIMING_HS_TRAIL] = DSIM_PHYTIMING2_HS_TRAIL(0x0c),
+ };
+ 
+-static const unsigned int exynos7870_reg_values[] = {
++static const unsigned int exynos7870_reg_values[NUM_REG_VALUES] = {
+ 	[RESET_TYPE] = DSIM_SWRST,
+ 	[PLL_TIMER] = 80000,
+ 	[STOP_STATE_CNT] = 0xa,
+@@ -443,7 +444,7 @@ static const unsigned int exynos7870_reg_values[] = {
+ 	[PHYTIMING_HS_TRAIL] = DSIM_PHYTIMING2_HS_TRAIL(0x0c),
+ };
+ 
+-static const unsigned int imx8mm_dsim_reg_values[] = {
++static const unsigned int imx8mm_dsim_reg_values[NUM_REG_VALUES] = {
+ 	[RESET_TYPE] = DSIM_SWRST,
+ 	[PLL_TIMER] = 500,
+ 	[STOP_STATE_CNT] = 0xf,

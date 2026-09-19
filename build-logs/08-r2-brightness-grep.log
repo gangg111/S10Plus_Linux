@@ -1,0 +1,12 @@
+# R2 evidence: brightness opcode 0x51 in downstream S6E3HA9 driver
+repo: LineageOS/android_kernel_samsung_exynos9820@7d08ec364a0659edcf90a8dae4453b21e4542311
+
+$ grep -n "0x51" drivers/video/fbdev/exynos/panel/s6e3ha9/s6e3ha9.c
+exit=1 (empty = no hits)
+
+$ grep -n "^static u8 BEYOND2_A3_S0_\(AOR\|GAMMA_UPDATE_ENABLE\|SLEEP_IN\|DISPLAY_OFF\)" …_panel.h
+690:static u8 BEYOND2_A3_S0_KEY2_ENABLE[] = { 0xF0, 0x5A, 0x5A };
+696:static u8 BEYOND2_A3_S0_SLEEP_IN[] = { 0x10 };
+697:static u8 BEYOND2_A3_S0_DISPLAY_OFF[] = { 0x28 };
+829:static u8 BEYOND2_A3_S0_AOR[] = { 0xB1, 0x00, 0x14 };
+864:static u8 BEYOND2_A3_S0_GAMMA_UPDATE_ENABLE[] = { 0xF7, 0x03 };

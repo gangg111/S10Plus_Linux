@@ -1,0 +1,10 @@
+# Weryfikacja na czystym drzewie: git worktree z bazy 1200d84f4c0a + tylko 3 patche z patches/
+# $ git apply --check patches/*.patch  -> OK
+# $ make LLVM=1 ARCH=arm64 defconfig && make LLVM=1 ARCH=arm64 CHECK_DTBS=y exynos/exynos9820-beyond2lte.dtb
+  UPD     include/config/kernel.release
+  HOSTLD  scripts/dtc/fdtoverlay
+  HOSTLD  scripts/dtc/dtc
+  SCHEMA  Documentation/devicetree/bindings/processed-schema.json
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+EXIT=0
+4fcba6b623d07f8e6549c6c64661155944d3b3e3242896ea87e67cf80ab7fdb3  arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb

@@ -1,0 +1,6 @@
+# R4 evidence: Samsung Open Source Release Center query for SM-G975F
+date: 2026-08-18T22:25:34Z
+
+$ curl -X POST https://opensource.samsung.com/uploadSearch -d searchValue=SM-G975F
+HTTP 403
+-> requires an interactive browser session; firmware version NOT determined

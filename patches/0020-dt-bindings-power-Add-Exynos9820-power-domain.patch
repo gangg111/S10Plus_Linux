@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 19 Aug 2026 04:04:11 +0200
+Subject: [PATCH] dt-bindings: power: Add Exynos9820 power domain
+
+Exynos9820 uses the same power domain block as the older Exynos SoCs and
+the same node layout, so the binding only gains a compatible. The driver
+does need its own entry, because the enable mask differs from every
+existing one, and that comes in the next patch.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/power/pd-samsung.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/power/pd-samsung.yaml b/Documentation/devicetree/bindings/power/pd-samsung.yaml
+index 9c2c5113345..d3a3c4a30cf 100644
+--- a/Documentation/devicetree/bindings/power/pd-samsung.yaml
++++ b/Documentation/devicetree/bindings/power/pd-samsung.yaml
+@@ -21,6 +21,7 @@ properties:
+     enum:
+       - samsung,exynos4210-pd
+       - samsung,exynos5433-pd
++      - samsung,exynos9820-pd
+ 
+   reg:
+     maxItems: 1

@@ -1,0 +1,35 @@
+# R2 evidence: D-PHY dla beyond2lte (hs_clk 898 Mbps, esc 20 MHz zadane)
+repo: LineageOS/android_kernel_samsung_exynos9820@7d08ec364a0659edcf90a8dae4453b21e4542311
+plik: drivers/video/fbdev/exynos/dpu20/cal_9820/dsim_reg.c
+
+## reguła wyboru wiersza (dsim_reg.c:1608-1631): najmniejszy bps >= hs_clk
+	i = ARRAY_SIZE(dphy_timing) - 1;
+
+	for (; i >= 0; i--) {
+		if (dphy_timing[i][0] < hs_clk) {
+			continue;
+		} else {
+
+## wiersze sąsiednie tablicy dphy_timing (dsim_reg.c:95-...):
+const u32 dphy_timing[][10] = {
+	/* bps, clk_prepare, clk_zero, clk_post, clk_trail,
+	 * hs_prepare, hs_zero, hs_trail, lpx, hs_exit
+	 */
+258:	{910 , 36, 14, 3 , 57, 36, 5 , 50, 27, 5 ,},
+259:	{900 , 35, 14, 3 , 56, 36, 5 , 50, 26, 5 ,},
+260:	{890 , 35, 14, 3 , 56, 36, 5 , 49, 26, 5 ,},
+
+## b_dphyctl (dsim_reg.c:302-306):
+const u32 b_dphyctl[14] = {
+	0x0af, 0x0c8, 0x0e1, 0x0fa,			/* esc 7 ~ 10 */
+	0x113, 0x12c, 0x145, 0x15e, 0x177,	/* esc 11 ~ 15 */
+	0x190, 0x1a9, 0x1c2, 0x1db, 0x1f4	/* esc 16 ~ 20 */
+};
+
+## wyprowadzenie zegarów (dsim_reg.c:1826-1846), arytmetyka u32:
+  word_clk = hs_clk/16 = 898/16 = 56 MHz
+  esc_div  = 56/20 -> korekta -> 3
+  esc_clk  = 56/3 = 18 MHz  (ZADANE 20, FAKTYCZNE 18)
+  b_dphyctl index = esc_clk-7 = 11 -> 0x1c2 (450)
+  hsmode = (hs_clk < 1500) = 1  -> HSTX_CLK_SEL=1, SKEWCAL=0
+  pll_lock_cnt = PLL_LOCK_CNT_MULT * p = 500 * 2 = 1000

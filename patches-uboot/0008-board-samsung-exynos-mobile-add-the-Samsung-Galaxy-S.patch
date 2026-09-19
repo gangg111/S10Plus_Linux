@@ -1,0 +1,608 @@
+From 981aea3d15b082d165ab06981667be735a05edb7 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sat, 19 Sep 2026 03:54:48 +0200
+Subject: [PATCH 8/8] board: samsung: exynos-mobile: add the Samsung Galaxy
+ S10+
+
+Brings the pieces of this port together: a configuration for the phone, the
+device tree bits that only a boot loader wants, and an optional fragment
+for the early console.
+
+The storage of this phone is UFS, and neither its controller nor the clock
+block that feeds it is in the shared device tree, because the kernel side
+of this port has no driver for either yet. Both are described in the
+board's own file, so the shared copy stays exactly what the kernel has and
+the next sync of dts/upstream has nothing to merge. The window the PHY is
+given is a page rather than the half page the vendor tree gives it, because
+the calibration tables of that PHY reach past the half on the second lane;
+that goes unnoticed in an operating system, which maps whole pages, and
+would not here.
+
+The configuration is the one this board already had for its Exynos7870
+phones, with the three entries that name that SoC replaced and the drivers
+of this one added. Two other things had to change. The number of memory
+banks goes from three to six, because this phone has six and the parser
+stops at the limit, so three of them would simply have been invisible. And
+what is left out is USB, fastboot, eMMC and the power management chip:
+none of them is on the path from reset to reading storage and handing over,
+and none of them has been tried on this phone.
+
+The early console is a fragment to merge by hand rather than part of the
+configuration, because only one of its two numbers is known. The address is
+this SoC's debug UART, taken from its device tree. The rate that block is
+fed at has not been measured on this phone, and the value carried over from
+the Exynos7870 phones is a placeholder the fragment says so about. The
+console of the driver model does not need it, because it asks the clock
+driver.
+
+A page under doc/board/samsung tells the rest: that the device tree rides
+inside the image here rather than being packed separately as it is for the
+Exynos7870 boards of this family, what the boot image around it looks like,
+and what to look for in the first log of one of these phones.
+
+The screen comes up too, which is what makes one of these phones testable
+without a serial cable. What runs before U-Boot leaves a picture on the
+panel and tells the kernel it starts where that picture lives; this phone's
+own boot loader passes s3cfb.bootloaderfb=0xca000000, which is where the
+framebuffer node here points. The display controller only pushes that
+picture out when it is triggered, though, and by the time U-Boot runs
+nothing is triggering it, so the board hands it its software trigger. The
+controller's address comes out of the device tree, so nothing happens on a
+board whose tree has no such controller; the register offset and the value
+are constants, and the value is the one uniLoader hands the sibling phone
+of this family.
+
+Both that trigger and a band of colour along the bottom of the screen go in
+the earliest hook there is, before relocation, before any driver and before
+the console, because on a phone there is nowhere else for a boot loader to
+say that it got as far as running at all. Without the band, a boot loader
+that started and then hung and one that never ran look exactly alike: the
+panel keeps the picture it came up with either way. The band goes at the
+bottom so the console, which starts at the top, can be read alongside it.
+How far it paints is bounded by what the tree says is there rather than by
+the geometry it also says, so a wrong stride cannot walk it off the end.
+
+With a screen and the volume keys as a keyboard, the commands that make a
+bring-up readable are worth having built in, so clk, dm, fdt and pinmux
+come along: between them they answer whether a clock came out right and
+whether a pin controller bound to the bank table it was meant to, which is
+most of what goes wrong first.
+
+None of the screen path has been tried on hardware, and the code says so.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                                   |  14 ++
+ .../arm/dts/exynos9820-beyond2lte-u-boot.dtsi | 137 +++++++++++++++++
+ .../exynos-mobile/debug-exynos9820.config     |  17 +++
+ board/samsung/exynos-mobile/exynos-mobile.c   |  85 +++++++++++
+ configs/exynos9820-beyond2lte_defconfig       |  58 +++++++
+ doc/board/samsung/exynos-mobile.rst           |   1 +
+ .../samsung/exynos-mobile/exynos9820.rst      | 143 ++++++++++++++++++
+ 7 files changed, 455 insertions(+)
+ create mode 100644 arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+ create mode 100644 board/samsung/exynos-mobile/debug-exynos9820.config
+ create mode 100644 configs/exynos9820-beyond2lte_defconfig
+ create mode 100644 doc/board/samsung/exynos-mobile/exynos9820.rst
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index eb4209bd..62ee3b7d 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -565,6 +565,20 @@ F:	drivers/clk/exynos/clk-exynos850.c
+ F:	drivers/phy/phy-exynos-usbdrd.c
+ F:	drivers/pinctrl/exynos/pinctrl-exynos850.c
+ 
++ARM SAMSUNG EXYNOS9820 SOC
++M:	Artur Szafraniec <ganggg111@gmail.com>
++S:	Maintained
++F:	arch/arm/dts/exynos9820-*
++F:	board/samsung/exynos-mobile/debug-exynos9820.config
++F:	configs/exynos9820-beyond2lte_defconfig
++F:	drivers/clk/exynos/clk-exynos9820.c
++F:	drivers/phy/phy-exynos9820-ufs.c
++F:	drivers/phy/phy-samsung-ufs.*
++F:	drivers/pinctrl/exynos/pinctrl-exynos9820.c
++F:	drivers/ufs/ufs-exynos.*
++F:	include/dt-bindings/clock/samsung,exynos9820.h
++F:	include/samsung-ufs-phy.h
++
+ ARM SAMSUNG SOC DRIVERS
+ M:	Sam Protsenko <semen.protsenko@linaro.org>
+ S:	Maintained
+diff --git a/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+new file mode 100644
+index 00000000..bd2d5247
+--- /dev/null
++++ b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+@@ -0,0 +1,137 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Copyright (c) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * What this board needs on top of the device tree it shares with Linux.
++ *
++ * The storage of this phone is UFS, and neither the controller nor the clock
++ * block that feeds it is described in the tree yet, because the Linux side of
++ * this port has no driver for either.  Both are described here instead of in
++ * the shared tree, so that the shared copy stays exactly what the kernel has
++ * and the next sync of dts/upstream does not have to merge anything.  When the
++ * kernel gains UFS for this SoC, these nodes move there and this file loses
++ * them.
++ *
++ * Addresses come from the vendor tree, arch/arm64/boot/dts/exynos/exynos9820.dts
++ * of the Samsung kernel for this phone, node ufs@0x13D60000 at line 5865.
++ */
++
++#include <dt-bindings/clock/samsung,exynos9820.h>
++#include <dt-bindings/interrupt-controller/arm-gic.h>
++#include "exynos-pinctrl.h"
++
++/ {
++	/*
++	 * UNVERIFIED: the boot loader of this phone reads these out of the
++	 * image it is handed.  The neighbouring board of this family carries
++	 * them with a note that S-BOOT requires them, and the chip number is
++	 * the only part of the shape that differs, but whether this phone's
++	 * S-BOOT insists on them has not been tried.
++	 */
++	model_info-chip = <9820>;
++	model_info-hw_rev = <0>;
++	model_info-hw_rev_end = <255>;
++
++	chosen {
++		#address-cells = <2>;
++		#size-cells = <1>;
++		ranges;
++
++		/*
++		 * The screen this phone comes up with, left running by whatever
++		 * ran before.  Its address is not guessed: the primary boot
++		 * loader of this very phone passes it to the kernel it starts,
++		 * as s3cfb.bootloaderfb=0xca000000, and that is what was read
++		 * off the device.  The geometry is the panel's own, 1440 by
++		 * 3040, four bytes to a pixel.
++		 */
++		framebuffer@ca000000 {
++			compatible = "simple-framebuffer";
++			reg = <0x0 0xca000000 (1440 * 3040 * 4)>;
++			width = <1440>;
++			height = <3040>;
++			stride = <(1440 * 4)>;
++			format = "a8r8g8b8";
++		};
++	};
++};
++
++&soc {
++	/*
++	 * The clock block the embedded storage hangs off.  Three of its gates
++	 * matter: the controller clock, the clock of the link, whose rate every
++	 * timing of that link is computed from, and the one for the encryption
++	 * unit, which a boot loader does not use.
++	 */
++	cmu_fsys1: clock-controller@13c00000 {
++		compatible = "samsung,exynos9820-cmu-fsys1";
++		reg = <0x13c00000 0x8000>;
++		#clock-cells = <1>;
++
++		clocks = <&oscclk>,
++			 <&cmu_top CLK_GOUT_CMU_FSYS1_BUS>,
++			 <&cmu_top CLK_DOUT_CMU_FSYS1_UFS_EMBD>;
++		clock-names = "oscclk", "bus", "ufs_embd";
++	};
++
++	ufs: ufs@13d60000 {
++		compatible = "samsung,exynos9820-ufs";
++		reg = <0x13d60000 0x200>,	/* standard host controller */
++		      <0x13d61100 0x200>,	/* the vendor's own block   */
++		      <0x13d50000 0x8000>,	/* UniPro                   */
++		      <0x13d70000 0x100>;	/* encryption unit, unused  */
++		interrupts = <GIC_SPI 249 IRQ_TYPE_LEVEL_HIGH>;
++
++		clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_UFS_EMBD_I_ACLK>,
++			 <&cmu_fsys1 CLK_GOUT_FSYS1_UFS_EMBD_I_CLK_UNIPRO>;
++		clock-names = "hci", "unipro";
++
++		pinctrl-names = "default";
++		pinctrl-0 = <&ufs_rst_n &ufs_refclk_out>;
++
++		phys = <&ufs_phy>;
++		phy-names = "ufs-phy";
++
++		/*
++		 * The supply of this storage is a fixed regulator the vendor
++		 * marks regulator-boot-on (exynos9820.dts:5919), so whatever
++		 * runs before hands it over already on and nothing here has to
++		 * switch it.
++		 */
++	};
++
++	ufs_phy: phy@13d64000 {
++		compatible = "samsung,exynos9820-ufs-phy";
++		/*
++		 * The vendor gives this window 0x800, which covers the first
++		 * lane only; its own calibration tables reach 0xbbc on the
++		 * second one.  That goes unnoticed there because an operating
++		 * system maps whole pages.  A page is what is asked for here.
++		 */
++		reg = <0x13d64000 0x1000>;
++		#phy-cells = <0>;
++
++		samsung,pmu-syscon = <&pmu_system_controller 0x724>;
++	};
++};
++
++/*
++ * The two pins of the storage: the reset line of the device and the reference
++ * clock going out to it.  Both are on the pin controller of this domain, in
++ * their second function.  Vendor tree, exynos9820.dts:1164 and :1173.
++ */
++&pinctrl_fsys1 {
++	ufs_rst_n: ufs-rst-n-pins {
++		samsung,pins = "gpf3-1";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
++
++	ufs_refclk_out: ufs-refclk-out-pins {
++		samsung,pins = "gpf3-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
++};
+diff --git a/board/samsung/exynos-mobile/debug-exynos9820.config b/board/samsung/exynos-mobile/debug-exynos9820.config
+new file mode 100644
+index 00000000..229790e1
+--- /dev/null
++++ b/board/samsung/exynos-mobile/debug-exynos9820.config
+@@ -0,0 +1,17 @@
++# Early console for bringing up an Exynos9820 phone, before the driver model
++# is up.  Merge this into the configuration by hand; it is not part of the
++# defconfig, because one of its two numbers is not known yet.
++#
++# The address is the debug UART of this SoC, serial@10440000 in its device
++# tree.  The clock is NOT: nothing in this port has measured the rate that
++# block is fed at, and the value below is the one the Exynos7870 phones of
++# this board use, carried over only so the option has something to hold.
++# Confirm it against the hardware before trusting what this console prints;
++# the driver model console does not need it, because it asks the clock driver.
++CONFIG_DEBUG_UART=y
++CONFIG_DEBUG_UART_BASE=0x10440000
++CONFIG_DEBUG_UART_CLOCK=133250000
++CONFIG_DEBUG_UART_S5P=y
++CONFIG_LOG=y
++CONFIG_LOG_CONSOLE=y
++CONFIG_LOG_MAX_LEVEL=8
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index eedc38e7..dd8a3ff1 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include <asm/armv8/mmu.h>
++#include <asm/io.h>
+ #include <blk.h>
+ #include <bootflow.h>
+ #include <ctype.h>
+@@ -357,8 +358,92 @@ int timer_init(void)
+ 	return 0;
+ }
+ 
++/*
++ * A sign of life, put on the screen before anything else has run.
++ *
++ * Two things are going on here, and both are for the same reason: on a phone
++ * there is nowhere else for a boot loader to say that it got as far as running
++ * at all.  There is no serial port to plug into, and whether the console comes
++ * up depends on clocks, drivers and a device tree that may all be wrong.  So a
++ * band of colour is painted along the bottom of the screen from the earliest
++ * hook there is, before relocation, before any driver and before the console.
++ * If the band shows and no text follows, the boot loader started and something
++ * later hung; if nothing shows at all, it never ran or the screen is not where
++ * this thinks it is.  Those two used to look exactly alike.
++ *
++ * The band goes at the bottom because the console starts writing at the top,
++ * so the two do not overwrite each other and can be read together.
++ *
++ * Before any of that the display controller has to be told to push what is in
++ * the framebuffer out to the panel.  The panel of these phones is a command
++ * mode one: it shows a picture when it is triggered, and by the time a boot
++ * loader runs nothing is triggering it any more, so whatever is written to the
++ * framebuffer stays invisible and the screen keeps the picture it came up
++ * with.  The register is this SoC's DECON_HW_SW_TRIG_CONTROL, and the address
++ * of the controller comes out of the device tree, so nothing at all happens on
++ * a board whose tree has no such controller.  The value written to it is the
++ * one uniLoader hands the sibling phone of this family.
++ *
++ * UNVERIFIED: none of this has been tried on hardware.
++ */
++#define EXYNOS_DECON_HW_SW_TRIG_CONTROL		0x70
++#define EXYNOS_DECON_SW_TRIG_ON			0x1281
++#define EXYNOS_SIGN_OF_LIFE_ROWS		128
++#define EXYNOS_SIGN_OF_LIFE_COLOUR		0xffff00ff	/* opaque magenta */
++
++static void exynos_show_sign_of_life(const void *fdt)
++{
++	u32 height, stride, rows, *pixel;
++	fdt_addr_t base;
++	fdt_size_t size;
++	int node, parent;
++	u64 offset;
++	u32 i, words;
++
++	node = fdt_node_offset_by_compatible(fdt, -1, "samsung,exynos9820-decon");
++	if (node >= 0) {
++		parent = fdt_parent_offset(fdt, node);
++		base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg",
++							0, NULL, false);
++		if (base != FDT_ADDR_T_NONE)
++			writel(EXYNOS_DECON_SW_TRIG_ON,
++			       (void __iomem *)(uintptr_t)base +
++			       EXYNOS_DECON_HW_SW_TRIG_CONTROL);
++	}
++
++	node = fdt_node_offset_by_compatible(fdt, -1, "simple-framebuffer");
++	if (node < 0)
++		return;
++
++	parent = fdt_parent_offset(fdt, node);
++	base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg", 0,
++						&size, false);
++	if (base == FDT_ADDR_T_NONE)
++		return;
++
++	height = fdtdec_get_int(fdt, node, "height", 0);
++	stride = fdtdec_get_int(fdt, node, "stride", 0);
++	if (!height || !stride || stride % sizeof(*pixel))
++		return;
++
++	/* Do not write past what the tree says is there. */
++	if ((u64)stride * height > size)
++		return;
++
++	rows = EXYNOS_SIGN_OF_LIFE_ROWS;
++	if (height < rows)
++		rows = height;
++	offset = (u64)stride * (height - rows);
++	words = rows * (stride / sizeof(*pixel));
++
++	pixel = (u32 *)(uintptr_t)(base + offset);
++	for (i = 0; i < words; i++)
++		pixel[i] = EXYNOS_SIGN_OF_LIFE_COLOUR;
++}
++
+ int board_early_init_f(void)
+ {
++	exynos_show_sign_of_life(gd->fdt_blob);
+ 	exynos_parse_dram_banks(gd->fdt_blob);
+ 
+ 	return 0;
+diff --git a/configs/exynos9820-beyond2lte_defconfig b/configs/exynos9820-beyond2lte_defconfig
+new file mode 100644
+index 00000000..519a4a2e
+--- /dev/null
++++ b/configs/exynos9820-beyond2lte_defconfig
+@@ -0,0 +1,58 @@
++CONFIG_ARM=y
++CONFIG_SKIP_LOWLEVEL_INIT=y
++CONFIG_COUNTER_FREQUENCY=26000000
++CONFIG_POSITION_INDEPENDENT=y
++CONFIG_ARCH_EXYNOS=y
++CONFIG_SYS_MALLOC_LEN=0x2000000
++CONFIG_SYS_MALLOC_F_LEN=0x16000
++CONFIG_TARGET_EXYNOS_MOBILE=y
++CONFIG_NR_DRAM_BANKS=6
++CONFIG_DEFAULT_DEVICE_TREE="exynos/exynos9820-beyond2lte"
++CONFIG_SYS_BOOTM_LEN=0x2000000
++CONFIG_SYS_LOAD_ADDR=0x80000000
++CONFIG_ARMV8_CNTFRQ_BROKEN=y
++# CONFIG_PSCI_RESET is not set
++CONFIG_BUTTON_CMD=y
++CONFIG_USE_PREBOOT=y
++CONFIG_SAVE_PREV_BL_FDT_ADDR=y
++CONFIG_SAVE_PREV_BL_INITRAMFS_START_ADDR=y
++CONFIG_SYS_PBSIZE=1024
++CONFIG_BOARD_TYPES=y
++# CONFIG_DISPLAY_CPUINFO is not set
++CONFIG_MISC_INIT_R=y
++CONFIG_HUSH_PARSER=y
++CONFIG_CMD_BOOTMENU=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_CMD_FS_GENERIC=y
++CONFIG_CMD_CLK=y
++CONFIG_CMD_DM=y
++CONFIG_CMD_FDT=y
++CONFIG_CMD_PINMUX=y
++CONFIG_CMD_SCSI=y
++CONFIG_CMD_UFS=y
++CONFIG_EFI_PARTITION=y
++CONFIG_OF_UPSTREAM=y
++CONFIG_OF_UPSTREAM_BUILD_VENDOR=y
++CONFIG_OF_BOARD=y
++CONFIG_BLKMAP=y
++CONFIG_BUTTON_REMAP_PHONE_KEYS=y
++CONFIG_BUTTON_KEYBOARD=y
++CONFIG_CLK_EXYNOS9820=y
++CONFIG_MISC=y
++CONFIG_PHY=y
++CONFIG_PHY_SAMSUNG_UFS=y
++CONFIG_PHY_EXYNOS9820_UFS=y
++CONFIG_PINCTRL=y
++CONFIG_PINCTRL_EXYNOS9820=y
++CONFIG_SCSI=y
++CONFIG_UFS=y
++CONFIG_UFS_EXYNOS=y
++CONFIG_SOC_SAMSUNG=y
++CONFIG_EXYNOS_PMU=y
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_CMD_POWEROFF=y
++CONFIG_SYSRESET_SYSCON=y
++CONFIG_FS_EXT4=y
++CONFIG_FS_FAT=y
++CONFIG_VIDEO=y
++CONFIG_VIDEO_SIMPLE=y
+diff --git a/doc/board/samsung/exynos-mobile.rst b/doc/board/samsung/exynos-mobile.rst
+index d0173b1f..01270969 100644
+--- a/doc/board/samsung/exynos-mobile.rst
++++ b/doc/board/samsung/exynos-mobile.rst
+@@ -44,3 +44,4 @@ this step will vary depending on your target.
+ 	:maxdepth: 1
+ 
+ 	exynos-mobile/exynos7870
++	exynos-mobile/exynos9820
+diff --git a/doc/board/samsung/exynos-mobile/exynos9820.rst b/doc/board/samsung/exynos-mobile/exynos9820.rst
+new file mode 100644
+index 00000000..9f804188
+--- /dev/null
++++ b/doc/board/samsung/exynos-mobile/exynos9820.rst
+@@ -0,0 +1,143 @@
++.. SPDX-License-Identifier: GPL-2.0+
++.. sectionauthor:: Artur Szafraniec <ganggg111@gmail.com>
++
++Samsung Exynos 9820 Boards
++==========================
++
++Overview
++--------
++
++These phones keep their storage on UFS rather than eMMC, so the block device
++U-Boot boots from appears as ``scsi 0`` and not ``mmc 0``. The controller, its
++PHY and the clock block that feeds them are all driven by U-Boot itself; the
++primary boot loader, S-BOOT, only loads and enters the image.
++
++Building
++--------
++
++If a cross-compiler is required, install it and set it up like so:
++
++.. prompt:: bash $
++
++	export CROSS_COMPILE=aarch64-linux-gnu-
++
++Then build. Unlike the other boards here, the device tree does not have to be
++named on the command line, because the configuration carries it:
++
++.. prompt:: bash $
++
++	make O=.output exynos9820-beyond2lte_defconfig
++	make O=.output -j$(nproc)
++
++If successful, the image is ``.output/u-boot.bin``.
++
++Preparation
++-----------
++
++The device tree is already inside that image: with ``CONFIG_OF_SEPARATE`` the
++build appends ``u-boot.dtb`` to ``u-boot-nodtb.bin``, and the two together are
++what ``u-boot.bin`` is. So unlike the Exynos 7870 boards, no separate device
++tree image has to be packed, and nothing has to be handed to ``mkbootimg``
++beyond the image itself.
++
++The image carries a Linux kernel image header, so S-BOOT loads it exactly as it
++would load a kernel. Pack it with ``mkbootimg``, using the boot image layout
++this phone's postmarketOS device package [1]_ describes. The one that comes with
++android-tools will do, and so will the one by osm0sis [2]_; unlike the
++Exynos7870 boards of this family, nothing here needs the latter's ``--dt``:
++
++.. prompt:: bash $
++
++	mkbootimg -o u-boot.img \
++		--kernel		.output/u-boot.bin \
++		--header_version	1 \
++		--pagesize		2048 \
++		--kernel_offset		0x00008000 \
++		--ramdisk_offset	0x01000000 \
++		--second_offset		0xf0000000 \
++		--tags_offset		0x00000100 \
++		--os_version		12.0.0 \
++		--os_patch_level	2021-12
++
++The base address is left at the tool's default, because that device package does
++not give one; with it the kernel lands at 0x10008000. S-BOOT on these phones
++also wants a trailer on the image, without which it refuses to boot it:
++
++.. prompt:: bash $
++
++	printf 'SEANDROIDENFORCE' >> u-boot.img
++
++Flashing
++--------
++
++The first time, flash from Samsung's Download (Odin) mode with Heimdall [3]_.
++Hold volume down and bixby while powering the phone on to get there:
++
++.. prompt:: bash $
++
++	heimdall flash --BOOT u-boot.img
++
++Once U-Boot is installed, its own fastboot interface can be used instead. Hold
++the volume down key to reach the boot menu, enable fastboot mode from there,
++then:
++
++.. prompt:: bash $
++
++	fastboot flash boot u-boot.img
++
++Note that fastboot on these phones can write the boot partition but not the
++storage behind it, because the option that names the partition to flash to
++speaks of eMMC and there is none.
++
++Bringing one up for the first time
++----------------------------------
++
++The screen works without any extra hardware. What ran before leaves a picture on
++the panel and tells the kernel it starts where that picture lives; the same
++address is in the device tree here, so U-Boot writes its own output there and
++the phone shows it. The display controller of this SoC only pushes the picture
++out when it is triggered, and nothing is triggering it by the time U-Boot runs,
++so the board hands it its software trigger before anything is drawn.
++
++That makes a phone with no serial cable enough to watch a boot: output on the
++panel, and the volume keys as the keyboard. ``clk dump`` prints the clock tree,
++``dm tree`` which drivers bound, and ``pinmux status`` the pin banks, which is
++usually enough to tell a wrong clock from a wrong pin without any instruments.
++
++Before any of that, the board paints a band of colour along the bottom of the
++screen, from the first hook there is: before relocation, before any driver and
++before the console. It is there to tell two failures apart that otherwise look
++identical, because the panel keeps the picture it came up with in both:
++
++=============================  ==================================================
++what the screen shows          what it means
++=============================  ==================================================
++band, then text above it       everything as far as the console works
++band, nothing above            U-Boot ran, the framebuffer address and the
++                               trigger are right, something after that hung
++the picture it booted with     U-Boot never ran, or the screen is not where the
++                               device tree says it is
++=============================  ==================================================
++
++So the band is the thing to look for first, not the text. Only the third row
++says nothing about the boot loader itself, and it is the one to start from: if
++the phone is otherwise alive, the trigger is the first thing to doubt, because
++everything else about the screen is read from the device tree and that one write
++is a constant.
++
++Two things are worth looking for in the first log. The UFS driver prints the
++rate of the UniPro clock, and everything the link is told about time is
++computed from it, so a wrong one gives a link that does not work rather than an
++error; ``clk dump`` shows where that rate comes from. And the link has to reach
++a high speed gear: the driver says so and stops if it did not, because the core
++skips the change of speed silently when it cannot work the best mode out.
++
++Reading a sector is the proof that storage works, not ``ufs init`` returning
++without an error: that command does not scan the SCSI bus, so a misconfigured
++PHY shows up later, at ``scsi scan``.
++
++References
++----------
++.. [1] https://gitlab.postmarketos.org/postmarketOS/pmaports
++.. [2] https://github.com/osm0sis/mkbootimg
++.. [3] https://git.sr.ht/~grimler/Heimdall
+-- 
+2.47.3
+

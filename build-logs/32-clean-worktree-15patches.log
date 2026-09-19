@@ -1,0 +1,5 @@
+  HOSTLD  scripts/dtc/dtc
+  SCHEMA  Documentation/devicetree/bindings/processed-schema.json
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+DTBS_EXIT=0
+de4e20879cfec17a9ccd62d6c7cbd75dd0136e95186ddc558d2213d5949f93bb  arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb

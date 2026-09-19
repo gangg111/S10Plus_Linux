@@ -1,0 +1,61 @@
+docs/00-summary.md:101:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/00-summary.md:160:0013 -> clk: samsung: Add the Exynos9820 clock driver
+docs/00-summary.md:26:0019 -> drm/panel: s6e3ha9: Compute the gamma from the panel MTP
+docs/00-summary.md:27:0019 -> drm/panel: s6e3ha9: Compute the gamma from the panel MTP
+docs/00-summary.md:28:0034 -> drm/bridge: samsung-dsim: Add Exynos9820 support
+docs/00-summary.md:30:0025 -> phy: samsung: Add the Exynos9820 MIPI DSI D-PHY driver
+docs/00-summary.md:31:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/00-summary.md:35:0012 -> clk: samsung: Add the PLL_0817X and PLL_1018X types
+docs/00-summary.md:36:0025 -> phy: samsung: Add the Exynos9820 MIPI DSI D-PHY driver
+docs/00-summary.md:36:0034 -> drm/bridge: samsung-dsim: Add Exynos9820 support
+docs/00-summary.md:36:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/00-summary.md:37:0017 -> drm/panel: Add Samsung S6E3HA9 panel driver
+docs/00-summary.md:37:0019 -> drm/panel: s6e3ha9: Compute the gamma from the panel MTP
+docs/00-summary.md:94:0013 -> clk: samsung: Add the Exynos9820 clock driver
+docs/00-summary.md:94:0022 -> clk: samsung: exynos9820: Add the CMU_DPU and CMU_CMGP blocks
+docs/00-summary.md:95:0012 -> clk: samsung: Add the PLL_0817X and PLL_1018X types
+docs/00-summary.md:96:0017 -> drm/panel: Add Samsung S6E3HA9 panel driver
+docs/00-summary.md:97:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/00-summary.md:98:0019 -> drm/panel: s6e3ha9: Compute the gamma from the panel MTP
+docs/HW-BLOCKED.md:106:0040 -> arm64: dts: exynos: exynos9820: Add the display pipeline
+docs/HW-BLOCKED.md:171:0038 -> arm64: dts: exynos: exynos9820: Add the DPU power domain
+docs/HW-BLOCKED.md:223:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/HW-BLOCKED.md:237:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/HW-BLOCKED.md:248:0036 -> dt-bindings: display: Add the Exynos9820 DECON
+docs/HW-BLOCKED.md:256:0014 -> arm64: dts: exynos: Add initial support for the Exynos9820
+docs/HW-BLOCKED.md:313:0040 -> arm64: dts: exynos: exynos9820: Add the display pipeline
+docs/HW-BLOCKED.md:376:0017 -> drm/panel: Add Samsung S6E3HA9 panel driver
+docs/HW-BLOCKED.md:608:0039 -> arm64: dts: exynos: exynos9820: Add CMU_DPU and the DPU
+docs/HW-BLOCKED.md:609:0040 -> arm64: dts: exynos: exynos9820: Add the display pipeline
+docs/R1-cmu-dpu.md:107:0020 -> dt-bindings: power: Add Exynos9820 power domain
+docs/R1-cmu-dpu.md:108:0021 -> pmdomain: samsung: Add Exynos9820 power domain support
+docs/R1-cmu-dpu.md:109:0038 -> arm64: dts: exynos: exynos9820: Add the DPU power domain
+docs/R1-cmu-dpu.md:9:0011 -> dt-bindings: clock: Add Exynos9820 SoC clock controller
+docs/R1-sysmmu.md:45:0039 -> arm64: dts: exynos: exynos9820: Add CMU_DPU and the DPU
+docs/R1-sysmmu.md:67:0017 -> drm/panel: Add Samsung S6E3HA9 panel driver
+docs/R1-sysmmu.md:6:0039 -> arm64: dts: exynos: exynos9820: Add CMU_DPU and the DPU
+docs/R2-decon-dsim-driver.md:127:0025 -> phy: samsung: Add the Exynos9820 MIPI DSI D-PHY driver
+docs/R2-decon-dsim-driver.md:171:0024 -> dt-bindings: phy: Add the Exynos9820 MIPI DSI D-PHY
+docs/R2-decon-dsim-driver.md:184:0034 -> drm/bridge: samsung-dsim: Add Exynos9820 support
+docs/R2-decon-dsim-driver.md:211:0036 -> dt-bindings: display: Add the Exynos9820 DECON
+docs/R2-decon-dsim-driver.md:211:0040 -> arm64: dts: exynos: exynos9820: Add the display pipeline
+docs/R2-decon-dsim-driver.md:222:0013 -> clk: samsung: Add the Exynos9820 clock driver
+docs/R2-decon-dsim-driver.md:222:0022 -> clk: samsung: exynos9820: Add the CMU_DPU and CMU_CMGP blocks
+docs/R2-decon-dsim-driver.md:6:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/R2-decon-dsim-driver.md:85:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/R2-decon-dsim-dt.md:44:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/R2-decon-dsim-dt.md:7:0037 -> drm/exynos: Add the Exynos9820 DECON driver
+docs/R2-decon-dsim-dt.md:8:0040 -> arm64: dts: exynos: exynos9820: Add the display pipeline
+docs/R2-panel-driver.md:125:0034 -> drm/bridge: samsung-dsim: Add Exynos9820 support
+docs/R2-panel-driver.md:135:0019 -> drm/panel: s6e3ha9: Compute the gamma from the panel MTP
+docs/R2-panel-driver.md:170:0017 -> drm/panel: Add Samsung S6E3HA9 panel driver
+docs/R2-panel-driver.md:5:0016 -> dt-bindings: display: panel: Add Samsung S6E3HA9
+docs/R2-panel-driver.md:6:0017 -> drm/panel: Add Samsung S6E3HA9 panel driver
+docs/R2-panel-driver.md:89:0018 -> drm/panel: s6e3ha9: Add brightness control
+docs/R2-s2dos05.md:8:0011 -> dt-bindings: clock: Add Exynos9820 SoC clock controller
+docs/R2-s2dos05.md:8:0040 -> arm64: dts: exynos: exynos9820: Add the display pipeline
+docs/S1-sesja-sprzetowa.md:111:0015 -> arm64: dts: exynos: Add initial support for the Samsung
+docs/S1-sesja-sprzetowa.md:112:0014 -> arm64: dts: exynos: Add initial support for the Exynos9820
+docs/UART-BRINGUP.md:143:0015 -> arm64: dts: exynos: Add initial support for the Samsung
+docs/UART-BRINGUP.md:171:0040 -> arm64: dts: exynos: exynos9820: Add the display pipeline
+docs/UART-BRINGUP.md:254:0025 -> phy: samsung: Add the Exynos9820 MIPI DSI D-PHY driver

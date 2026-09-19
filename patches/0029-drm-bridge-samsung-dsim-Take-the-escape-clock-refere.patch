@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:16:35 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Take the escape clock reference
+ from driver_data
+
+The escape prescaler does not count down from the link rate itself but
+from a clock derived from it, and which divider applies is a property of
+the block rather than of the board.
+
+Read that divider from driver_data, with zero meaning the byte clock,
+that is a divider of eight. Every variant leaves it at zero, so the
+escape divider and the resulting escape clock are unchanged.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 9 +++++----
+ include/drm/bridge/samsung-dsim.h     | 6 ++++++
+ 2 files changed, 11 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index ad9c2d63d58..8700a9c7cd5 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -888,7 +888,7 @@ static unsigned long samsung_dsim_set_pll(struct samsung_dsim *dsi,
+ static int samsung_dsim_enable_clock(struct samsung_dsim *dsi)
+ {
+ 	const struct samsung_dsim_driver_data *driver_data = dsi->driver_data;
+-	unsigned long hs_clk, byte_clk, esc_clk, pix_clk;
++	unsigned long hs_clk, byte_clk, esc_clk, pix_clk, esc_ref_clk;
+ 	unsigned long esc_div;
+ 	u32 reg;
+ 	struct drm_display_mode *m = &dsi->mode;
+@@ -909,12 +909,13 @@ static int samsung_dsim_enable_clock(struct samsung_dsim *dsi)
+ 	}
+ 
+ 	byte_clk = hs_clk / 8;
+-	esc_div = DIV_ROUND_UP(byte_clk, dsi->esc_clk_rate);
+-	esc_clk = byte_clk / esc_div;
++	esc_ref_clk = hs_clk / (driver_data->esc_ref_div ?: 8);
++	esc_div = DIV_ROUND_UP(esc_ref_clk, dsi->esc_clk_rate);
++	esc_clk = esc_ref_clk / esc_div;
+ 
+ 	if (esc_clk > 20 * HZ_PER_MHZ) {
+ 		++esc_div;
+-		esc_clk = byte_clk / esc_div;
++		esc_clk = esc_ref_clk / esc_div;
+ 	}
+ 
+ 	dev_dbg(dsi->dev, "hs_clk = %lu, byte_clk = %lu, esc_clk = %lu\n",
+diff --git a/include/drm/bridge/samsung-dsim.h b/include/drm/bridge/samsung-dsim.h
+index 1c6535d014e..268401f3565 100644
+--- a/include/drm/bridge/samsung-dsim.h
++++ b/include/drm/bridge/samsung-dsim.h
+@@ -79,6 +79,12 @@ struct samsung_dsim_driver_data {
+ 	unsigned int main_vsa_offset;
+ 	const unsigned int *reg_values;
+ 	const unsigned int *pix_formats;
++	/*
++	 * Divider from the link rate to the clock the escape prescaler
++	 * counts down from.  The byte clock (8) on every variant so
++	 * far.  Zero means 8.
++	 */
++	unsigned int esc_ref_div;
+ 	unsigned int pll_fin_min;
+ 	unsigned int pll_fin_max;
+ 	u16 m_min;

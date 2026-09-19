@@ -1,0 +1,138 @@
+From 5cc98ef271ab3c933276fa824bc19c485092af17 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sat, 19 Sep 2026 03:54:47 +0200
+Subject: [PATCH 6/8] board: samsung: exynos-mobile: stop requiring an eMMC
+
+This board is meant for Exynos phones, and the newer ones of that family
+have UFS where the older ones have eMMC. Two things here assumed eMMC and
+turned its absence into a board that does not boot at all: the block device
+the environment is built around was looked up by the name "mmc" and nothing
+else, and the fastboot setup that follows it returned an error of its own.
+Both run from misc_init_r, whose failure the core turns into hang(), so the
+phone stopped before it ever reached its storage.
+
+The block device is now looked up by trying the interfaces this board can
+boot from in turn, which today means eMMC and then SCSI, where the block
+layer puts UFS. The name that wins is the one that goes into the
+environment and into the string the capsule update uses, instead of "mmc"
+being written there on faith.
+
+Flashing over fastboot still goes to eMMC, because that is what the option
+names, so a phone without one now gets a warning and a fastboot that cannot
+flash rather than a failed initcall. The whole of that setup also compiles
+away when fastboot is not built, which it was not able to do before: it
+named the fastboot options unconditionally, so leaving fastboot out of a
+configuration broke the build of this file.
+
+Nothing changes for a board that has an eMMC: it is still the first
+interface tried, and it is found exactly where it was.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/exynos-mobile.c | 52 ++++++++++++++++++---
+ 1 file changed, 45 insertions(+), 7 deletions(-)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index d91e2e7d..eedc38e7 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -199,6 +199,28 @@ static void exynos_env_setup(void)
+ 	env_set("fdtfile", buf);
+ }
+ 
++/*
++ * Where this phone keeps its storage.  Most of the family boots from eMMC, but
++ * the newer ones have UFS instead, which the block layer reaches over SCSI, so
++ * both are tried in turn rather than one being assumed.
++ */
++static struct blk_desc *exynos_get_boot_blk(const char **ifname, int devnum)
++{
++	static const char * const ifnames[] = { "mmc", "scsi" };
++	struct blk_desc *desc;
++	int i;
++
++	for (i = 0; i < ARRAY_SIZE(ifnames); i++) {
++		desc = blk_get_dev(ifnames[i], devnum);
++		if (desc) {
++			*ifname = ifnames[i];
++			return desc;
++		}
++	}
++
++	return NULL;
++}
++
+ static int exynos_blk_env_setup(void)
+ {
+ 	const char *blk_ifname;
+@@ -209,10 +231,9 @@ static int exynos_blk_env_setup(void)
+ 	static char dfu_string[32];
+ 	int i;
+ 
+-	blk_ifname = "mmc";
+-	blk_desc = blk_get_dev(blk_ifname, blk_dev);
++	blk_desc = exynos_get_boot_blk(&blk_ifname, blk_dev);
+ 	if (!blk_desc) {
+-		log_err("%s: required mmc device not available\n", __func__);
++		log_err("%s: no block device to boot from\n", __func__);
+ 		return -ENODEV;
+ 	}
+ 
+@@ -223,8 +244,8 @@ static int exynos_blk_env_setup(void)
+ 		if (!update_info.dfu_string &&
+ 		    !strncasecmp(info.name, "boot", strlen("boot"))) {
+ 			snprintf(dfu_string, sizeof(dfu_string),
+-				 "mmc %d=u-boot.bin part %d %d", blk_dev,
+-				 blk_dev, i);
++				 "%s %d=u-boot.bin part %d %d", blk_ifname,
++				 blk_dev, blk_dev, i);
+ 			update_info.dfu_string = dfu_string;
+ 		}
+ 
+@@ -247,6 +268,12 @@ static int exynos_blk_env_setup(void)
+ 	return 0;
+ }
+ 
++/*
++ * Fastboot is optional here: a phone whose storage this board cannot
++ * flash still has to boot, so the whole of it compiles away rather than
++ * holding the configuration hostage.
++ */
++#if CONFIG_IS_ENABLED(FASTBOOT)
+ static int exynos_fastboot_setup(void)
+ {
+ 	struct blk_desc *blk_dev;
+@@ -262,10 +289,15 @@ static int exynos_fastboot_setup(void)
+ 	}
+ 	env_set_hex("fastboot_addr_r", addr);
+ 
++	/*
++	 * Flashing over fastboot goes to eMMC, so a phone that has none gets
++	 * fastboot without it rather than no boot at all.
++	 */
+ 	blk_dev = blk_get_dev("mmc", CONFIG_FASTBOOT_FLASH_MMC_DEV);
+ 	if (!blk_dev) {
+-		log_err("%s: required mmc device not available\n", __func__);
+-		return -ENODEV;
++		log_warning("%s: no mmc device, fastboot cannot flash\n",
++			    __func__);
++		return 0;
+ 	}
+ 
+ 	strcpy(buf, "fastboot_partition_alias_");
+@@ -293,6 +325,12 @@ static int exynos_fastboot_setup(void)
+ 
+ 	return 0;
+ }
++#else
++static int exynos_fastboot_setup(void)
++{
++	return 0;
++}
++#endif
+ 
+ int board_fdt_blob_setup(void **fdtp)
+ {
+-- 
+2.47.3
+

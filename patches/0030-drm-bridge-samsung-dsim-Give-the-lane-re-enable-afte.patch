@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:16:36 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Give the lane re-enable after reset
+ its own flag
+
+Whether the software reset also drops the lanes is decided by comparing
+reg_values[RESET_TYPE] with DSIM_FUNCRST, which reads a register value
+as if it were a capability. The same constant can stand for a different
+bit on another version of the block, and the test would then answer the
+wrong question with nothing in the build to say so.
+
+State it directly with a driver_data flag, set on exynos5433, the only
+variant whose RESET_TYPE is DSIM_FUNCRST today.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 3 ++-
+ include/drm/bridge/samsung-dsim.h     | 2 ++
+ 2 files changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index 8700a9c7cd5..a43c5b3cdaf 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -594,6 +594,7 @@ static const struct samsung_dsim_driver_data exynos5433_dsi_driver_data = {
+ 	.pll_s_offset = 1,
+ 	.main_vsa_offset = 22,
+ 	.reg_values = exynos5433_reg_values,
++	.reset_drops_lanes = 1,	/* RESET_TYPE is DSIM_FUNCRST */
+ 	.pll_fin_min = 6,
+ 	.pll_fin_max = 12,
+ 	.m_min = 41,
+@@ -1649,7 +1650,7 @@ static int samsung_dsim_init(struct samsung_dsim *dsi)
+ 	samsung_dsim_reset(dsi);
+ 	samsung_dsim_enable_irq(dsi);
+ 
+-	if (driver_data->reg_values[RESET_TYPE] == DSIM_FUNCRST)
++	if (driver_data->reset_drops_lanes)
+ 		samsung_dsim_enable_lane(dsi, BIT(dsi->lanes) - 1);
+ 
+ 	ret = samsung_dsim_enable_clock(dsi);
+diff --git a/include/drm/bridge/samsung-dsim.h b/include/drm/bridge/samsung-dsim.h
+index 268401f3565..1391e1375bc 100644
+--- a/include/drm/bridge/samsung-dsim.h
++++ b/include/drm/bridge/samsung-dsim.h
+@@ -59,6 +59,8 @@ struct samsung_dsim_driver_data {
+ 	unsigned int has_clklane_stop:1;
+ 	unsigned int has_broken_fifoctrl_emptyhdr:1;
+ 	unsigned int has_sfrctrl:1;
++	/* the software reset also drops the lanes, so re-enable them */
++	unsigned int reset_drops_lanes:1;
+ 	struct clk_bulk_data *clk_data;
+ 	unsigned int num_clks;
+ 	unsigned int min_freq;

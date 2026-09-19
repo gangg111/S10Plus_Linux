@@ -1,0 +1,27 @@
+# Kompilacja sterownika panelu (Termux, obejście braku host-tooli kbuilda)
+# baza: linux@1200d84f4c0a (v7.2.0), clang 21.1.8
+
+## 1. Pełny kbuild NIE DZIAŁA na Termuxie — host-toole nie kompilują się z bionikiem:
+scripts/mod/symsearch.c:87:18: error: call to undeclared function 'ELF64_ST_TYPE'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+scripts/mod/modpost.c:644:7: error: call to undeclared function 'ELF64_ST_BIND'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+scripts/mod/modpost.c:652:8: error: call to undeclared function 'ELF64_ST_TYPE'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+scripts/mod/modpost.c:1106:6: error: call to undeclared function 'ELF64_ST_BIND'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+      | make[2]: *** [scripts/Makefile.host:131: scripts/mod/symsearch.o] Error 1
+scripts/mod/modpost.c:1138:16: error: call to undeclared function 'ELF64_ST_TYPE'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+scripts/mod/modpost.c:1208:7: error: use of undeclared identifier 'R_ARM_MOVW_ABS_NC'
+scripts/mod/modpost.c:1209:7: error: use of undeclared identifier 'R_ARM_MOVT_ABS'
+
+## 2. Wygenerowane ręcznie nagłówki (normalnie robi to `make prepare`):
+   arch/arm64/include/generated/asm/{cpucap-defs,kernel-hwcap,sysreg-defs}.h  (awk/sh z arch/arm64/tools)
+   include/generated/bounds.h        (kernel/bounds.c -> sed z scripts/Makefile.lib)
+   include/generated/timeconst.h     (bc kernel/time/timeconst.bc, CONFIG_HZ=250)
+   include/generated/rq-offsets.h    (kernel/sched/rq-offsets.c -> ten sam sed)
+#define __RQ_OFFSETS_H__
+#define RQ_nr_pinned 3440 /* offsetof(struct rq, nr_pinned) */
+
+## 3. Kompilacja sterownika flagami jądra (kcc.sh = LINUXINCLUDE + CC_FLAGS_DIALECT):
+   EXIT=0   ostrzeżenia/błędy z naszego pliku: 0
+   (razem 29 ostrzeżeń, wszystkie z nagłówków jądra)
+   obiekt: s6e3ha9.o
+
+## 4. Czego to NIE dowodzi: linkowania modułu ani modpost. Do zrobienia na PC.

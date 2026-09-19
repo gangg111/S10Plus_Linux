@@ -1,0 +1,8 @@
+# Odczyty DSI - bramki
+# baza: linux@1200d84f4c0a + patche 0001-0022
+
+exynos9820_drm_dsim.c EXIT=0  uwagi z pliku: 0  obiekt: 15464 B
+exynos9820_drm_decon.c EXIT=0  uwagi z pliku: 0  obiekt: 18696 B
+
+checkpatch 0022: 0 bledow, 1 ostrzezenie (commit id z innego repo)
+22 patchy na czystej bazie + CHECK_DTBS: EXIT=0 (build-logs/38)

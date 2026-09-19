@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 19 Aug 2026 04:04:17 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the DPU power domain
+
+The DPU domain feeds DECON, the DPP windows and DSIM. Its registers are
+DPU_CONFIGURATION at 0x15861e00 and DPU_STATUS at 0x15861e04 (vendor PMU
+tables, commit 7d08ec364a06).
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 16 ++++++++++++++++
+ 1 file changed, 16 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index c269ae97a21..eeebd1c6bd6 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -419,6 +419,22 @@ reboot: syscon-reboot {
+ 			};
+ 		};
+ 
++		/*
++		 * UNVERIFIED: The mask is the vendor's own
++		 * (flexpmu_cal_local_exynos9820.h:287-288 writes 0x15860000 +
++		 * 0x1e00 with (0x1 << 0) and waits on + 0x1e04 with the same
++		 * mask), but exynos_pd_power writes the whole word, so the other
++		 * 31 bits are zeroed and no source says what they hold.  The
++		 * vendor node also carries need_smc = <0x191b0204>, which this
++		 * binding has no way to express.
++		 */
++		pd_dpu: power-domain@15861e00 {
++			compatible = "samsung,exynos9820-pd";
++			reg = <0x15861e00 0x20>;
++			#power-domain-cells = <0>;
++			label = "DPU";
++		};
++
+ 		pinctrl_cmgp: pinctrl@15c30000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x15c30000 0x1000>;

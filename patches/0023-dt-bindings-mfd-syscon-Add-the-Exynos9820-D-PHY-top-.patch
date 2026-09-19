@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:31:06 +0200
+Subject: [PATCH] dt-bindings: mfd: syscon: Add the Exynos9820 D-PHY top block
+
+The bias generator of the Exynos9820 display D-PHY sits in a block of
+its own, next to but outside the per link range. The SoC has room for a
+second DSI controller, whose PHY would need the same block, so it is
+described as a system controller the link nodes point at rather than as
+a second register range in each of them.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/mfd/syscon.yaml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/mfd/syscon.yaml b/Documentation/devicetree/bindings/mfd/syscon.yaml
+index e2286708806..e3303a93cd8 100644
+--- a/Documentation/devicetree/bindings/mfd/syscon.yaml
++++ b/Documentation/devicetree/bindings/mfd/syscon.yaml
+@@ -121,6 +121,7 @@ select:
+           - rockchip,rk3576-qos
+           - rockchip,rk3588-qos
+           - rockchip,rv1126-qos
++          - samsung,exynos9820-dphy-top
+           - st,spear1340-misc
+           - stericsson,nomadik-pmu
+           - starfive,jh7100-sysmain
+@@ -235,6 +236,7 @@ properties:
+               - rockchip,rk3576-qos
+               - rockchip,rk3588-qos
+               - rockchip,rv1126-qos
++              - samsung,exynos9820-dphy-top
+               - st,spear1340-misc
+               - stericsson,nomadik-pmu
+               - starfive,jh7100-sysmain

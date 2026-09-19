@@ -1,0 +1,403 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:16:36 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Add Exynos9820 support
+
+The Exynos9820 DSI host is the same block the rest of this driver
+already covers, with the register map moved again and the analog side
+taken out into a PHY device. The parameterisation of the previous
+patches is what this entry fills in.
+
+The link registers moved, and the PLL, PHY control and PHY timing
+registers have no counterpart at all, because the PLL lives in the
+D-PHY. The video mode porch registers are deliberately left out: their
+layout differs between EVT0 and later silicon (0x40 with 8 bit fields
+against 0x104 with 16 bit fields plus a separate detail register), and
+which one applies has not been read off a device, so only command mode
+is offered.
+
+The pixel format field is six bits at bit 9 with RGB24 as 0x3e, against
+three bits at bit 12 with RGB888 as 0x7 elsewhere. This is the first
+variant to bring a table of its own, and it has no encoding for RGB565,
+so the lookup now refuses a format its table leaves undefined instead of
+writing a zero the field does not accept. Every other variant keeps the
+shared table, which defines all four, so none of them can reach it. The escape prescaler
+counts down from the word clock, that is the link rate over sixteen, so
+the reference divider is 16. DSIM_FUNCRST sits at bit 8 here, so the
+lanes have to be enabled again after a reset on this variant as well.
+
+An external PHY cannot be powered on from runtime resume, because it
+needs the link rate first. It is configured and powered on once the mode
+is known, and the host then waits for the PLL stable bit in the link
+status register. Powering it off is paired with that: a suspend that
+never reached the mode set must not power off a PHY that was never
+powered on, or the reference count in the PHY core goes negative.
+
+Compression and the command mode tearing windows come with the variant
+as well, both behind capability flags, so nothing changes for a variant
+that does not have those registers. Compression also changes what the
+resolution register counts: the vendor writes the compressed line width
+there, per slice and times the slice count, and this driver wrote the
+width the peripheral shows. That is a factor of three at 8.0 bpp, so the
+host would wait for data that never arrives. It is fixed under a test on
+the peripheral's DSC configuration, which no other variant in this
+driver has.
+
+has_clklane_stop is deliberately not set. The two bits the shared code
+writes for it are the top two of the configuration register, and on this
+block bit 30 gates the PLL clock while bit 31 is not defined at all, so
+the flag would write into the wrong place. Stopping the clock between
+transmissions is a separate feature here, and it is not wired up.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 192 +++++++++++++++++++++++++-
+ include/drm/bridge/samsung-dsim.h     |  18 ++-
+ 2 files changed, 206 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index 9ac309e57a3..012dfb99f70 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -26,6 +26,7 @@
+ #include <video/mipi_display.h>
+ 
+ #include <drm/bridge/samsung-dsim.h>
++#include <drm/display/drm_dsc.h>
+ #include <drm/drm_panel.h>
+ #include <drm/drm_print.h>
+ 
+@@ -245,6 +246,11 @@ static struct clk_bulk_data exynos5433_clk_bulk_data[] = {
+ 	{ .id = "sclk_rgb_vclk_to_dsim0" },
+ };
+ 
++/* The 9820 link only needs its APB clock; the PHY holds its own. */
++static struct clk_bulk_data exynos9820_clk_bulk_data[] = {
++	{ .id = "bus" },
++};
++
+ static struct clk_bulk_data exynos7870_clk_bulk_data[] = {
+ 	{ .id = "bus" },
+ 	{ .id = "pll" },
+@@ -277,6 +283,9 @@ enum reg_idx {
+ 	DSIM_PHYTIMING_REG,
+ 	DSIM_PHYTIMING1_REG,
+ 	DSIM_PHYTIMING2_REG,
++	DSIM_NUM_OF_TRANSFER_REG,	/* Transfers per frame, command mode */
++	DSIM_CMD_TE_CTRL0_REG,	/* Tearing effect control */
++	DSIM_CMD_TE_CTRL1_REG,
+ 	NUM_REGS
+ };
+ 
+@@ -354,6 +363,11 @@ static const unsigned int exynos7870_reg_ofs[NUM_REGS] = {
+ 	[DSIM_PHYTIMING2_REG] = 0xBC,
+ };
+ 
++#define DSIM_NUM_OF_TRANSFER_PER_FRAME(x)	((x) << 0)
++#define DSIM_TIME_STABLE_VFP(x)		((x) << 0)
++#define DSIM_TIME_TE_PROTECT_ON(x)	((x) << 16)
++#define DSIM_TIME_TE_TOUT(x)		((x) << 0)
++
+ /* Index into samsung_dsim_driver_data.pix_formats. */
+ enum samsung_dsim_pix_format {
+ 	DSIM_PIX_FORMAT_RGB888,
+@@ -370,6 +384,13 @@ static const unsigned int samsung_dsim_pix_formats[DSIM_PIX_FORMAT_COUNT] = {
+ 	[DSIM_PIX_FORMAT_RGB565] = DSIM_MAIN_PIX_FORMAT_RGB565,
+ };
+ 
++/* Six bits at bit 9 rather than three at bit 12 (ds/regs-dsim.h:173). */
++static const unsigned int exynos9820_pix_formats[DSIM_PIX_FORMAT_COUNT] = {
++	[DSIM_PIX_FORMAT_RGB888] = 0x3e << 9,
++	[DSIM_PIX_FORMAT_RGB666] = 0x2e << 9,
++	[DSIM_PIX_FORMAT_RGB666_P] = 0x1e << 9,
++};
++
+ enum reg_value_idx {
+ 	RESET_TYPE,
+ 	PLL_TIMER,
+@@ -425,6 +446,37 @@ static const unsigned int exynos5422_reg_values[NUM_REG_VALUES] = {
+ 	[PHYTIMING_HS_TRAIL] = DSIM_PHYTIMING2_HS_TRAIL(0x0d),
+ };
+ 
++/*
++ * Exynos9820 moved the link registers around again and pushed the PLL and the
++ * lane timings out into a separate D-PHY device, so the PLL, PHY control and
++ * PHY timing registers have no counterpart here.  The video mode porch
++ * registers are left out on purpose: their layout differs between EVT0 and
++ * later silicon (0x40 with 8 bit fields against 0x104 with 16 bit fields plus
++ * a separate detail register), and which one applies has not been read off a
++ * device, so only command mode is offered.
++ */
++static const unsigned int exynos9820_reg_ofs[NUM_REGS] = {
++	/* the status register that carries the PLL stable bit */
++	[DSIM_LINK_STATUS_REG] = 0x14,
++	[DSIM_DPHY_STATUS_REG] = 0x1c,
++	[DSIM_SWRST_REG] = 0x04,
++	[DSIM_CLKCTRL_REG] = 0x20,
++	[DSIM_TIMEOUT_REG] = 0x28,
++	[DSIM_ESCMODE_REG] = 0x2c,
++	[DSIM_MDRESOL_REG] = 0x3c,
++	[DSIM_CONFIG_REG] = 0x4c,
++	[DSIM_INTSRC_REG] = 0x50,
++	[DSIM_INTMSK_REG] = 0x54,
++	[DSIM_PKTHDR_REG] = 0x58,
++	[DSIM_PAYLOAD_REG] = 0x5c,
++	[DSIM_RXFIFO_REG] = 0x60,
++	[DSIM_SFRCTRL_REG] = 0x64,
++	[DSIM_FIFOCTRL_REG] = 0x68,
++	[DSIM_NUM_OF_TRANSFER_REG] = 0x30,
++	[DSIM_CMD_TE_CTRL0_REG] = 0x84,
++	[DSIM_CMD_TE_CTRL1_REG] = 0x88,
++};
++
+ static const unsigned int exynos5433_reg_values[NUM_REG_VALUES] = {
+ 	[RESET_TYPE] = DSIM_FUNCRST,
+ 	[PLL_TIMER] = 22200,
+@@ -479,6 +531,15 @@ static const unsigned int imx8mm_dsim_reg_values[NUM_REG_VALUES] = {
+ 	[PHYTIMING_HS_TRAIL] = DSIM_PHYTIMING2_HS_TRAIL(0x0b),
+ };
+ 
++/*
++ * Only the entries the link itself uses.  Everything the PHYCTRL and PHYTIMING
++ * entries would carry lives in the D-PHY driver on this SoC.
++ */
++static const unsigned int exynos9820_reg_values[NUM_REG_VALUES] = {
++	[RESET_TYPE] = BIT(8) | BIT(0),	/* FUNCRST | SWRST */
++	[STOP_STATE_CNT] = 0xa,
++};
++
+ static const struct samsung_dsim_driver_data exynos3_dsi_driver_data = {
+ 	.init_on_first_transfer = 1,
+ 	.reg_ofs = exynos_reg_ofs,
+@@ -702,6 +763,40 @@ static const struct samsung_dsim_driver_data imx8mm_dsi_driver_data = {
+ 	.min_freq = 1050,
+ };
+ 
++static const struct samsung_dsim_driver_data exynos9820_dsi_driver_data = {
++	.reg_ofs = exynos9820_reg_ofs,
++	.clk_data = exynos9820_clk_bulk_data,
++	.num_clks = ARRAY_SIZE(exynos9820_clk_bulk_data),
++	.has_sfrctrl = 1,
++	/*
++	 * No has_clklane_stop: the bits the shared code writes for it are
++	 * BIT(30) and BIT(31) of the configuration register, and on this
++	 * block bit 30 gates the PLL clock while bit 31 is not defined at
++	 * all (ds/regs-dsim.h:157-180).  The block does have a non
++	 * continuous clock lane, but it is bit 25 of the clock control
++	 * register (ds/regs-dsim.h:56-58), which this flag cannot reach.
++	 * That bit has its own field below.
++	 */
++	.noncont_clklane_bit = 25,
++	.has_external_phy = 1,
++	.has_cmd_te_regs = 1,
++	.reset_drops_lanes = 1,
++	.wait_for_hdr_fifo = 1,
++	.wait_for_reset = 0,
++	.num_bits_resol = 13,
++	.video_mode_bit = 18,
++	.pll_stable_bit = 0,
++	.esc_clken_bit = 16,
++	.byte_clken_bit = 17,
++	.tx_req_hsclk_bit = 20,
++	.lane_esc_clk_bit = 12,
++	.lane_esc_data_offset = 8,
++	.reg_values = exynos9820_reg_values,
++	.pix_formats = exynos9820_pix_formats,
++	.cprs_en_bit = 19,
++	.esc_ref_div = 16,
++};
++
+ static const struct samsung_dsim_driver_data *
+ samsung_dsim_types[DSIM_TYPE_COUNT] = {
+ 	[DSIM_TYPE_EXYNOS3250] = &exynos3_dsi_driver_data,
+@@ -712,6 +807,7 @@ samsung_dsim_types[DSIM_TYPE_COUNT] = {
+ 	[DSIM_TYPE_EXYNOS7870] = &exynos7870_dsi_driver_data,
+ 	[DSIM_TYPE_IMX8MM] = &imx8mm_dsi_driver_data,
+ 	[DSIM_TYPE_IMX8MP] = &imx8mm_dsi_driver_data,
++	[DSIM_TYPE_EXYNOS9820] = &exynos9820_dsi_driver_data,
+ };
+ 
+ static inline struct samsung_dsim *host_to_dsi(struct mipi_dsi_host *h)
+@@ -1021,6 +1117,18 @@ static int samsung_dsim_enable_clock(struct samsung_dsim *dsi)
+ 					    driver_data->lane_esc_data_offset)
+ 		| DSIM_BYTE_CLK_SRC(0)
+ 		| BIT(driver_data->tx_req_hsclk_bit);
++	/*
++	 * Non continuous clock, where the block puts that bit in this
++	 * register rather than in the configuration one.  The peripheral asks
++	 * for it through its mode flags and the vendor honours the request on
++	 * this block (dsim_reg.c:1672), so ignoring it would leave the clock
++	 * lane in high speed between bursts for no reason.
++	 */
++	if (driver_data->noncont_clklane_bit) {
++		reg &= ~BIT(driver_data->noncont_clklane_bit);
++		if (dsi->mode_flags & MIPI_DSI_CLOCK_NON_CONTINUOUS)
++			reg |= BIT(driver_data->noncont_clklane_bit);
++	}
+ 	samsung_dsim_write(dsi, DSIM_CLKCTRL_REG, reg);
+ 
+ 	return 0;
+@@ -1235,8 +1343,21 @@ static int samsung_dsim_init_link(struct samsung_dsim *dsi)
+ 		return -EINVAL;
+ 	}
+ 
++	/*
++	 * A variant table may not cover every MIPI format: the vendor
++	 * documents no 16 bit encoding for Exynos9820, and zero is not a
++	 * legal value for this field on any variant.
++	 */
++	if (!pix_formats[pix_format]) {
++		dev_err(dsi->dev, "no pixel format encoding for this variant\n");
++		return -EINVAL;
++	}
++
+ 	reg |= pix_formats[pix_format];
+ 
++	if (dsi->dsc && driver_data->cprs_en_bit)
++		reg |= BIT(driver_data->cprs_en_bit);
++
+ 	/*
+ 	 * Use non-continuous clock mode if the periparal wants and
+ 	 * host controller supports
+@@ -1285,6 +1406,34 @@ static int samsung_dsim_init_link(struct samsung_dsim *dsi)
+ 	return 0;
+ }
+ 
++/*
++ * Line width the host counts, which is not the width the peripheral shows
++ * when the stream is compressed.  The vendor works it out per slice and in
++ * bytes: three bytes to an uncompressed pixel, the compressed size taken
++ * from the bit rate, then back to pixels, rounded up to an even number and
++ * multiplied by the slice count (dsim_drv.c:1646-1690 feeding
++ * dsim_reg.c:1025-1037 of the vendor kernel).  The 1/3 ratio is hard coded
++ * there; written out through the bit rate it reduces to the same numbers at
++ * 8.0 bpp and follows the configuration at any other rate.
++ */
++static u32 samsung_dsim_hresol(struct samsung_dsim *dsi,
++			       const struct drm_display_mode *m)
++{
++	const struct drm_dsc_config *dsc = dsi->dsc;
++	u32 bytes, pixels;
++
++	if (!dsc)
++		return m->hdisplay;
++
++	/* bits_per_pixel carries four fractional bits */
++	bytes = dsc->slice_width * dsc->bits_per_pixel / (8 * 16);
++	pixels = bytes / 3;
++	if (bytes % 3)
++		pixels++;
++
++	return round_up(pixels, 2) * dsc->slice_count;
++}
++
+ static void samsung_dsim_set_display_mode(struct samsung_dsim *dsi)
+ {
+ 	struct drm_display_mode *m = &dsi->mode;
+@@ -1320,11 +1469,43 @@ static void samsung_dsim_set_display_mode(struct samsung_dsim *dsi)
+ 			| DSIM_MAIN_HSA(hsa);
+ 		samsung_dsim_write(dsi, DSIM_MSYNC_REG, reg);
+ 	}
+-	reg =  DSIM_MAIN_HRESOL(m->hdisplay, num_bits_resol) |
++	reg =  DSIM_MAIN_HRESOL(samsung_dsim_hresol(dsi, m), num_bits_resol) |
+ 		DSIM_MAIN_VRESOL(m->vdisplay, num_bits_resol);
+ 
+ 	samsung_dsim_write(dsi, DSIM_MDRESOL_REG, reg);
+ 
++	/*
++	 * Command mode needs the transfer count and the two tearing effect
++	 * windows.  A variant flag says whether this block has them.
++	 *
++	 * The transfer count is one per line either way, so it does not
++	 * depend on the compression.  Compressed, the vendor writes the
++	 * line count outright; uncompressed it divides the pixel count by
++	 * a threshold that is set to the line width, which comes to the
++	 * same number (dsim_reg.c:1689-1712).
++	 *
++	 * UNVERIFIED: none of the three expressions below is explained
++	 * by any source.  The vendor says what two of the factors mean,
++	 * 158 is 15.8 ms and 180 is 18 ms, spelled out next to them, but
++	 * not the division by 16 that turns milliseconds into register
++	 * units.  The stable front porch window is the vendor's own
++	 * expression as well: the width, times a named constant of 2,
++	 * times 3 bytes per pixel, over 100.  None of it has been
++	 * checked against a tearing free frame.
++	 */
++	if (!(dsi->mode_flags & MIPI_DSI_MODE_VIDEO) &&
++	    dsi->driver_data->has_cmd_te_regs) {
++		unsigned long mbps = dsi->hs_clock / 1000000;
++
++		samsung_dsim_write(dsi, DSIM_NUM_OF_TRANSFER_REG,
++				   DSIM_NUM_OF_TRANSFER_PER_FRAME(m->vdisplay));
++		samsung_dsim_write(dsi, DSIM_CMD_TE_CTRL0_REG,
++				   DSIM_TIME_STABLE_VFP(m->hdisplay * 2 * 3 / 100));
++		samsung_dsim_write(dsi, DSIM_CMD_TE_CTRL1_REG,
++				   DSIM_TIME_TE_PROTECT_ON(mbps * 158 / 16) |
++				   DSIM_TIME_TE_TOUT(mbps * 180 / 16));
++	}
++
+ 	dev_dbg(dsi->dev, "LCD size = %dx%d\n", m->hdisplay, m->vdisplay);
+ }
+ 
+@@ -2342,6 +2523,15 @@ int samsung_dsim_probe(struct platform_device *pdev)
+ 		return PTR_ERR(dsi->phy);
+ 	}
+ 
++	/*
++	 * A variant whose PLL sits in the PHY has nothing to drive the link
++	 * with without it, and the PHY core answers every call on a NULL
++	 * phy with success, so the failure would otherwise be silent.
++	 */
++	if (dsi->driver_data->has_external_phy && !dsi->phy)
++		return dev_err_probe(dev, -ENODEV,
++				     "this variant needs a D-PHY\n");
++
+ 	dsi->irq = platform_get_irq(pdev, 0);
+ 	if (dsi->irq < 0)
+ 		return dsi->irq;
+diff --git a/include/drm/bridge/samsung-dsim.h b/include/drm/bridge/samsung-dsim.h
+index a26864fc777..ecec17e63d3 100644
+--- a/include/drm/bridge/samsung-dsim.h
++++ b/include/drm/bridge/samsung-dsim.h
+@@ -33,6 +33,7 @@ enum samsung_dsim_type {
+ 	DSIM_TYPE_EXYNOS7870,
+ 	DSIM_TYPE_IMX8MM,
+ 	DSIM_TYPE_IMX8MP,
++	DSIM_TYPE_EXYNOS9820,
+ 	DSIM_TYPE_COUNT,
+ };
+ 
+@@ -62,6 +63,8 @@ struct samsung_dsim_driver_data {
+ 	unsigned int has_sfrctrl:1;
+ 	/* the link PLL and the lane timings live in a separate PHY device */
+ 	unsigned int has_external_phy:1;
++	/* command mode transfer count and tearing windows */
++	unsigned int has_cmd_te_regs:1;
+ 	/* the software reset also drops the lanes, so re-enable them */
+ 	unsigned int reset_drops_lanes:1;
+ 	/*
+@@ -92,12 +95,21 @@ struct samsung_dsim_driver_data {
+ 	unsigned int main_vsa_offset;
+ 	const unsigned int *reg_values;
+ 	const unsigned int *pix_formats;
++	/* bit that enables DSC in the configuration register, 0 if absent */
++	unsigned int cprs_en_bit;
+ 	/*
+-	 * Divider from the link rate to the clock the escape prescaler
+-	 * counts down from.  The byte clock (8) on every variant so
+-	 * far.  Zero means 8.
++	 * Divider from the link rate to the clock the escape prescaler counts
++	 * down from.  The byte clock (8) everywhere except Exynos9820, which
++	 * uses the word clock (16).  Zero means 8.
+ 	 */
+ 	unsigned int esc_ref_div;
++	/*
++	 * Bit of the clock control register that stops the clock lane between
++	 * high speed bursts.  On the blocks has_clklane_stop covers, that
++	 * function sits in the configuration register instead, so the two are
++	 * alternatives rather than a pair.  Zero means the block has neither.
++	 */
++	unsigned int noncont_clklane_bit;
+ 	unsigned int pll_fin_min;
+ 	unsigned int pll_fin_max;
+ 	u16 m_min;

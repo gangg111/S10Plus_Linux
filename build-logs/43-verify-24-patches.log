@@ -1,0 +1,1075 @@
+error: patch failed: Documentation/devicetree/bindings/arm/cpus.yaml:230
+error: Documentation/devicetree/bindings/arm/cpus.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/arm/samsung/samsung-boards.yaml:247
+error: Documentation/devicetree/bindings/arm/samsung/samsung-boards.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/i2c/i2c-exynos5.yaml:42
+error: Documentation/devicetree/bindings/i2c/i2c-exynos5.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml:50
+error: Documentation/devicetree/bindings/pinctrl/samsung,pinctrl-wakeup-interrupt.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.yaml:57
+error: Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/serial/samsung_uart.yaml:51
+error: Documentation/devicetree/bindings/serial/samsung_uart.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml:38
+error: Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/soc/samsung/exynos-usi.yaml:37
+error: Documentation/devicetree/bindings/soc/samsung/exynos-usi.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml:35
+error: Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml: patch does not apply
+error: patch failed: Documentation/devicetree/bindings/timer/samsung,exynos4210-mct.yaml:36
+error: Documentation/devicetree/bindings/timer/samsung,exynos4210-mct.yaml: patch does not apply
+*** Default configuration is based on 'defconfig'
+#
+# configuration written to .config
+#
+  SYNC    include/config/auto.conf
+  UPD     include/config/kernel.release
+  DTC     arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+  CHKDT   ./Documentation/devicetree/bindings
+  LINT    ./Documentation/devicetree/bindings
+  STYLE   ./Documentation/devicetree/bindings
+  DTC [C] Documentation/devicetree/bindings/arm/cpus.example.dtb
+  DTC [C] Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.example.dtb
+  DTC [C] Documentation/devicetree/bindings/i2c/i2c-exynos5.example.dtb
+  DTC [C] Documentation/devicetree/bindings/pinctrl/samsung,pinctrl.example.dtb
+  DTC [C] Documentation/devicetree/bindings/serial/samsung_uart.example.dtb
+  DTC [C] Documentation/devicetree/bindings/soc/samsung/exynos-pmu.example.dtb
+  DTC [C] Documentation/devicetree/bindings/soc/samsung/exynos-usi.example.dtb
+  DTC [C] Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.example.dtb
+  DTC [C] Documentation/devicetree/bindings/timer/samsung,exynos4210-mct.example.dtb
+########## 0001-dt-bindings-Add-Exynos9820-SoC-compatibles.patch
+total: 0 errors, 0 warnings, 0 checks, 82 lines checked
+
+/data/data/com.termux/files/home/s10-mainline/patches/0001-dt-bindings-Add-Exynos9820-SoC-compatibles.patch has no obvious style problems and is ready for submission.
+########## 0002-dt-bindings-clock-Add-Exynos9820-SoC-clock-controlle.patch
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+WARNING: Unknown commit id '0aeca03f7acd', maybe rebased or not pulled?
+#10: 
+chiffathefox/exynos-9820-mainline-linux (commit 0aeca03f7acd).
+
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#21: 
+new file mode 100644
+
+total: 0 errors, 2 warnings, 0 checks, 564 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0002-dt-bindings-clock-Add-Exynos9820-SoC-clock-controlle.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0003-arm64-dts-exynos-Add-minimal-Exynos9820-SoC-and-Gala.patch
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+WARNING: Unknown commit id 'c5afa30840d9', maybe rebased or not pulled?
+#14: 
+commit c5afa30840d9).
+
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#40: 
+new file mode 100644
+
+total: 0 errors, 2 warnings, 0 checks, 1230 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0003-arm64-dts-exynos-Add-minimal-Exynos9820-SoC-and-Gala.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0004-dt-bindings-display-panel-Add-Samsung-S6E3HA9.patch
+sh: 1: scripts/spdxcheck.py: not found
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#18: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 69 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0004-dt-bindings-display-panel-Add-Samsung-S6E3HA9.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0005-drm-panel-Add-Samsung-S6E3HA9-panel-driver.patch
+sh: 1: scripts/spdxcheck.py: not found
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#66: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 383 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0005-drm-panel-Add-Samsung-S6E3HA9-panel-driver.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0006-drm-Add-skeleton-DECON-DSIM-driver-for-Exynos9820.patch
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#21: 
+commit 7d08ec364a06, drivers/video/fbdev/exynos/dpu20/cal_9820/).
+
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#67: 
+new file mode 100644
+
+total: 0 errors, 2 warnings, 0 checks, 1314 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0006-drm-Add-skeleton-DECON-DSIM-driver-for-Exynos9820.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0007-dt-bindings-clock-Add-Exynos9820-CMU_DPU.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#12: 
+LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
+
+total: 0 errors, 1 warnings, 0 checks, 47 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0007-dt-bindings-clock-Add-Exynos9820-CMU_DPU.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0008-dt-bindings-power-Add-Exynos9820-power-domain.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/data/data/com.termux/files/home/s10-mainline/patches/0008-dt-bindings-power-Add-Exynos9820-power-domain.patch has no obvious style problems and is ready for submission.
+########## 0009-pmdomain-samsung-Add-Exynos9820-power-domain-support.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#12: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06, drivers/soc/
+
+total: 0 errors, 1 warnings, 0 checks, 19 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0009-pmdomain-samsung-Add-Exynos9820-power-domain-support.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0010-arm64-dts-exynos-exynos9820-Add-the-DPU-power-domain.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#8: 
+tables, commit 7d08ec364a06).
+
+total: 0 errors, 1 warnings, 0 checks, 13 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0010-arm64-dts-exynos-exynos9820-Add-the-DPU-power-domain.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0011-dt-bindings-clock-exynos9820-Allow-power-domains.patch
+total: 0 errors, 0 warnings, 0 checks, 9 lines checked
+
+/data/data/com.termux/files/home/s10-mainline/patches/0011-dt-bindings-clock-exynos9820-Allow-power-domains.patch has no obvious style problems and is ready for submission.
+########## 0012-arm64-dts-exynos-exynos9820-Add-CMU_DPU-and-the-DPU-.patch
+total: 0 errors, 0 warnings, 0 checks, 47 lines checked
+
+/data/data/com.termux/files/home/s10-mainline/patches/0012-arm64-dts-exynos-exynos9820-Add-CMU_DPU-and-the-DPU-.patch has no obvious style problems and is ready for submission.
+########## 0013-dt-bindings-display-Add-Exynos9820-DECON-and-DSIM.patch
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#24: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 224 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0013-dt-bindings-display-Add-Exynos9820-DECON-and-DSIM.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0014-drm-exynos9820-Take-the-frame-done-interrupt-by-name.patch
+total: 0 errors, 0 warnings, 0 checks, 9 lines checked
+
+/data/data/com.termux/files/home/s10-mainline/patches/0014-drm-exynos9820-Take-the-frame-done-interrupt-by-name.patch has no obvious style problems and is ready for submission.
+########## 0015-arm64-dts-exynos-exynos9820-Add-DECON-DSIM-and-the-S.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#10: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06): decon_f has
+
+total: 0 errors, 1 warnings, 0 checks, 136 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0015-arm64-dts-exynos-exynos9820-Add-DECON-DSIM-and-the-S.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0016-drm-exynos9820-Program-the-DSC-encoders.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#13: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06,
+
+total: 0 errors, 1 warnings, 0 checks, 465 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0016-drm-exynos9820-Program-the-DSC-encoders.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0017-drm-exynos9820-Program-the-D-PHY-analog-blocks-and-f.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#16: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06, drivers/video/
+
+total: 0 errors, 1 warnings, 0 checks, 182 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0017-drm-exynos9820-Program-the-D-PHY-analog-blocks-and-f.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0018-dt-bindings-display-exynos9820-dsim-Add-the-D-PHY-to.patch
+total: 0 errors, 0 warnings, 0 checks, 23 lines checked
+
+/data/data/com.termux/files/home/s10-mainline/patches/0018-dt-bindings-display-exynos9820-dsim-Add-the-D-PHY-to.patch has no obvious style problems and is ready for submission.
+########## 0019-arm64-dts-exynos-exynos9820-Add-the-D-PHY-top-range-.patch
+total: 0 errors, 0 warnings, 0 checks, 11 lines checked
+
+/data/data/com.termux/files/home/s10-mainline/patches/0019-arm64-dts-exynos-exynos9820-Add-the-D-PHY-top-range-.patch has no obvious style problems and is ready for submission.
+########## 0020-dt-bindings-clock-Add-Exynos9820-CMU_CMGP.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#12: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06, drivers/soc/
+
+total: 0 errors, 1 warnings, 0 checks, 33 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0020-dt-bindings-clock-Add-Exynos9820-CMU_CMGP.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0021-arm64-dts-exynos-exynos9820-Add-CMGP-I2C-and-the-S2D.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#13: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06): hsi2c@15D50000
+
+total: 0 errors, 1 warnings, 0 checks, 130 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0021-arm64-dts-exynos-exynos9820-Add-CMGP-I2C-and-the-S2D.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0022-drm-exynos9820-Support-DSI-reads.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#16: 
+android_kernel_samsung_exynos9820, commit 7d08ec364a06, drivers/video/
+
+total: 0 errors, 1 warnings, 0 checks, 146 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0022-drm-exynos9820-Support-DSI-reads.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0023-drm-panel-s6e3ha9-Add-brightness-control.patch
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#12: 
+(LineageOS/android_kernel_samsung_exynos9820, commit 7d08ec364a06,
+
+total: 0 errors, 1 warnings, 0 checks, 211 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0023-drm-panel-s6e3ha9-Add-brightness-control.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0024-drm-panel-s6e3ha9-Add-the-AID-dimming-engine.patch
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+sh: 1: scripts/spdxcheck.py: not found
+WARNING: Unknown commit id '7d08ec364a06', maybe rebased or not pulled?
+#11: 
+commit 7d08ec364a06, drivers/video/fbdev/exynos/panel/dimming.c): rebuild
+
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#51: 
+new file mode 100644
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#169: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:114:
++};
++static const s16 s6e3ha9_rtbl3nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#172: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:117:
++};
++static const s16 s6e3ha9_rtbl4nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#175: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:120:
++};
++static const s16 s6e3ha9_rtbl5nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#178: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:123:
++};
++static const s16 s6e3ha9_rtbl6nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#181: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:126:
++};
++static const s16 s6e3ha9_rtbl7nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#184: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:129:
++};
++static const s16 s6e3ha9_rtbl8nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#187: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:132:
++};
++static const s16 s6e3ha9_rtbl9nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#190: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:135:
++};
++static const s16 s6e3ha9_rtbl10nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#193: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:138:
++};
++static const s16 s6e3ha9_rtbl11nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#196: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:141:
++};
++static const s16 s6e3ha9_rtbl12nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#199: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:144:
++};
++static const s16 s6e3ha9_rtbl13nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#202: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:147:
++};
++static const s16 s6e3ha9_rtbl14nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#205: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:150:
++};
++static const s16 s6e3ha9_rtbl15nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#208: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:153:
++};
++static const s16 s6e3ha9_rtbl16nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#211: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:156:
++};
++static const s16 s6e3ha9_rtbl17nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#214: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:159:
++};
++static const s16 s6e3ha9_rtbl19nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#217: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:162:
++};
++static const s16 s6e3ha9_rtbl20nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#220: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:165:
++};
++static const s16 s6e3ha9_rtbl21nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#223: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:168:
++};
++static const s16 s6e3ha9_rtbl22nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#226: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:171:
++};
++static const s16 s6e3ha9_rtbl24nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#229: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:174:
++};
++static const s16 s6e3ha9_rtbl25nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#232: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:177:
++};
++static const s16 s6e3ha9_rtbl27nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#235: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:180:
++};
++static const s16 s6e3ha9_rtbl29nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#238: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:183:
++};
++static const s16 s6e3ha9_rtbl30nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#241: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:186:
++};
++static const s16 s6e3ha9_rtbl32nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#244: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:189:
++};
++static const s16 s6e3ha9_rtbl34nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#247: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:192:
++};
++static const s16 s6e3ha9_rtbl37nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#250: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:195:
++};
++static const s16 s6e3ha9_rtbl39nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#253: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:198:
++};
++static const s16 s6e3ha9_rtbl41nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#256: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:201:
++};
++static const s16 s6e3ha9_rtbl44nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#259: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:204:
++};
++static const s16 s6e3ha9_rtbl47nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#262: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:207:
++};
++static const s16 s6e3ha9_rtbl50nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#265: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:210:
++};
++static const s16 s6e3ha9_rtbl53nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#268: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:213:
++};
++static const s16 s6e3ha9_rtbl56nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#271: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:216:
++};
++static const s16 s6e3ha9_rtbl60nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#274: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:219:
++};
++static const s16 s6e3ha9_rtbl64nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#277: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:222:
++};
++static const s16 s6e3ha9_rtbl68nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#280: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:225:
++};
++static const s16 s6e3ha9_rtbl72nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#283: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:228:
++};
++static const s16 s6e3ha9_rtbl77nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#286: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:231:
++};
++static const s16 s6e3ha9_rtbl82nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#289: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:234:
++};
++static const s16 s6e3ha9_rtbl87nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#292: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:237:
++};
++static const s16 s6e3ha9_rtbl93nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#295: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:240:
++};
++static const s16 s6e3ha9_rtbl98nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#298: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:243:
++};
++static const s16 s6e3ha9_rtbl105nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#301: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:246:
++};
++static const s16 s6e3ha9_rtbl111nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#304: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:249:
++};
++static const s16 s6e3ha9_rtbl119nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#307: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:252:
++};
++static const s16 s6e3ha9_rtbl126nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#310: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:255:
++};
++static const s16 s6e3ha9_rtbl134nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#313: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:258:
++};
++static const s16 s6e3ha9_rtbl143nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#316: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:261:
++};
++static const s16 s6e3ha9_rtbl152nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#319: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:264:
++};
++static const s16 s6e3ha9_rtbl162nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#322: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:267:
++};
++static const s16 s6e3ha9_rtbl172nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#325: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:270:
++};
++static const s16 s6e3ha9_rtbl183nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#328: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:273:
++};
++static const s16 s6e3ha9_rtbl195nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#331: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:276:
++};
++static const s16 s6e3ha9_rtbl207nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#334: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:279:
++};
++static const s16 s6e3ha9_rtbl220nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#337: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:282:
++};
++static const s16 s6e3ha9_rtbl234nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#340: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:285:
++};
++static const s16 s6e3ha9_rtbl249nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#343: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:288:
++};
++static const s16 s6e3ha9_rtbl265nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#346: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:291:
++};
++static const s16 s6e3ha9_rtbl282nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#349: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:294:
++};
++static const s16 s6e3ha9_rtbl300nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#352: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:297:
++};
++static const s16 s6e3ha9_rtbl316nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#355: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:300:
++};
++static const s16 s6e3ha9_rtbl333nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#358: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:303:
++};
++static const s16 s6e3ha9_rtbl350nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#361: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:306:
++};
++static const s16 s6e3ha9_rtbl357nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#364: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:309:
++};
++static const s16 s6e3ha9_rtbl365nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#367: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:312:
++};
++static const s16 s6e3ha9_rtbl372nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#370: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:315:
++};
++static const s16 s6e3ha9_rtbl380nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#373: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:318:
++};
++static const s16 s6e3ha9_rtbl387nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#376: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:321:
++};
++static const s16 s6e3ha9_rtbl395nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#379: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:324:
++};
++static const s16 s6e3ha9_rtbl403nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#382: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:327:
++};
++static const s16 s6e3ha9_rtbl412nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#385: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:330:
++};
++static const s16 s6e3ha9_rtbl420nit[S6E3HA9_NR_TP] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#394: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:339:
++};
++static const s16 s6e3ha9_ctbl3nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#399: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:344:
++};
++static const s16 s6e3ha9_ctbl4nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#404: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:349:
++};
++static const s16 s6e3ha9_ctbl5nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#409: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:354:
++};
++static const s16 s6e3ha9_ctbl6nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#414: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:359:
++};
++static const s16 s6e3ha9_ctbl7nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#419: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:364:
++};
++static const s16 s6e3ha9_ctbl8nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#424: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:369:
++};
++static const s16 s6e3ha9_ctbl9nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#429: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:374:
++};
++static const s16 s6e3ha9_ctbl10nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#434: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:379:
++};
++static const s16 s6e3ha9_ctbl11nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#439: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:384:
++};
++static const s16 s6e3ha9_ctbl12nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#444: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:389:
++};
++static const s16 s6e3ha9_ctbl13nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#449: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:394:
++};
++static const s16 s6e3ha9_ctbl14nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#454: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:399:
++};
++static const s16 s6e3ha9_ctbl15nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#459: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:404:
++};
++static const s16 s6e3ha9_ctbl16nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#464: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:409:
++};
++static const s16 s6e3ha9_ctbl17nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#469: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:414:
++};
++static const s16 s6e3ha9_ctbl19nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#474: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:419:
++};
++static const s16 s6e3ha9_ctbl20nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#479: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:424:
++};
++static const s16 s6e3ha9_ctbl21nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#484: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:429:
++};
++static const s16 s6e3ha9_ctbl22nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#489: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:434:
++};
++static const s16 s6e3ha9_ctbl24nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#494: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:439:
++};
++static const s16 s6e3ha9_ctbl25nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#499: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:444:
++};
++static const s16 s6e3ha9_ctbl27nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#504: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:449:
++};
++static const s16 s6e3ha9_ctbl29nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#509: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:454:
++};
++static const s16 s6e3ha9_ctbl30nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#514: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:459:
++};
++static const s16 s6e3ha9_ctbl32nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#519: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:464:
++};
++static const s16 s6e3ha9_ctbl34nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#524: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:469:
++};
++static const s16 s6e3ha9_ctbl37nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#529: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:474:
++};
++static const s16 s6e3ha9_ctbl39nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#534: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:479:
++};
++static const s16 s6e3ha9_ctbl41nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#539: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:484:
++};
++static const s16 s6e3ha9_ctbl44nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#544: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:489:
++};
++static const s16 s6e3ha9_ctbl47nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#549: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:494:
++};
++static const s16 s6e3ha9_ctbl50nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#554: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:499:
++};
++static const s16 s6e3ha9_ctbl53nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#559: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:504:
++};
++static const s16 s6e3ha9_ctbl56nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#564: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:509:
++};
++static const s16 s6e3ha9_ctbl60nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#569: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:514:
++};
++static const s16 s6e3ha9_ctbl64nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#574: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:519:
++};
++static const s16 s6e3ha9_ctbl68nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#579: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:524:
++};
++static const s16 s6e3ha9_ctbl72nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#584: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:529:
++};
++static const s16 s6e3ha9_ctbl77nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#589: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:534:
++};
++static const s16 s6e3ha9_ctbl82nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#594: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:539:
++};
++static const s16 s6e3ha9_ctbl87nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#599: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:544:
++};
++static const s16 s6e3ha9_ctbl93nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#604: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:549:
++};
++static const s16 s6e3ha9_ctbl98nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#609: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:554:
++};
++static const s16 s6e3ha9_ctbl105nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#614: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:559:
++};
++static const s16 s6e3ha9_ctbl111nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#619: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:564:
++};
++static const s16 s6e3ha9_ctbl119nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#624: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:569:
++};
++static const s16 s6e3ha9_ctbl126nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#629: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:574:
++};
++static const s16 s6e3ha9_ctbl134nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#634: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:579:
++};
++static const s16 s6e3ha9_ctbl143nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#639: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:584:
++};
++static const s16 s6e3ha9_ctbl152nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#644: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:589:
++};
++static const s16 s6e3ha9_ctbl162nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#649: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:594:
++};
++static const s16 s6e3ha9_ctbl172nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#654: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:599:
++};
++static const s16 s6e3ha9_ctbl183nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#659: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:604:
++};
++static const s16 s6e3ha9_ctbl195nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#664: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:609:
++};
++static const s16 s6e3ha9_ctbl207nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#669: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:614:
++};
++static const s16 s6e3ha9_ctbl220nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#674: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:619:
++};
++static const s16 s6e3ha9_ctbl234nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#679: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:624:
++};
++static const s16 s6e3ha9_ctbl249nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#684: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:629:
++};
++static const s16 s6e3ha9_ctbl265nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#689: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:634:
++};
++static const s16 s6e3ha9_ctbl282nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#694: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:639:
++};
++static const s16 s6e3ha9_ctbl300nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#699: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:644:
++};
++static const s16 s6e3ha9_ctbl316nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#704: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:649:
++};
++static const s16 s6e3ha9_ctbl333nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#709: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:654:
++};
++static const s16 s6e3ha9_ctbl350nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#714: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:659:
++};
++static const s16 s6e3ha9_ctbl357nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#719: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:664:
++};
++static const s16 s6e3ha9_ctbl365nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#724: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:669:
++};
++static const s16 s6e3ha9_ctbl372nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#729: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:674:
++};
++static const s16 s6e3ha9_ctbl380nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#734: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:679:
++};
++static const s16 s6e3ha9_ctbl387nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#739: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:684:
++};
++static const s16 s6e3ha9_ctbl395nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#744: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:689:
++};
++static const s16 s6e3ha9_ctbl403nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#749: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:694:
++};
++static const s16 s6e3ha9_ctbl412nit[S6E3HA9_NR_TP][3] = {
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#754: FILE: drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming-data.h:699:
++};
++static const s16 s6e3ha9_ctbl420nit[S6E3HA9_NR_TP][3] = {
+
+total: 0 errors, 2 warnings, 146 checks, 1269 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/data/data/com.termux/files/home/s10-mainline/patches/0024-drm-panel-s6e3ha9-Add-the-AID-dimming-engine.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+b78e31abbf5d862254f9d9160c1e2b466daacc614222673c21994dccfaa4face  arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+
+## Kontrola sekwencyjnego nakladania na czysty 1200d84f4c0a (GIT_INDEX_FILE, git apply --cached)
+zaaplikowano sekwencyjnie na czysty 1200d84f4c0a: 24/24
+dtb: b78e31abbf5d862254f9d9160c1e2b466daacc614222673c21994dccfaa4face  arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb

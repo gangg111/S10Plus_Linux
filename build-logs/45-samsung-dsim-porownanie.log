@@ -1,0 +1,44 @@
+# samsung-dsim kontra DSIM Exynos9820: mapa rejestrow
+# samsung-dsim: sources/linux\drivers/gpu/drm/bridge/samsung-dsim.c
+# exynos9820:   sources/linux\drivers/gpu/drm/exynos9820/exynos9820_regs.h
+
+rejestr (samsung-dsim) offset     odpowiednik 9820         offset     werdykt
+DSIM_CLKCTRL_REG       0x8        DSIM_CLK_CTRL            0x20       ROZJAZD
+DSIM_CONFIG_REG        0x10       DSIM_CONFIG              0x4c       ROZJAZD
+DSIM_DPHY_STATUS_REG   0x8        DSIM_DPHY_STATUS         0x1c       ROZJAZD
+DSIM_ESCMODE_REG       0x14       DSIM_ESCMODE             0x2c       ROZJAZD
+DSIM_FIFOCTRL_REG      0x44       DSIM_FIFOCTRL            0x68       ROZJAZD
+DSIM_INTMSK_REG        0x30       DSIM_INTMSK              0x54       ROZJAZD
+DSIM_INTSRC_REG        0x2c       DSIM_INTSRC              0x50       ROZJAZD
+DSIM_LINK_STATUS_REG   0x4        DSIM_LINK_STATUS0        0x8        ROZJAZD
+DSIM_MDRESOL_REG       0x18       DSIM_RESOL               0x3c       ROZJAZD
+DSIM_MHPORCH_REG       0x20       nie ma odpowiednika      -          INNY BLOK
+DSIM_MSYNC_REG         0x24       nie ma odpowiednika      -          INNY BLOK
+DSIM_MVPORCH_REG       0x1c       nie ma odpowiednika      -          INNY BLOK
+DSIM_PAYLOAD_REG       0x38       DSIM_PAYLOAD             0x5c       ROZJAZD
+DSIM_PHYCTRL_REG       0x5c       nie ma odpowiednika      -          INNY BLOK
+DSIM_PHYTIMING1_REG    0x68       nie ma odpowiednika      -          INNY BLOK
+DSIM_PHYTIMING2_REG    0x6c       nie ma odpowiednika      -          INNY BLOK
+DSIM_PHYTIMING_REG     0x64       nie ma odpowiednika      -          INNY BLOK
+DSIM_PKTHDR_REG        0x34       DSIM_PKTHDR              0x58       ROZJAZD
+DSIM_PLLCTRL_REG       0x4c       nie ma odpowiednika      -          INNY BLOK
+DSIM_RXFIFO_REG        0x3c       DSIM_RXFIFO              0x60       ROZJAZD
+DSIM_SFRCTRL_REG       0x48       nie ma odpowiednika      -          INNY BLOK
+DSIM_STATUS_REG        0x0        DSIM_LINK_STATUS0        0x8        ROZJAZD
+DSIM_SWRST_REG         0x4        DSIM_SWRST               0x4        ten sam
+DSIM_TIMEOUT_REG       0xc        DSIM_TIMEOUT             0x28       ROZJAZD
+
+# ten sam offset: 1, rozjazd: 14, bez odpowiednika: 9
+
+# rejestry 9820 bez jakiegokolwiek odpowiednika w samsung-dsim:
+#   kompresja DSC: 31 rejestrow po stronie DECON, DSIM widzi tylko bit CPRS_EN
+#   blok D-PHY:    10 (np. DSIM_PHY_MC_TIME_CON0, DSIM_PHY_MC_TIME_CON1, DSIM_PHY_MC_TIME_CON2, DSIM_PHY_MC_TIME_CON3)
+
+# WNIOSEK
+# Sama tablica offsetow nie wystarczy: 14 z 15 rejestrow, ktore samsung-dsim
+# programuje, lezy pod innym adresem, a 9 nie ma odpowiednika w tym bloku
+# w ogole. Do tego dochodzi 31 rejestrow kompresji DSC i 10 rejestrow D-PHY,
+# ktorych samsung-dsim nie zna. Kompresji DSC nie obsluguje w ogole:
+# w calym pliku nie ma ani slowa "dsc", a panel S6E3HA9 nie da sie uruchomic
+# bez niej. Blok D-PHY na 9820 to osobny zakres reg (M4S0 i M4S4), a nie
+# rejestry PHYCTRL/PHYTIMING w oknie DSIM, na ktorych stoi samsung-dsim.

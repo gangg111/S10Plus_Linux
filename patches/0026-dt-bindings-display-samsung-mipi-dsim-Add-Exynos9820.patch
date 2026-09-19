@@ -1,0 +1,93 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:16:33 +0200
+Subject: [PATCH] dt-bindings: display: samsung,mipi-dsim: Add Exynos9820
+
+The Exynos9820 DSI host takes a single clock, "bus": everything else the
+block needs is gated inside it, and the PLL lives in a separate D-PHY
+device that the node points at with phys.
+
+The narrower clock count is written as a branch, and the two clock
+minimum the other compatibles have today moves into the matching else
+branch rather than staying at the top level. A conditional cannot loosen
+a constraint stated for every node: allOf is a conjunction, so a top
+level minItems of 2 would keep rejecting the new node no matter what the
+branch says.
+
+Requiring phys is likewise confined to the new compatible. Two of the
+existing ones, fsl,imx8mm-mipi-dsim and fsl,imx8mp-mipi-dsim, have no
+phys property at all.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../display/bridge/samsung,mipi-dsim.yaml     | 40 ++++++++++++++++++-
+ 1 file changed, 38 insertions(+), 2 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/display/bridge/samsung,mipi-dsim.yaml b/Documentation/devicetree/bindings/display/bridge/samsung,mipi-dsim.yaml
+index ad279f0993f..62ce58e0e26 100644
+--- a/Documentation/devicetree/bindings/display/bridge/samsung,mipi-dsim.yaml
++++ b/Documentation/devicetree/bindings/display/bridge/samsung,mipi-dsim.yaml
+@@ -25,6 +25,7 @@ properties:
+           - samsung,exynos5422-mipi-dsi
+           - samsung,exynos5433-mipi-dsi
+           - samsung,exynos7870-mipi-dsi
++          - samsung,exynos9820-mipi-dsi
+           - fsl,imx8mm-mipi-dsim
+           - fsl,imx8mp-mipi-dsim
+       - items:
+@@ -46,11 +47,11 @@ properties:
+     const: 0
+ 
+   clocks:
+-    minItems: 2
++    minItems: 1
+     maxItems: 5
+ 
+   clock-names:
+-    minItems: 2
++    minItems: 1
+     maxItems: 5
+ 
+   samsung,phy-type:
+@@ -145,6 +146,41 @@ required:
+ 
+ allOf:
+   - $ref: ../dsi-controller.yaml#
++  - if:
++      properties:
++        compatible:
++          contains:
++            const: samsung,exynos9820-mipi-dsi
++
++    then:
++      properties:
++        clocks:
++          minItems: 1
++          maxItems: 1
++
++        clock-names:
++          items:
++            - const: bus
++
++        ports:
++          required:
++            - port@0
++            - port@1
++
++      required:
++        - phys
++        - phy-names
++        - power-domains
++        - ports
++
++    else:
++      properties:
++        clocks:
++          minItems: 2
++
++        clock-names:
++          minItems: 2
++
+   - if:
+       properties:
+         compatible:

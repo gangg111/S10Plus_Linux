@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 19 Aug 2026 04:04:14 +0200
+Subject: [PATCH] pmdomain: samsung: Add Exynos9820 power domain support
+
+The Exynos9820 power domain block is the familiar one - a CONFIGURATION
+register with the power request and a STATUS register 4 bytes above it -
+but only bit 0 is defined, unlike the 0x7/0xf masks of Exynos4210 and
+Exynos5433.
+
+The mask comes from the vendor PMU tables: LineageOS/
+android_kernel_samsung_exynos9820, commit 7d08ec364a06, drivers/soc/
+samsung/cal-if/exynos9820/flexpmu_cal_local_exynos9820.h, dpu_on[] and
+dpu_off[] write bit 0 of DPU_CONFIGURATION and poll bit 0 of DPU_STATUS.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/pmdomain/samsung/exynos-pm-domains.c | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/drivers/pmdomain/samsung/exynos-pm-domains.c b/drivers/pmdomain/samsung/exynos-pm-domains.c
+index 5c3aa898308..5d6da607da4 100644
+--- a/drivers/pmdomain/samsung/exynos-pm-domains.c
++++ b/drivers/pmdomain/samsung/exynos-pm-domains.c
+@@ -81,6 +81,10 @@ static const struct exynos_pm_domain_config exynos5433_cfg = {
+ 	.local_pwr_cfg		= 0xf,
+ };
+ 
++static const struct exynos_pm_domain_config exynos9820_cfg = {
++	.local_pwr_cfg		= 0x1,
++};
++
+ static const struct of_device_id exynos_pm_domain_of_match[] = {
+ 	{
+ 		.compatible = "samsung,exynos4210-pd",
+@@ -88,6 +92,9 @@ static const struct of_device_id exynos_pm_domain_of_match[] = {
+ 	}, {
+ 		.compatible = "samsung,exynos5433-pd",
+ 		.data = &exynos5433_cfg,
++	}, {
++		.compatible = "samsung,exynos9820-pd",
++		.data = &exynos9820_cfg,
+ 	},
+ 	{ },
+ };

@@ -1,0 +1,11 @@
+  SYNC    include/config/auto.conf
+  UPD     include/config/kernel.release
+  SCHEMA  Documentation/devicetree/bindings/processed-schema.json
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+DTBS_EXIT=0
+  CHKDT   ./Documentation/devicetree/bindings
+  LINT    ./Documentation/devicetree/bindings
+  STYLE   ./Documentation/devicetree/bindings
+  DTEX    Documentation/devicetree/bindings/power/pd-samsung.example.dts
+  DTC [C] Documentation/devicetree/bindings/power/pd-samsung.example.dtb
+BINDING_EXIT=0

@@ -1,0 +1,8 @@
+  SCHEMA  Documentation/devicetree/bindings/processed-schema.json
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+DTBS_EXIT=0
+  DTEX    Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.example.dts
+  DTC [C] Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.example.dtb
+  DTEX    Documentation/devicetree/bindings/iommu/samsung,sysmmu.example.dts
+  DTC [C] Documentation/devicetree/bindings/iommu/samsung,sysmmu.example.dtb
+BINDING_EXIT=0

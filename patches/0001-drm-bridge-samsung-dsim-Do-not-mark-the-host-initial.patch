@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:57:13 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Do not mark the host initialised
+ after a failure
+
+samsung_dsim_enable_clock() returns an error when the PLL does not
+stabilise and samsung_dsim_init_link() returns one when the lanes never
+reach stop state. samsung_dsim_init() drops both on the floor and sets
+DSIM_STATE_INITIALIZED regardless. Its two callers do check what it
+returns, so the failure is lost on the way: a later transfer sees the
+flag, takes the early return and talks to a host whose link never came
+up.
+
+Propagate the errors and leave the flag alone. The error path stops the
+link clock and masks the interrupt sources this function unmasked. That
+cleanup used to happen on the way out of runtime suspend, which keys it
+off the same flag; without it the block would be left with its PLL and
+its byte and escape clocks running after a failed attempt.
+
+This is a fix for the existing driver rather than something the new
+variant needs, but the variant makes it easy to hit: with the PLL in a
+separate PHY, a link that fails to lock is a case the driver reaches
+without any hardware being broken.
+
+Fixes: 7eb8f069be8a ("drm/exynos: add DSIM driver")
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index 9ee0515074c..aafc2b32f8c 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -1618,6 +1618,7 @@ static void samsung_dsim_disable_irq(struct samsung_dsim *dsi)
+ static int samsung_dsim_init(struct samsung_dsim *dsi)
+ {
+ 	const struct samsung_dsim_driver_data *driver_data = dsi->driver_data;
++	int ret;
+ 
+ 	if (dsi->state & DSIM_STATE_INITIALIZED)
+ 		return 0;
+@@ -1628,15 +1629,27 @@ static int samsung_dsim_init(struct samsung_dsim *dsi)
+ 	if (driver_data->reg_values[RESET_TYPE] == DSIM_FUNCRST)
+ 		samsung_dsim_enable_lane(dsi, BIT(dsi->lanes) - 1);
+ 
+-	samsung_dsim_enable_clock(dsi);
++	ret = samsung_dsim_enable_clock(dsi);
++	if (ret)
++		goto err_clk;
++
+ 	if (driver_data->wait_for_reset)
+ 		samsung_dsim_wait_for_reset(dsi);
+ 	samsung_dsim_set_phy_ctrl(dsi);
+-	samsung_dsim_init_link(dsi);
++
++	ret = samsung_dsim_init_link(dsi);
++	if (ret)
++		goto err_clk;
+ 
+ 	dsi->state |= DSIM_STATE_INITIALIZED;
+ 
+ 	return 0;
++
++err_clk:
++	samsung_dsim_disable_clock(dsi);
++	samsung_dsim_disable_irq(dsi);
++
++	return ret;
+ }
+ 
+ static void samsung_dsim_atomic_pre_enable(struct drm_bridge *bridge,

@@ -1,0 +1,876 @@
+From 300de4c58fb1765a9b90b76892e594864455c339 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sat, 19 Sep 2026 02:02:15 +0200
+Subject: [PATCH 5/8] ufs: exynos: add the host controller driver for
+ Exynos9820
+
+Nothing upstream drives the UFS controller of an Exynos SoC, so the storage
+this board boots from cannot be reached.  This is the half of that work
+which speaks to the link; the analogue half went in with the PHY driver.
+
+The link is brought up in four steps, and at each one a table of attributes
+has to be written.  Those tables come from the vendor's calibration layer
+for this SoC, drivers/scsi/ufs/ufs-cal-9820.c, and each line names the line
+it came from.  That layer mixes two kinds of work in one table: attributes
+of the link, which go out over DME or straight into the UniPro window and
+belong here, and registers of the PHY's analogue block, which belong to the
+PHY driver.  So a table here carries an entry that hands over to the PHY,
+standing exactly where the vendor's table has its own block of PHY writes,
+which keeps the order the hardware sees.  One place makes that necessary
+rather than merely tidy: the vendor brackets the post link block of PHY
+writes with a pair of writes to a UniPro attribute, and only a table can
+keep the hand-over between them.
+
+Everything the link is told about time is computed from the rate of the
+UniPro clock, so that rate is printed.  A wrong one does not fail, it
+produces a link that does not work.
+
+Three of the core's hooks take the first three steps.  The fourth has no
+hook, because the core has nothing at all after the change of speed, so it
+is taken once the probe returns.  That is also where the link is checked to
+have really reached a high speed gear: when the core cannot work out the
+best mode it says so, skips the change and still reports success, which
+would otherwise leave storage running at the slowest speed with nothing in
+the log to say so.
+
+Every clock the hardware may gate away on its own is released for the whole
+of bring-up, including the one that gates the register bus of the PHY.  The
+vendor leaves that one out of its bulk mask and instead clears and restores
+it around every single access to the PHY, which would need the PHY driver
+to reach into this driver's window.  Mainline Linux puts the bit in the
+bulk mask and clears it once, and so does this, which keeps the two drivers
+apart.
+
+The pre link table is written again on every retry of the link start-up,
+because the core calls that hook from inside its retry loop.  Everything in
+it survives being written twice; the lane count is read once and kept,
+since on a second pass the link may already be partly up.
+
+Hibernation, power management, the hardware encryption unit and the error
+handling of a running system are all left out on purpose: a boot loader
+reads storage and hands over.  The one ordering difference from the vendor,
+which resets the storage device after programming the host rather than
+before, is marked UNVERIFIED in the code.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/ufs/Kconfig      |  14 +
+ drivers/ufs/Makefile     |   1 +
+ drivers/ufs/ufs-exynos.c | 673 +++++++++++++++++++++++++++++++++++++++
+ drivers/ufs/ufs-exynos.h |  87 +++++
+ 4 files changed, 775 insertions(+)
+ create mode 100644 drivers/ufs/ufs-exynos.c
+ create mode 100644 drivers/ufs/ufs-exynos.h
+
+diff --git a/drivers/ufs/Kconfig b/drivers/ufs/Kconfig
+index 6dffdc00..9312749c 100644
+--- a/drivers/ufs/Kconfig
++++ b/drivers/ufs/Kconfig
+@@ -73,6 +73,20 @@ config UFS_RENESAS_GEN5
+ 	  platform driver. UFS host on Renesas needs some vendor
+ 	  specific configuration before accessing the hardware.
+ 
++config UFS_EXYNOS
++	bool "Samsung Exynos specific hooks to the UFS controller driver"
++	depends on UFS
++	depends on CLK
++	depends on PHY_EXYNOS9820_UFS
++	help
++	  This selects the Samsung Exynos additions to the UFS host controller
++	  driver: the vendor's own register block, the clock the link periods
++	  are computed from, and the four calibration steps the link of this
++	  controller has to be taken through.
++
++	  Select this if you boot from the embedded storage of an Exynos SoC.
++	  If unsure, say N.
++
+ config UFS_ROCKCHIP
+ 	bool "Rockchip specific hooks to UFS controller platform driver"
+ 	depends on UFS
+diff --git a/drivers/ufs/Makefile b/drivers/ufs/Makefile
+index e7f3c1d3..edc3d9a7 100644
+--- a/drivers/ufs/Makefile
++++ b/drivers/ufs/Makefile
+@@ -6,6 +6,7 @@
+ obj-$(CONFIG_UFS) += ufs-uclass.o
+ obj-$(CONFIG_UFS_AMD_VERSAL2) += ufs-amd-versal2.o ufshcd-dwc.o
+ obj-$(CONFIG_UFS_CADENCE) += cdns-platform.o
++obj-$(CONFIG_UFS_EXYNOS) += ufs-exynos.o
+ obj-$(CONFIG_UFS_MEDIATEK) += ufs-mediatek.o
+ obj-$(CONFIG_UFS_PCI) += ufs-pci.o
+ obj-$(CONFIG_UFS_QCOM) += ufs-qcom.o
+diff --git a/drivers/ufs/ufs-exynos.c b/drivers/ufs/ufs-exynos.c
+new file mode 100644
+index 00000000..f0d2cb3f
+--- /dev/null
++++ b/drivers/ufs/ufs-exynos.c
+@@ -0,0 +1,673 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * UFS host controller driver for the Samsung Exynos9820 SoC.
++ *
++ * Copyright (c) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The link of this controller is brought up in four steps, and at each of them
++ * a table of attributes has to be written.  Those tables come from the vendor's
++ * calibration layer for this SoC, drivers/scsi/ufs/ufs-cal-9820.c of the
++ * Samsung kernel, and each line below names the line it came from.
++ *
++ * That calibration layer writes two kinds of things at each step: attributes of
++ * the link, which go out over DME or straight into the UniPro window, and
++ * registers of the PHY's analogue block.  The second kind belongs to the PHY
++ * driver, phy-exynos9820-ufs.c, and is reached from here through the generic
++ * PHY configure call.  So a table entry of kind UFS_CFG_PHY stands exactly
++ * where the vendor's own table has its block of PHY writes, which keeps the
++ * order the hardware sees the same as the vendor's.
++ *
++ * Which of the vendor's tables apply is decided by the board: evt-ver = [01]
++ * takes the second revision of the silicon, ufs,pmd-attr-gear = [03] the gear 3
++ * variant of the post link table, and brd-for-cal = [01] is BRD_ALL, which
++ * drops the lines meant for the emulator.  One such emulator line sits in the
++ * middle of the pre link table, at ufs-cal-9820.c:237, and is absent here.
++ */
++
++#include <clk.h>
++#include <dm.h>
++#include <generic-phy.h>
++#include <samsung-ufs-phy.h>
++#include <asm/io.h>
++#include <dm/device_compat.h>
++#include <linux/delay.h>
++#include <linux/err.h>
++#include <linux/kernel.h>
++
++#include "ufs.h"
++#include "ufshci.h"
++#include "unipro.h"
++#include "ufs-exynos.h"
++
++/* Kind of a calibration table entry. */
++enum {
++	UFS_CFG_END = 0,	/* end of the table, must stay zero */
++	UFS_CFG_DME,		/* attribute of the link, written once */
++	UFS_CFG_DME_RX,		/* attribute of one receive lane */
++	UFS_CFG_DME_TX,		/* attribute of one transmit lane */
++	UFS_CFG_DME_RX_PRD,	/* receive lane, value is the clock period */
++	UFS_CFG_DME_TX_PRD,	/* transmit lane, value is the clock period */
++	UFS_CFG_DME_RX_LR,	/* receive lane, three bytes of a period */
++	UFS_CFG_DME_TX_LR,	/* transmit lane, three bytes of a period */
++	UFS_CFG_UNIPRO,		/* straight into the UniPro window */
++	UFS_CFG_UNIPRO_PRD,	/* the same, value is the clock period */
++	UFS_CFG_ADAPT_LEN,	/* read, round up, write back */
++	UFS_CFG_PHY,		/* hand over to the PHY driver */
++};
++
++/**
++ * struct exynos_ufs_cfg - one line of a calibration table
++ *
++ * @addr:	attribute or register the line is about; for UFS_CFG_PHY it is
++ *		the calibration step being asked for
++ * @val:	value to write, where the line carries one
++ * @id:		kind of the entry, one of the UFS_CFG_* values above
++ */
++struct exynos_ufs_cfg {
++	u32 addr;
++	u32 val;
++	u8 id;
++};
++
++#define UFS_CFG_TABLE_END	{ .id = UFS_CFG_END }
++#define DME_CFG(a, v)		{ .addr = (a), .val = (v), .id = UFS_CFG_DME }
++#define DME_RX_CFG(a, v)	{ .addr = (a), .val = (v), .id = UFS_CFG_DME_RX }
++#define DME_TX_CFG(a, v)	{ .addr = (a), .val = (v), .id = UFS_CFG_DME_TX }
++#define DME_RX_PRD_CFG(a)	{ .addr = (a), .id = UFS_CFG_DME_RX_PRD }
++#define DME_TX_PRD_CFG(a)	{ .addr = (a), .id = UFS_CFG_DME_TX_PRD }
++#define DME_RX_LR_CFG(a)	{ .addr = (a), .id = UFS_CFG_DME_RX_LR }
++#define DME_TX_LR_CFG(a)	{ .addr = (a), .id = UFS_CFG_DME_TX_LR }
++#define UNIPRO_CFG(a, v)	{ .addr = (a), .val = (v), .id = UFS_CFG_UNIPRO }
++#define UNIPRO_PRD_CFG(a)	{ .addr = (a), .id = UFS_CFG_UNIPRO_PRD }
++#define ADAPT_LEN_CFG(a)	{ .addr = (a), .id = UFS_CFG_ADAPT_LEN }
++#define PHY_CFG(step)		{ .addr = (step), .id = UFS_CFG_PHY }
++
++/*
++ * Before the link is started.  Vendor table init_cfg_evt1, ufs-cal-9820.c:226.
++ */
++static const struct exynos_ufs_cfg exynos9820_pre_link_cfg[] = {
++	UNIPRO_PRD_CFG(0x44),			/* :227 */
++
++	DME_CFG(0x200, 0x40),			/* :229 */
++	DME_RX_PRD_CFG(0x12),			/* :230 */
++	DME_TX_PRD_CFG(0xaa),			/* :231 */
++	DME_TX_CFG(0xa9, 0x02),			/* :232 */
++	DME_TX_LR_CFG(0xab),			/* :233 */
++	DME_RX_CFG(0x11, 0x00),			/* :234 */
++	DME_RX_LR_CFG(0x1b),			/* :235 */
++	DME_RX_CFG(0x2f, 0x79),			/* :236 */
++	/* :237 is for the emulator only and is deliberately absent */
++	DME_RX_CFG(0x84, 0x01),			/* :238 */
++	DME_TX_CFG(0x04, 0x01),			/* :239 */
++	DME_RX_CFG(0x25, 0xf6),			/* :240 */
++	DME_CFG(0x200, 0x00),			/* :241 */
++
++	DME_CFG(0x155e, 0x0),			/* :243 */
++	DME_CFG(0x3000, 0x0),			/* :244 */
++	DME_CFG(0x3001, 0x1),			/* :245 */
++	DME_CFG(0x4021, 0x1),			/* :246 */
++	DME_CFG(0x4020, 0x1),			/* :247 */
++
++	/* The rest of the vendor table is the PHY's analogue block. */
++	PHY_CFG(UFS_PHY_PRE_LINK),
++
++	UFS_CFG_TABLE_END,
++};
++
++/*
++ * After the link has come up.  Vendor table post_init_cfg_evt1_g3,
++ * ufs-cal-9820.c:388.  The pair of writes to attribute 0xa006 brackets the
++ * PHY's block, so the hand-over sits between them, exactly as it does there.
++ */
++static const struct exynos_ufs_cfg exynos9820_post_link_cfg[] = {
++	ADAPT_LEN_CFG(0x15d2),			/* :389 */
++	ADAPT_LEN_CFG(0x15d3),			/* :390 */
++
++	DME_CFG(0x9529, 0x01),			/* :392 */
++	DME_CFG(0x15a4, 0x3e8),			/* :393 */
++	DME_CFG(0x9529, 0x00),			/* :394 */
++
++	DME_CFG(0xa006, 0x80000000),		/* :396 */
++	PHY_CFG(UFS_PHY_POST_LINK),
++	DME_CFG(0xa006, 0x0),			/* :447 */
++
++	UFS_CFG_TABLE_END,
++};
++
++/*
++ * Before the link is moved to a high speed gear.  Vendor table
++ * calib_of_hs_rate_b, ufs-cal-9820.c:549.  The six timer values are written
++ * twice, once as link attributes and once straight into the UniPro window;
++ * both halves are the vendor's and both are kept.
++ */
++static const struct exynos_ufs_cfg exynos9820_pre_pwr_cfg[] = {
++	DME_CFG(0x15d4, 0x1),			/* :550 */
++
++	DME_CFG(0x2041, 8064),			/* :552 */
++	DME_CFG(0x2042, 28224),			/* :553 */
++	DME_CFG(0x2043, 20160),			/* :554 */
++	DME_CFG(0x15b0, 12000),			/* :555 */
++	DME_CFG(0x15b1, 32000),			/* :556 */
++	DME_CFG(0x15b2, 16000),			/* :557 */
++
++	UNIPRO_CFG(0x7888, 8064),		/* :559 */
++	UNIPRO_CFG(0x788c, 28224),		/* :560 */
++	UNIPRO_CFG(0x7890, 20160),		/* :561 */
++	UNIPRO_CFG(0x78b8, 12000),		/* :562 */
++	UNIPRO_CFG(0x78bc, 32000),		/* :563 */
++	UNIPRO_CFG(0x78c0, 16000),		/* :564 */
++
++	PHY_CFG(UFS_PHY_PRE_PWR_HS),
++
++	UFS_CFG_TABLE_END,
++};
++
++/*
++ * After that move.  Vendor table post_calib_of_hs_rate_b, ufs-cal-9820.c:574,
++ * which for this board holds nothing but the PHY's own work.
++ */
++static const struct exynos_ufs_cfg exynos9820_post_pwr_cfg[] = {
++	PHY_CFG(UFS_PHY_POST_PWR_HS),
++
++	UFS_CFG_TABLE_END,
++};
++
++/**
++ * struct exynos_ufs - state of one Exynos UFS host
++ *
++ * @hba:	the controller this belongs to
++ * @dev:	the host device
++ * @reg_hci:	the vendor's own register block
++ * @reg_unipro:	the UniPro register block
++ * @phy:	the PHY of the link
++ * @clks:	every clock named on the node
++ * @clk_unipro:	the UniPro clock, whose rate the periods are computed from
++ * @mclk_rate:	that rate, in hertz
++ * @lane_cnt:	lanes the link offers, learnt before the link is started
++ */
++struct exynos_ufs {
++	struct ufs_hba *hba;
++	struct udevice *dev;
++	void __iomem *reg_hci;
++	void __iomem *reg_unipro;
++	struct phy phy;
++	struct clk_bulk clks;
++	struct clk clk_unipro;
++	u32 mclk_rate;
++	u8 lane_cnt;
++};
++
++static inline void hci_writel(struct exynos_ufs *ufs, u32 val, u32 reg)
++{
++	writel(val, ufs->reg_hci + reg);
++}
++
++static inline u32 hci_readl(struct exynos_ufs *ufs, u32 reg)
++{
++	return readl(ufs->reg_hci + reg);
++}
++
++static inline void hci_rmw(struct exynos_ufs *ufs, u32 reg, u32 clr, u32 set)
++{
++	hci_writel(ufs, (hci_readl(ufs, reg) & ~clr) | set, reg);
++}
++
++static inline void unipro_writel(struct exynos_ufs *ufs, u32 val, u32 reg)
++{
++	writel(val, ufs->reg_unipro + reg);
++}
++
++/*
++ * The four periods the link is told about are all derived from the rate of the
++ * UniPro clock.  The vendor spells them out twice, once for a boot loader and
++ * once for an operating system, in floating point and in integers; the two
++ * come to the same number, so only the integer form is here.
++ *
++ * ufs-cal-9820.c:38 gives the clock period in nanoseconds, :42 the same rounded
++ * to nearest, :47 the period a sixteenth of a nanosecond at a time, and :56 to
++ * :62 the two line reset periods, whose constants are 32 and 10 tenths of a
++ * microsecond.
++ */
++static u32 exynos_ufs_mclk_period(struct exynos_ufs *ufs)
++{
++	return DIV_ROUND_CLOSEST(1000000000L, ufs->mclk_rate);
++}
++
++static u32 exynos_ufs_unipro18_period(struct exynos_ufs *ufs)
++{
++	return 16 * 1000 * 1000000L / ufs->mclk_rate;
++}
++
++static u32 exynos_ufs_tx_line_reset_period(struct exynos_ufs *ufs)
++{
++	return DIV_ROUND_CLOSEST(32 * (ufs->mclk_rate / 10), 1000);
++}
++
++static u32 exynos_ufs_rx_line_reset_period(struct exynos_ufs *ufs)
++{
++	return DIV_ROUND_CLOSEST(10 * (ufs->mclk_rate / 10), 1000);
++}
++
++/*
++ * A line reset period does not fit an attribute, so it goes out a byte at a
++ * time into three attributes in a row, most significant first.
++ */
++static int exynos_ufs_set_lr_period(struct exynos_ufs *ufs, u32 attr, u8 lane,
++				    u32 period)
++{
++	unsigned int i;
++	int err;
++
++	for (i = 0; i < 3; i++) {
++		err = ufshcd_dme_set(ufs->hba,
++				     UIC_ARG_MIB_SEL(attr + i, lane),
++				     (period >> (16 - 8 * i)) & 0xff);
++		if (err)
++			return err;
++	}
++
++	return 0;
++}
++
++/*
++ * The vendor rounds this attribute up so that one more than it divides by
++ * four, unless the hardware has already reported a value of its own, in which
++ * case only a too small one is corrected.  ufs-cal-9820.c:1015 to :1031.
++ */
++static int exynos_ufs_set_adapt_length(struct exynos_ufs *ufs, u32 attr)
++{
++	u32 val;
++	int err;
++
++	err = ufshcd_dme_get(ufs->hba, UIC_ARG_MIB(attr), &val);
++	if (err)
++		return err;
++
++	if (val & 0x80) {
++		if ((val & 0x7f) >= 2)
++			return 0;
++		val = 0x82;
++	} else {
++		while (((val + 1) % 4) != 0)
++			val++;
++	}
++
++	return ufshcd_dme_set(ufs->hba, UIC_ARG_MIB(attr), val);
++}
++
++static int exynos_ufs_phy_step(struct exynos_ufs *ufs,
++			       enum samsung_ufs_phy_step step, unsigned int gear)
++{
++	struct samsung_ufs_phy_params param = {
++		.step		= step,
++		.lane_cnt	= ufs->lane_cnt,
++		.gear		= gear,
++	};
++
++	return generic_phy_configure(&ufs->phy, &param);
++}
++
++/* The kinds of entry that are written once per lane of the link. */
++static int exynos_ufs_cfg_lane(struct exynos_ufs *ufs,
++			       const struct exynos_ufs_cfg *cfg, u8 lane)
++{
++	struct ufs_hba *hba = ufs->hba;
++	u32 rx = UIC_ARG_MIB_SEL(cfg->addr, RX_LANE_0 + lane);
++	u32 tx = UIC_ARG_MIB_SEL(cfg->addr, TX_LANE_0 + lane);
++
++	switch (cfg->id) {
++	case UFS_CFG_DME_RX:
++		return ufshcd_dme_set(hba, rx, cfg->val);
++	case UFS_CFG_DME_TX:
++		return ufshcd_dme_set(hba, tx, cfg->val);
++	case UFS_CFG_DME_RX_PRD:
++		return ufshcd_dme_set(hba, rx, exynos_ufs_mclk_period(ufs));
++	case UFS_CFG_DME_TX_PRD:
++		return ufshcd_dme_set(hba, tx, exynos_ufs_mclk_period(ufs));
++	case UFS_CFG_DME_RX_LR:
++		return exynos_ufs_set_lr_period(ufs, cfg->addr,
++				RX_LANE_0 + lane,
++				exynos_ufs_rx_line_reset_period(ufs));
++	case UFS_CFG_DME_TX_LR:
++		return exynos_ufs_set_lr_period(ufs, cfg->addr,
++				TX_LANE_0 + lane,
++				exynos_ufs_tx_line_reset_period(ufs));
++	default:
++		dev_err(ufs->dev, "unknown calibration entry %u\n", cfg->id);
++		return -EINVAL;
++	}
++}
++
++static int exynos_ufs_calibrate(struct exynos_ufs *ufs,
++				const struct exynos_ufs_cfg *cfg,
++				unsigned int gear)
++{
++	struct ufs_hba *hba = ufs->hba;
++	u8 lane;
++	int err;
++
++	for (; cfg->id != UFS_CFG_END; cfg++) {
++		switch (cfg->id) {
++		case UFS_CFG_DME:
++			err = ufshcd_dme_set(hba, UIC_ARG_MIB(cfg->addr),
++					     cfg->val);
++			break;
++		case UFS_CFG_UNIPRO:
++			unipro_writel(ufs, cfg->val, cfg->addr);
++			err = 0;
++			break;
++		case UFS_CFG_UNIPRO_PRD:
++			unipro_writel(ufs, exynos_ufs_unipro18_period(ufs),
++				      cfg->addr);
++			err = 0;
++			break;
++		case UFS_CFG_ADAPT_LEN:
++			err = exynos_ufs_set_adapt_length(ufs, cfg->addr);
++			break;
++		case UFS_CFG_PHY:
++			err = exynos_ufs_phy_step(ufs, cfg->addr, gear);
++			break;
++		default:
++			err = 0;
++			for (lane = 0; lane < ufs->lane_cnt && !err; lane++)
++				err = exynos_ufs_cfg_lane(ufs, cfg, lane);
++			break;
++		}
++
++		if (err) {
++			dev_err(ufs->dev,
++				"calibration entry %u for 0x%x failed: %d\n",
++				cfg->id, cfg->addr, err);
++			return err;
++		}
++	}
++
++	return 0;
++}
++
++/*
++ * How many lanes there are has to be known before the link is started, because
++ * the tables above are written per lane.  The controller reports it over DME
++ * once it is enabled, which is early enough; the core only reads the connected
++ * count, and only after the link is up.
++ */
++static int exynos_ufs_read_lane_count(struct exynos_ufs *ufs)
++{
++	u32 rx, tx;
++	int err;
++
++	if (ufs->lane_cnt)
++		return 0;
++
++	err = ufshcd_dme_get(ufs->hba, UIC_ARG_MIB(PA_AVAILRXDATALANES), &rx);
++	if (err)
++		return err;
++
++	err = ufshcd_dme_get(ufs->hba, UIC_ARG_MIB(PA_AVAILTXDATALANES), &tx);
++	if (err)
++		return err;
++
++	ufs->lane_cnt = min_t(u32, rx, tx);
++	if (!ufs->lane_cnt) {
++		dev_err(ufs->dev, "the link reports no lanes at all\n");
++		return -ENODEV;
++	}
++
++	return 0;
++}
++
++static void exynos_ufs_config_host(struct exynos_ufs *ufs)
++{
++	/* Let nothing gate a clock away while the link is being brought up. */
++	hci_rmw(ufs, HCI_FORCE_HCS, HCI_CORECLK_STOP_EN, 0);
++	hci_rmw(ufs, HCI_CLKSTOP_CTRL, CLK_STOP_MASK, 0);
++	hci_rmw(ufs, HCI_UFS_ACG_DISABLE, 0, HCI_UFS_ACG_DISABLE_EN);
++	hci_rmw(ufs, HCI_IOP_ACG_DISABLE, HCI_IOP_ACG_DISABLE_EN, 0);
++
++	/*
++	 * The counter the controller measures microseconds with, and the
++	 * choice to feed interrupt aggregation from it.
++	 */
++	hci_rmw(ufs, HCI_UFSHCI_V2P1_CTRL, 0, IA_TICK_SEL);
++	hci_writel(ufs, (ufs->mclk_rate / 1000000) & CNT_VAL_1US_MASK,
++		   HCI_1US_TO_CNT_VAL);
++
++	hci_writel(ufs, 0xa, HCI_DATA_REORDER);
++
++	/*
++	 * Descriptor entries count bytes rather than blocks, which is what the
++	 * matching quirk tells the core.  The two have to be set together.
++	 */
++	hci_writel(ufs, PRDT_PREFETCH_EN | PRDT_SET_SIZE(12),
++		   HCI_TXPRDT_ENTRY_SIZE);
++	hci_writel(ufs, PRDT_SET_SIZE(12), HCI_RXPRDT_ENTRY_SIZE);
++
++	hci_writel(ufs, 0xffffffff, HCI_UTRL_NEXUS_TYPE);
++	hci_writel(ufs, 0xffffffff, HCI_UTMRL_NEXUS_TYPE);
++
++	hci_writel(ufs, WLU_EN | BURST_LEN(3), HCI_AXIDMA_RWDATA_BURST_LEN);
++}
++
++static int exynos_ufs_sw_reset(struct exynos_ufs *ufs)
++{
++	unsigned int i;
++
++	hci_rmw(ufs, HCI_FORCE_HCS, HCI_CORECLK_STOP_EN, 0);
++	hci_writel(ufs, UFS_SW_RST_MASK, HCI_SW_RST);
++
++	/* The vendor gives this one millisecond, ufs-exynos.c:656. */
++	for (i = 0; i < 1000; i++) {
++		if (!(hci_readl(ufs, HCI_SW_RST) & UFS_SW_RST_MASK))
++			return 0;
++		udelay(1);
++	}
++
++	dev_err(ufs->dev, "the host did not come out of reset\n");
++
++	return -ETIMEDOUT;
++}
++
++/*
++ * UNVERIFIED: the core resets the storage device before it asks for anything
++ * else, while the vendor's own driver programs the host first and resets the
++ * device after.  The pulse itself is the vendor's, and nothing it touches is
++ * configured by the block below it, so the two orders should come to the same
++ * thing; that reasoning has not been tried on the hardware yet.
++ */
++static int exynos_ufs_device_reset(struct ufs_hba *hba)
++{
++	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
++
++	/* Bit 0 is the reset pin of the storage device, ufs-exynos.c:446. */
++	hci_writel(ufs, 0, HCI_GPIO_OUT);
++	udelay(5);
++	hci_writel(ufs, 1, HCI_GPIO_OUT);
++
++	return 0;
++}
++
++static int exynos_ufs_hce_enable_notify(struct ufs_hba *hba,
++					enum ufs_notify_change_status status)
++{
++	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
++	int err;
++
++	if (status != PRE_CHANGE)
++		return 0;
++
++	err = exynos_ufs_sw_reset(ufs);
++	if (err)
++		return err;
++
++	exynos_ufs_config_host(ufs);
++
++	return 0;
++}
++
++static int exynos_ufs_link_startup_notify(struct ufs_hba *hba,
++					  enum ufs_notify_change_status status)
++{
++	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
++	int err;
++
++	if (status == PRE_CHANGE) {
++		/*
++		 * The core calls this again for every retry of the link
++		 * start-up, so everything below has to survive being done
++		 * twice.  Reading the lane count is the one part that does
++		 * not, because the second time round the link may already be
++		 * partly up, so it is kept from the first pass.
++		 */
++		err = exynos_ufs_read_lane_count(ufs);
++		if (err)
++			return err;
++
++		return exynos_ufs_calibrate(ufs, exynos9820_pre_link_cfg, 0);
++	}
++
++	return exynos_ufs_calibrate(ufs, exynos9820_post_link_cfg, 0);
++}
++
++/*
++ * The last thing the core does before it asks the link to change speed, and so
++ * the only place the table for that change can be written from: this driver
++ * has no hook of its own after the change, and the core has none either.
++ */
++static int exynos_ufs_get_max_pwr_mode(struct ufs_hba *hba,
++				       struct ufs_pwr_mode_info *max_pwr_info)
++{
++	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
++
++	return exynos_ufs_calibrate(ufs, exynos9820_pre_pwr_cfg,
++				    max_pwr_info->info.gear_rx);
++}
++
++static int exynos_ufs_init(struct ufs_hba *hba)
++{
++	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
++
++	ufs->hba = hba;
++
++	/*
++	 * Descriptor entries of this controller count bytes.  The core reads
++	 * this while it sets the controller up, which is after this call and
++	 * before anything is transferred.
++	 */
++	hba->quirks |= UFSHCD_QUIRK_PRDT_BYTE_GRAN;
++
++	return 0;
++}
++
++static struct ufs_hba_ops exynos_ufs_hba_ops = {
++	.init			= exynos_ufs_init,
++	.device_reset		= exynos_ufs_device_reset,
++	.hce_enable_notify	= exynos_ufs_hce_enable_notify,
++	.link_startup_notify	= exynos_ufs_link_startup_notify,
++	.get_max_pwr_mode	= exynos_ufs_get_max_pwr_mode,
++};
++
++static int exynos_ufs_probe(struct udevice *dev)
++{
++	struct exynos_ufs *ufs = dev_get_priv(dev);
++	int err;
++
++	ufs->dev = dev;
++
++	/*
++	 * The first window is the standard controller one and belongs to the
++	 * UFS core, which takes it itself.  The two taken here are the
++	 * vendor's own block and the UniPro block.  The fourth window of the
++	 * vendor's node holds the hardware encryption unit, which a boot
++	 * loader has no use for, so it is left alone.
++	 */
++	ufs->reg_hci = dev_read_addr_index_ptr(dev, 1);
++	ufs->reg_unipro = dev_read_addr_index_ptr(dev, 2);
++	if (!ufs->reg_hci || !ufs->reg_unipro) {
++		dev_err(dev, "the vendor and UniPro windows are not both there\n");
++		return -EINVAL;
++	}
++
++	err = clk_get_bulk(dev, &ufs->clks);
++	if (err) {
++		dev_err(dev, "no clocks for the controller: %d\n", err);
++		return err;
++	}
++
++	err = clk_enable_bulk(&ufs->clks);
++	if (err) {
++		dev_err(dev, "failed to enable the clocks: %d\n", err);
++		return err;
++	}
++
++	/*
++	 * Everything the link is told about time is computed from this one
++	 * rate, so a wrong value here does not fail loudly, it just produces a
++	 * link that does not work.  It is printed for that reason.
++	 */
++	err = clk_get_by_name(dev, "unipro", &ufs->clk_unipro);
++	if (err) {
++		dev_err(dev, "no UniPro clock to take the rate from: %d\n", err);
++		return err;
++	}
++
++	ufs->mclk_rate = clk_get_rate(&ufs->clk_unipro);
++	if (!ufs->mclk_rate) {
++		dev_err(dev, "the UniPro clock reports no rate\n");
++		return -EINVAL;
++	}
++	dev_info(dev, "UniPro clock at %u Hz\n", ufs->mclk_rate);
++
++	err = generic_phy_get_by_name(dev, "ufs-phy", &ufs->phy);
++	if (err) {
++		dev_err(dev, "no PHY on this node: %d\n", err);
++		return err;
++	}
++
++	err = generic_phy_init(&ufs->phy);
++	if (err)
++		return err;
++
++	/* Both series call for the same calibration on this SoC. */
++	err = generic_phy_set_mode(&ufs->phy, PHY_MODE_UFS_HS_B, 0);
++	if (err)
++		return err;
++
++	err = generic_phy_power_on(&ufs->phy);
++	if (err)
++		return err;
++
++	err = ufshcd_probe(dev, &exynos_ufs_hba_ops);
++	if (err)
++		return err;
++
++	/*
++	 * The core has no hook after the change of speed, so the last step of
++	 * the calibration is done here.  It only applies if the link really did
++	 * move to a high speed gear: when the core fails to work out the best
++	 * mode it says so, skips the change and still reports success, which
++	 * would otherwise leave storage running at the slowest speed with
++	 * nothing in the log to say so.
++	 */
++	if (ufs->hba->pwr_info.pwr_rx != FAST_MODE &&
++	    ufs->hba->pwr_info.pwr_rx != FASTAUTO_MODE) {
++		dev_err(dev, "the link stayed in a slow mode, gear %u\n",
++			ufs->hba->pwr_info.gear_rx);
++		return -EIO;
++	}
++
++	return exynos_ufs_calibrate(ufs, exynos9820_post_pwr_cfg,
++				    ufs->hba->pwr_info.gear_rx);
++}
++
++static const struct udevice_id exynos_ufs_ids[] = {
++	{ .compatible = "samsung,exynos9820-ufs" },
++	{ /* sentinel */ }
++};
++
++U_BOOT_DRIVER(exynos_ufs) = {
++	.name		= "exynos-ufs",
++	.id		= UCLASS_UFS,
++	.of_match	= exynos_ufs_ids,
++	.probe		= exynos_ufs_probe,
++	.priv_auto	= sizeof(struct exynos_ufs),
++};
+diff --git a/drivers/ufs/ufs-exynos.h b/drivers/ufs/ufs-exynos.h
+new file mode 100644
+index 00000000..1f08f343
+--- /dev/null
++++ b/drivers/ufs/ufs-exynos.h
+@@ -0,0 +1,87 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++/*
++ * UFS host controller driver for Samsung Exynos SoCs.
++ *
++ * Copyright (c) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * Offsets and field names follow the vendor header for this SoC,
++ * drivers/scsi/ufs/ufs-exynos.h of the Samsung kernel, and the mainline Linux
++ * driver drivers/ufs/host/ufs-exynos.c, which agree on all of them.
++ */
++
++#ifndef __UFS_EXYNOS_H__
++#define __UFS_EXYNOS_H__
++
++#include <linux/bitops.h>
++
++/*
++ * Registers of the vendor's own block, which sits in its own window next to
++ * the standard host controller one.  The standard window belongs to the UFS
++ * uclass and is not touched here.
++ */
++#define HCI_TXPRDT_ENTRY_SIZE		0x00
++#define HCI_RXPRDT_ENTRY_SIZE		0x04
++#define PRDT_PREFETCH_EN		BIT(31)
++#define PRDT_SET_SIZE(x)		((x) & 0x1f)
++
++#define HCI_1US_TO_CNT_VAL		0x0c
++#define CNT_VAL_1US_MASK		0x3ff
++
++#define HCI_UTRL_NEXUS_TYPE		0x40
++#define HCI_UTMRL_NEXUS_TYPE		0x44
++
++#define HCI_SW_RST			0x50
++#define UFS_LINK_SW_RST			BIT(0)
++#define UFS_UNIPRO_SW_RST		BIT(1)
++#define UFS_SW_RST_MASK			(UFS_UNIPRO_SW_RST | UFS_LINK_SW_RST)
++
++#define HCI_DATA_REORDER		0x60
++
++#define HCI_AXIDMA_RWDATA_BURST_LEN	0x6c
++#define WLU_EN				BIT(31)
++#define BURST_LEN(x)			(((x) << 27) | (x))
++
++/* Bit 0 drives the reset pin of the storage device. */
++#define HCI_GPIO_OUT			0x70
++
++#define HCI_UFSHCI_V2P1_CTRL		0x8c
++#define IA_TICK_SEL			BIT(16)
++
++/*
++ * Which clocks the hardware is allowed to stop on its own.  Every bit here is
++ * cleared for the whole of bring-up, including the one that gates the APB
++ * clock of the PHY: without it the PHY driver cannot reach its own registers.
++ *
++ * The vendor leaves that one bit out of its bulk mask and instead clears and
++ * restores it around every single access to the PHY, which needs the PHY
++ * driver to reach into this window.  Mainline Linux puts the bit in the bulk
++ * mask and clears it once, which keeps the two drivers apart, so that is what
++ * is done here.
++ */
++#define HCI_CLKSTOP_CTRL		0xb0
++#define REFCLKOUT_STOP			BIT(4)
++#define MPHY_APBCLK_STOP		BIT(3)
++#define REFCLK_STOP			BIT(2)
++#define UNIPRO_MCLK_STOP		BIT(1)
++#define UNIPRO_PCLK_STOP		BIT(0)
++#define CLK_STOP_MASK			(REFCLKOUT_STOP | MPHY_APBCLK_STOP | \
++					 REFCLK_STOP | UNIPRO_MCLK_STOP | \
++					 UNIPRO_PCLK_STOP)
++
++#define HCI_FORCE_HCS			0xb4
++#define HCI_CORECLK_STOP_EN		BIT(4)
++
++/* Automatic clock gating, switched off for the whole of bring-up. */
++#define HCI_UFS_ACG_DISABLE		0xfc
++#define HCI_UFS_ACG_DISABLE_EN		BIT(0)
++#define HCI_IOP_ACG_DISABLE		0x100
++#define HCI_IOP_ACG_DISABLE_EN		BIT(0)
++
++/*
++ * Lane selectors of the PCS attributes.  The transmit lanes are numbered from
++ * zero and the receive lanes from four.
++ */
++#define TX_LANE_0			0
++#define RX_LANE_0			4
++
++#endif /* __UFS_EXYNOS_H__ */
+-- 
+2.47.3
+

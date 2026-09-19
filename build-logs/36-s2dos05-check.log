@@ -1,0 +1,8 @@
+  UPD     include/config/kernel.release
+  SCHEMA  Documentation/devicetree/bindings/processed-schema.json
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+DTBS_EXIT=0
+  DTC [C] Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.example.dtb
+  DTEX    Documentation/devicetree/bindings/mfd/samsung,s2dos05.example.dts
+  DTC [C] Documentation/devicetree/bindings/mfd/samsung,s2dos05.example.dtb
+BINDING_EXIT=0

@@ -1,0 +1,252 @@
+From 42c2d3fd00ce4696b607910a35fd80b8e93d78fc Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 18 Sep 2026 23:07:39 +0200
+Subject: [PATCH 1/8] pinctrl: exynos: add the Exynos9820 pin controller driver
+
+Exynos9820 has eight pin controllers holding sixty two banks between them.
+The geometry below is the one this project established for the Linux driver,
+where every bank was cross checked against the vendor tree of this board; only
+the bank geometry carries over, because U-Boot needs neither the external
+interrupt offsets nor the suspend hooks the kernel driver has.
+
+The controller a device gets its bank table from is selected by dev_seq(), so
+the table order follows the order the nodes appear in the device tree, sorted
+by unit address: PERIC0, PERIC1, FSYS0, FSYS1, VTS, ALIVE, CMGP, AUD.  FSYS1 is
+the block the UFS lines sit behind, so it is the one that has to be right before
+storage can be read at all.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/pinctrl/exynos/Kconfig              |   8 +
+ drivers/pinctrl/exynos/Makefile             |   1 +
+ drivers/pinctrl/exynos/pinctrl-exynos9820.c | 193 ++++++++++++++++++++
+ 3 files changed, 202 insertions(+)
+ create mode 100644 drivers/pinctrl/exynos/pinctrl-exynos9820.c
+
+diff --git a/drivers/pinctrl/exynos/Kconfig b/drivers/pinctrl/exynos/Kconfig
+index 1b7fb62b..8ede3dcd 100644
+--- a/drivers/pinctrl/exynos/Kconfig
++++ b/drivers/pinctrl/exynos/Kconfig
+@@ -24,3 +24,11 @@ config PINCTRL_EXYNOS850
+ 	help
+ 	  Support pin multiplexing and pin configuration control on
+ 	  Samsung's Exynos850 SoC.
++
++config PINCTRL_EXYNOS9820
++	bool "Samsung Exynos9820 pinctrl driver"
++	depends on ARCH_EXYNOS && PINCTRL_FULL
++	select PINCTRL_EXYNOS
++	help
++	  Support pin multiplexing and pin configuration control on
++	  Samsung's Exynos9820 SoC.
+diff --git a/drivers/pinctrl/exynos/Makefile b/drivers/pinctrl/exynos/Makefile
+index 3abe1226..4485f2eb 100644
+--- a/drivers/pinctrl/exynos/Makefile
++++ b/drivers/pinctrl/exynos/Makefile
+@@ -7,3 +7,4 @@ obj-$(CONFIG_PINCTRL_EXYNOS)		+= pinctrl-exynos.o
+ obj-$(CONFIG_PINCTRL_EXYNOS7420)	+= pinctrl-exynos7420.o
+ obj-$(CONFIG_PINCTRL_EXYNOS78x0)	+= pinctrl-exynos78x0.o
+ obj-$(CONFIG_PINCTRL_EXYNOS850)		+= pinctrl-exynos850.o
++obj-$(CONFIG_PINCTRL_EXYNOS9820)	+= pinctrl-exynos9820.o
+diff --git a/drivers/pinctrl/exynos/pinctrl-exynos9820.c b/drivers/pinctrl/exynos/pinctrl-exynos9820.c
+new file mode 100644
+index 00000000..3a0bc389
+--- /dev/null
++++ b/drivers/pinctrl/exynos/pinctrl-exynos9820.c
+@@ -0,0 +1,193 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Exynos9820 pinctrl driver.
++ *
++ * Copyright (c) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The bank layout is the one this project already established for the Linux
++ * driver (drivers/pinctrl/samsung/pinctrl-exynos-arm64.c in our series): eight
++ * pin controllers, sixty two banks.  Only the geometry is reused here, because
++ * that is what the hardware dictates; U-Boot needs neither the external
++ * interrupt offsets nor the suspend hooks the kernel driver carries.
++ */
++
++#include <dm.h>
++#include <errno.h>
++#include <asm/io.h>
++#include <dm/pinctrl.h>
++#include <dm/root.h>
++#include <fdtdec.h>
++#include <asm/arch/pinmux.h>
++#include "pinctrl-exynos.h"
++
++static const struct pinctrl_ops exynos9820_pinctrl_ops = {
++	.set_state	= exynos_pinctrl_set_state
++};
++
++/* pin banks of exynos9820 pin-controller PERIC0 (0x10430000) */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_peric0[] = {
++	EXYNOS_PIN_BANK(8, 0x000, "gpp0"),
++	EXYNOS_PIN_BANK(8, 0x020, "gpp1"),
++	EXYNOS_PIN_BANK(8, 0x040, "gpp2"),
++	EXYNOS_PIN_BANK(5, 0x060, "gpp3"),
++	EXYNOS_PIN_BANK(8, 0x080, "gpg0"),
++	EXYNOS_PIN_BANK(8, 0x0a0, "gpg1"),
++	EXYNOS_PIN_BANK(7, 0x0c0, "gpg2"),
++	EXYNOS_PIN_BANK(4, 0x0e0, "gpg4"),
++};
++
++/* pin banks of exynos9820 pin-controller PERIC1 (0x10830000) */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_peric1[] = {
++	EXYNOS_PIN_BANK(8, 0x000, "gpp4"),
++	EXYNOS_PIN_BANK(8, 0x020, "gpp5"),
++	EXYNOS_PIN_BANK(4, 0x040, "gpp6"),
++	EXYNOS_PIN_BANK(8, 0x060, "gpc0"),
++	EXYNOS_PIN_BANK(8, 0x080, "gpc1"),
++	EXYNOS_PIN_BANK(4, 0x0a0, "gpd0"),
++	EXYNOS_PIN_BANK(7, 0x0c0, "gpg3"),
++	EXYNOS_PIN_BANK(8, 0x0e0, "gph0"),
++	EXYNOS_PIN_BANK(5, 0x100, "gph1"),
++};
++
++/* pin banks of exynos9820 pin-controller FSYS0 (0x13030000) */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_fsys0[] = {
++	EXYNOS_PIN_BANK(6, 0x000, "gpf0"),
++};
++
++/*
++ * pin banks of exynos9820 pin-controller FSYS1 (0x13c40000).
++ * This is the block the UFS lines live behind, so it is the one that has to be
++ * right before storage can be read.
++ */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_fsys1[] = {
++	EXYNOS_PIN_BANK(6, 0x000, "gpf1"),
++	EXYNOS_PIN_BANK(3, 0x020, "gpf2"),
++	EXYNOS_PIN_BANK(3, 0x040, "gpf3"),
++};
++
++/* pin banks of exynos9820 pin-controller VTS (0x15580000) */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_vts[] = {
++	EXYNOS_PIN_BANK(4, 0x000, "gpv0"),
++};
++
++/* pin banks of exynos9820 pin-controller ALIVE (0x15850000) */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_alive[] = {
++	EXYNOS_PIN_BANK(8, 0x000, "gpa0"),
++	EXYNOS_PIN_BANK(8, 0x020, "gpa1"),
++	EXYNOS_PIN_BANK(8, 0x040, "gpa2"),
++	EXYNOS_PIN_BANK(8, 0x060, "gpa3"),
++	EXYNOS_PIN_BANK(2, 0x080, "gpa4"),
++	EXYNOS_PIN_BANK(7, 0x0a0, "gpq0"),
++	EXYNOS_PIN_BANK(6, 0x0c0, "etc0"),
++};
++
++/*
++ * pin banks of exynos9820 pin-controller CMGP (0x15c30000).
++ * Thirty two banks of a single pin each, evenly spaced by 0x20.
++ */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_cmgp[] = {
++	EXYNOS_PIN_BANK(1, 0x000, "gpm0"),
++	EXYNOS_PIN_BANK(1, 0x020, "gpm1"),
++	EXYNOS_PIN_BANK(1, 0x040, "gpm2"),
++	EXYNOS_PIN_BANK(1, 0x060, "gpm3"),
++	EXYNOS_PIN_BANK(1, 0x080, "gpm4"),
++	EXYNOS_PIN_BANK(1, 0x0a0, "gpm5"),
++	EXYNOS_PIN_BANK(1, 0x0c0, "gpm6"),
++	EXYNOS_PIN_BANK(1, 0x0e0, "gpm7"),
++	EXYNOS_PIN_BANK(1, 0x100, "gpm8"),
++	EXYNOS_PIN_BANK(1, 0x120, "gpm9"),
++	EXYNOS_PIN_BANK(1, 0x140, "gpm10"),
++	EXYNOS_PIN_BANK(1, 0x160, "gpm11"),
++	EXYNOS_PIN_BANK(1, 0x180, "gpm12"),
++	EXYNOS_PIN_BANK(1, 0x1a0, "gpm13"),
++	EXYNOS_PIN_BANK(1, 0x1c0, "gpm14"),
++	EXYNOS_PIN_BANK(1, 0x1e0, "gpm15"),
++	EXYNOS_PIN_BANK(1, 0x200, "gpm16"),
++	EXYNOS_PIN_BANK(1, 0x220, "gpm17"),
++	EXYNOS_PIN_BANK(1, 0x240, "gpm18"),
++	EXYNOS_PIN_BANK(1, 0x260, "gpm19"),
++	EXYNOS_PIN_BANK(1, 0x280, "gpm20"),
++	EXYNOS_PIN_BANK(1, 0x2a0, "gpm21"),
++	EXYNOS_PIN_BANK(1, 0x2c0, "gpm22"),
++	EXYNOS_PIN_BANK(1, 0x2e0, "gpm23"),
++	EXYNOS_PIN_BANK(1, 0x300, "gpm24"),
++	EXYNOS_PIN_BANK(1, 0x320, "gpm25"),
++	EXYNOS_PIN_BANK(1, 0x340, "gpm26"),
++	EXYNOS_PIN_BANK(1, 0x360, "gpm27"),
++	EXYNOS_PIN_BANK(1, 0x380, "gpm28"),
++	EXYNOS_PIN_BANK(1, 0x3a0, "gpm29"),
++	EXYNOS_PIN_BANK(1, 0x3c0, "gpm30"),
++	EXYNOS_PIN_BANK(1, 0x3e0, "gpm31"),
++};
++
++/* pin banks of exynos9820 pin-controller AUD (0x18c60000) */
++static const struct samsung_pin_bank_data exynos9820_pin_banks_aud[] = {
++	EXYNOS_PIN_BANK(5, 0x000, "gpb0"),
++	EXYNOS_PIN_BANK(8, 0x020, "gpb1"),
++	EXYNOS_PIN_BANK(4, 0x040, "gpb2"),
++};
++
++/*
++ * The entry a controller gets is picked by dev_seq(), and for nodes that have
++ * an alias that is the alias number, so this array has to be in the order the
++ * aliases give.  Our board tree numbers them alphabetically, pinctrl0 = ALIVE
++ * through pinctrl7 = VTS, which is what the kernel tree for this SoC does as
++ * well, so that is the order below.  It is worth stating because the two
++ * orders that suggest themselves, the order the nodes appear in and the order
++ * of their addresses, are both different, and picking either would hand every
++ * controller another one's bank table without a word in the log.
++ */
++static const struct samsung_pin_ctrl exynos9820_pin_ctrl[] = {
++	{
++		/* pin-controller instance 0 ALIVE data */
++		.pin_banks	= exynos9820_pin_banks_alive,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_alive),
++	}, {
++		/* pin-controller instance 1 AUD data */
++		.pin_banks	= exynos9820_pin_banks_aud,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_aud),
++	}, {
++		/* pin-controller instance 2 CMGP data */
++		.pin_banks	= exynos9820_pin_banks_cmgp,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_cmgp),
++	}, {
++		/* pin-controller instance 3 FSYS0 data */
++		.pin_banks	= exynos9820_pin_banks_fsys0,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_fsys0),
++	}, {
++		/* pin-controller instance 4 FSYS1 data */
++		.pin_banks	= exynos9820_pin_banks_fsys1,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_fsys1),
++	}, {
++		/* pin-controller instance 5 PERIC0 data */
++		.pin_banks	= exynos9820_pin_banks_peric0,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_peric0),
++	}, {
++		/* pin-controller instance 6 PERIC1 data */
++		.pin_banks	= exynos9820_pin_banks_peric1,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_peric1),
++	}, {
++		/* pin-controller instance 7 VTS data */
++		.pin_banks	= exynos9820_pin_banks_vts,
++		.nr_banks	= ARRAY_SIZE(exynos9820_pin_banks_vts),
++	},
++	{/* list terminator */}
++};
++
++
++
++static const struct udevice_id exynos9820_pinctrl_ids[] = {
++	{ .compatible = "samsung,exynos9820-pinctrl",
++		.data = (ulong)exynos9820_pin_ctrl },
++	{ }
++};
++
++U_BOOT_DRIVER(pinctrl_exynos9820) = {
++	.name		= "pinctrl_exynos9820",
++	.id		= UCLASS_PINCTRL,
++	.of_match	= exynos9820_pinctrl_ids,
++	.priv_auto	= sizeof(struct exynos_pinctrl_priv),
++	.ops		= &exynos9820_pinctrl_ops,
++	.probe		= exynos_pinctrl_probe,
++	.bind		= exynos_pinctrl_bind,
++};
+-- 
+2.47.3
+

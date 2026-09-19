@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:48:04 +0200
+Subject: [PATCH] dt-bindings: soc: samsung: Add Exynos9820
+
+The PMU, the USI and the PERIC0 system register block reuse the register
+layout of an already documented SoC, so only the compatible strings are
+added.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml  | 1 +
+ Documentation/devicetree/bindings/soc/samsung/exynos-usi.yaml  | 1 +
+ .../devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml | 3 +++
+ 3 files changed, 5 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml b/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml
+index 76ce7e98c10..3d221e41591 100644
+--- a/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml
++++ b/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml
+@@ -38,6 +38,7 @@ properties:
+               - samsung,exynos8890-pmu
+               - samsung,exynos8895-pmu
+               - samsung,exynos9810-pmu
++              - samsung,exynos9820-pmu
+               - samsung,exynos990-pmu
+               - samsung,exynosautov9-pmu
+               - samsung,exynosautov920-pmu
+diff --git a/Documentation/devicetree/bindings/soc/samsung/exynos-usi.yaml b/Documentation/devicetree/bindings/soc/samsung/exynos-usi.yaml
+index c694926e56e..138fd4a3142 100644
+--- a/Documentation/devicetree/bindings/soc/samsung/exynos-usi.yaml
++++ b/Documentation/devicetree/bindings/soc/samsung/exynos-usi.yaml
+@@ -37,6 +37,7 @@ properties:
+           - enum:
+               - google,gs101-usi
+               - samsung,exynos2200-usi
++              - samsung,exynos9820-usi
+               - samsung,exynosautov9-usi
+               - samsung,exynosautov920-usi
+           - const: samsung,exynos850-usi
+diff --git a/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml b/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
+index 9c63dbcd4d7..7dfac26701b 100644
+--- a/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
++++ b/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
+@@ -35,6 +35,8 @@ properties:
+               - samsung,exynos8895-fsys1-sysreg
+               - samsung,exynos8895-peric0-sysreg
+               - samsung,exynos8895-peric1-sysreg
++              - samsung,exynos9820-dpu-sysreg
++              - samsung,exynos9820-peric0-sysreg
+               - samsung,exynos990-peric0-sysreg
+               - samsung,exynos990-peric1-sysreg
+               - samsung,exynosautov920-hsi2-sysreg
+@@ -106,6 +108,7 @@ allOf:
+               - samsung,exynos8895-fsys1-sysreg
+               - samsung,exynos8895-peric0-sysreg
+               - samsung,exynos8895-peric1-sysreg
++              - samsung,exynos9820-peric0-sysreg
+               - samsung,exynos990-peric0-sysreg
+               - samsung,exynos990-peric1-sysreg
+     then:

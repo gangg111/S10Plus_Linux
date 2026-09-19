@@ -1,0 +1,41 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 14:16:36 +0200
+Subject: [PATCH] drm/exynos: dsi: Add Exynos9820 support
+
+Everything version specific lives in the bridge driver; what the
+exynos_drm side needs is the compatible, the hardware type and the host
+ops that hand the peripheral over to the component master.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/exynos/exynos_drm_dsi.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/gpu/drm/exynos/exynos_drm_dsi.c b/drivers/gpu/drm/exynos/exynos_drm_dsi.c
+index c4d098ab786..4d0027a44e5 100644
+--- a/drivers/gpu/drm/exynos/exynos_drm_dsi.c
++++ b/drivers/gpu/drm/exynos/exynos_drm_dsi.c
+@@ -159,6 +159,11 @@ static const struct samsung_dsim_plat_data exynos7870_dsi_pdata = {
+ 	.host_ops = &exynos_dsi_exynos_host_ops,
+ };
+ 
++static const struct samsung_dsim_plat_data exynos9820_dsi_pdata = {
++	.hw_type = DSIM_TYPE_EXYNOS9820,
++	.host_ops = &exynos_dsi_exynos_host_ops,
++};
++
+ static const struct of_device_id exynos_dsi_of_match[] = {
+ 	{
+ 		.compatible = "samsung,exynos3250-mipi-dsi",
+@@ -184,6 +189,10 @@ static const struct of_device_id exynos_dsi_of_match[] = {
+ 		.compatible = "samsung,exynos7870-mipi-dsi",
+ 		.data = &exynos7870_dsi_pdata,
+ 	},
++	{
++		.compatible = "samsung,exynos9820-mipi-dsi",
++		.data = &exynos9820_dsi_pdata,
++	},
+ 	{ /* sentinel. */ }
+ };
+ MODULE_DEVICE_TABLE(of, exynos_dsi_of_match);

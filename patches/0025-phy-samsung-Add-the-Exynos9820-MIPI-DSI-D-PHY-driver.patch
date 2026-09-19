@@ -1,0 +1,705 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:43:56 +0200
+Subject: [PATCH] phy: samsung: Add the Exynos9820 MIPI DSI D-PHY driver
+
+The PHY programs a bias block, a set of undocumented "general" and
+analog constant blocks, the per lane timings and the link PLL, then
+releases the PLL. Both this PLL and the DSI host report the lock, but the
+PLL's own status register moves between silicon revisions while the
+host's link status bit does not, so the host is the one that waits
+for it and this driver does not.
+
+Only the link rate and the lane count are taken from the caller. The per
+transition values in phy_configure_opts_mipi_dphy are expressed in
+picoseconds, and the counters this hardware takes are not: the vendor
+keeps one transcribed row per link rate and marks its own table as not
+meeting the D-PHY minimums (LineageOS/android_kernel_samsung_exynos9820,
+commit 7d08ec364a06,
+drivers/video/fbdev/exynos/dpu20/cal_9820/dsim_reg.c:94). Converting
+between the two would mean inventing the unit, so .validate refuses a
+rate that has no row instead, and the driver serves exactly the rates it
+has been given numbers for.
+
+UNVERIFIED: the unit of the lane timing counters is unknown, so the table
+cannot be interpolated and a new operating point needs its own measured
+row. It is listed as an open hardware question in the porting notes.
+
+The reset of the block is a bit of a display unit system register rather
+than of the block itself, so the driver takes a second phandle for it.
+The vendor holds the block in reset while it is programmed and releases
+it afterwards, and puts it back in reset on the way down; the same order
+is followed here.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/phy/samsung/Kconfig               |  16 +
+ drivers/phy/samsung/Makefile              |   1 +
+ drivers/phy/samsung/phy-exynos9820-dsim.c | 619 ++++++++++++++++++++++
+ 3 files changed, 636 insertions(+)
+ create mode 100644 drivers/phy/samsung/phy-exynos9820-dsim.c
+
+diff --git a/drivers/phy/samsung/Kconfig b/drivers/phy/samsung/Kconfig
+index b7ab402909a..06e0c6351ab 100644
+--- a/drivers/phy/samsung/Kconfig
++++ b/drivers/phy/samsung/Kconfig
+@@ -21,6 +21,22 @@ config PHY_EXYNOS_MIPI_VIDEO
+ 	  Support for MIPI CSI-2 and MIPI DSI DPHY found on Samsung S5P
+ 	  and Exynos SoCs.
+ 
++config PHY_EXYNOS9820_DSIM
++	tristate "Exynos9820 MIPI DSI D-PHY driver"
++	depends on OF && HAS_IOMEM
++	depends on ARCH_EXYNOS || COMPILE_TEST
++	depends on PM
++	select GENERIC_PHY
++	select MFD_SYSCON
++	select GENERIC_PHY_MIPI_DPHY
++	help
++	  Support for the MIPI DSI D-PHY of the Exynos9820 SoC.  The PHY is
++	  driven by the DSI host through the generic PHY interface and holds
++	  the link PLL and the lane timings, so the display will not come up
++	  without it.  Its register range is the per link block with the PLL
++	  and the lanes; the bias generator is reached through the top block
++	  the device tree points at.
++
+ config PHY_EXYNOS_PCIE
+ 	bool "Exynos PCIe PHY driver"
+ 	depends on OF && (ARCH_EXYNOS || COMPILE_TEST)
+diff --git a/drivers/phy/samsung/Makefile b/drivers/phy/samsung/Makefile
+index 342682638a8..8771864f75d 100644
+--- a/drivers/phy/samsung/Makefile
++++ b/drivers/phy/samsung/Makefile
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0
+ obj-$(CONFIG_PHY_EXYNOS_DP_VIDEO)	+= phy-exynos-dp-video.o
+ obj-$(CONFIG_PHY_EXYNOS_MIPI_VIDEO)	+= phy-exynos-mipi-video.o
++obj-$(CONFIG_PHY_EXYNOS9820_DSIM)	+= phy-exynos9820-dsim.o
+ obj-$(CONFIG_PHY_EXYNOS_PCIE)		+= phy-exynos-pcie.o
+ obj-$(CONFIG_PHY_SAMSUNG_UFS)		+= phy-exynos-ufs.o
+ phy-exynos-ufs-y			+= phy-gs101-ufs.o
+diff --git a/drivers/phy/samsung/phy-exynos9820-dsim.c b/drivers/phy/samsung/phy-exynos9820-dsim.c
+new file mode 100644
+index 00000000000..7327c3433c3
+--- /dev/null
++++ b/drivers/phy/samsung/phy-exynos9820-dsim.c
+@@ -0,0 +1,619 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Samsung Exynos9820 MIPI DSI D-PHY
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The per-link M4S0 block holds the PLL, the clock lane and the data lanes and
++ * is the register range of this device.  The bias generator lives in the M4S4
++ * top block, which the vendor sources describe as a block of its own rather
++ * than part of a link, so it is reached through a regmap instead of being
++ * mapped here.  The DSI host reports PLL lock through its own link status
++ * register, so locking is waited for by the host, not here.
++ *
++ * The order the generic PHY interface is used in: .configure with the link
++ * rate the host wants, then .power_on, which programs the block and starts the
++ * PLL.  Configuring while powered is refused, because the registers are only
++ * written from .power_on.
++ */
++
++#include <linux/bits.h>
++#include <linux/clk.h>
++#include <linux/io.h>
++#include <linux/mfd/syscon.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/phy/phy.h>
++#include <linux/platform_device.h>
++#include <linux/regmap.h>
++#include <linux/pm_runtime.h>
++
++#define DSIM_PHY_BIAS_CON(i)			(0x0000 + 4 * (i))
++
++/*
++ * The window of display unit system registers that carries the reset of
++ * the M4S4 block this PHY lives in, and the choice of what drives that
++ * reset.  The offset is the vendor's (regs-decon.h:17), counted from the
++ * window its driver maps, which is sixteen bytes at 0x19011000
++ * (dpu20/helper.c:568-585 iomaps the node of exynos9820.dts:6714-6716).
++ *
++ * The two bits are the ones the vendor writes for DSIM0.  Its macro
++ * numbers the select field from bit 4 up (regs-decon.h:19), but the
++ * caller inverts the index (dsim_reg.c:2132, phy_num = dsim_id ? 0 : 1),
++ * so link 0 drives bit 5.  The names below say which link, not which
++ * field of the vendor macro.
++ */
++#define DPU_SYSREG_MIPI_PHY_CON		0x0008
++#define DPU_SYSREG_SEL_RESET_DSIM0	BIT(5)
++#define DPU_SYSREG_RESETN_M4S4_MODULE	BIT(1)
++
++#define DSIM_PHY_PLL_CON(i)			(0x0100 + 4 * (i))
++#define DSIM_PHY_PLL_CON0			DSIM_PHY_PLL_CON(0)
++#define DSIM_PHY_PLL_EN				BIT(12)
++#define DSIM_PHY_PMS_S(x)			(((x) & 0x7) << 8)
++#define DSIM_PHY_PMS_S_MASK			(0x7 << 8)
++#define DSIM_PHY_PMS_P(x)			(((x) & 0x3f) << 0)
++#define DSIM_PHY_PMS_P_MASK			(0x3f << 0)
++#define DSIM_PHY_PLL_CON1			DSIM_PHY_PLL_CON(1)
++#define DSIM_PHY_PMS_K(x)			(((x) & 0xffff) << 0)
++#define DSIM_PHY_PMS_K_MASK			(0xffff << 0)
++#define DSIM_PHY_PLL_CON2			DSIM_PHY_PLL_CON(2)
++#define DSIM_PHY_PMS_M(x)			(((x) & 0x3ff) << 0)
++#define DSIM_PHY_PMS_M_MASK			(0x3ff << 0)
++#define DSIM_PHY_PLL_CON3			DSIM_PHY_PLL_CON(3)
++#define DSIM_PHY_DITHER_MRR(x)			(((x) & 0x3f) << 8)
++#define DSIM_PHY_DITHER_MRR_MASK		(0x3f << 8)
++#define DSIM_PHY_DITHER_MFR(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_DITHER_MFR_MASK		(0xff << 0)
++#define DSIM_PHY_PLL_CON4			DSIM_PHY_PLL_CON(4)
++#define DSIM_PHY_DITHER_EN			BIT(11)
++#define DSIM_PHY_PLL_CON6			DSIM_PHY_PLL_CON(6)
++#define DSIM_PHY_WCLK_BUF_SFT_CNT(x)		(((x) & 0xf) << 8)
++#define DSIM_PHY_WCLK_BUF_SFT_CNT_MASK		(0xf << 8)
++#define DSIM_PHY_PLL_CON7			DSIM_PHY_PLL_CON(7)
++#define DSIM_PHY_PLL_LOCK_CNT(x)		(((x) & 0xffff) << 0)
++#define DSIM_PHY_PLL_LOCK_CNT_MASK		(0xffff << 0)
++
++#define DSIM_PHY_MC_GNR_CON(i)			(0x0300 + 4 * (i))
++#define DSIM_PHY_MC_ANA_CON(i)			(0x0308 + 4 * (i))
++
++#define DSIM_PHY_MC_TIME_CON0			0x0330
++#define DSIM_PHY_TLPX(x)			(((x) & 0xff) << 4)
++#define DSIM_PHY_HSTX_CLK_SEL			BIT(12)
++#define DSIM_PHY_MC_TIME_CON1			0x0334
++#define DSIM_PHY_TCLK_ZERO(x)			(((x) & 0xff) << 8)
++#define DSIM_PHY_TCLK_PREPARE(x)		(((x) & 0xff) << 0)
++#define DSIM_PHY_MC_TIME_CON2			0x0338
++#define DSIM_PHY_THS_EXIT(x)			(((x) & 0xff) << 8)
++#define DSIM_PHY_TCLK_TRAIL(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MC_TIME_CON3			0x033c
++#define DSIM_PHY_TCLK_POST(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MC_TIME_CON4			0x0340
++#define DSIM_PHY_ULPS_EXIT(x)			(((x) & 0x3ff) << 0)
++
++#define DSIM_PHY_MD_GNR_CON(n, i)		(0x0400 + 0x100 * (n) + 4 * (i))
++#define DSIM_PHY_MD_ANA_CON(n, i)		(0x0408 + 0x100 * (n) + 4 * (i))
++
++#define DSIM_PHY_MD_TIME_CON0(n)		(0x0430 + 0x100 * (n))
++#define DSIM_PHY_MD_TIME_CON1(n)		(0x0434 + 0x100 * (n))
++#define DSIM_PHY_THS_ZERO(x)			(((x) & 0xff) << 8)
++#define DSIM_PHY_THS_PREPARE(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MD_TIME_CON2(n)		(0x0438 + 0x100 * (n))
++#define DSIM_PHY_THS_TRAIL(x)			(((x) & 0xff) << 0)
++#define DSIM_PHY_MD_TIME_CON3(n)		(0x043c + 0x100 * (n))
++#define DSIM_PHY_TTA_GET(x)			(((x) & 0xf) << 4)
++#define DSIM_PHY_TTA_GO(x)			(((x) & 0xf) << 0)
++#define DSIM_PHY_MD_TIME_CON4(n)		(0x0440 + 0x100 * (n))
++
++#define EXYNOS9820_DSIM_PHY_MAX_LANES		4
++
++/*
++ * Lane timings.  The vendor keeps one row per link rate and does not document
++ * the unit the counters are expressed in; the values are transcribed, not
++ * derived, so a rate without a row here cannot be served.
++ *
++ * UNVERIFIED: the unit is unknown and the sanity check against the MIPI
++ * D-PHY minimums does not come out, which the vendor acknowledges for its own
++ * table.  Do not interpolate.
++ */
++struct exynos9820_dsim_phy_timing {
++	unsigned long hs_clk_rate;
++	u32 clk_prepare, clk_zero, clk_post, clk_trail;
++	u32 hs_prepare, hs_zero, hs_trail;
++	u32 lpx, hs_exit;
++	u32 ulps_exit;
++	u32 pll_p, pll_m, pll_s, pll_k;
++};
++
++/*
++ * Transcribed from the vendor timing table (ds/dsim_reg.c:259), whose row is
++ * labelled 900: the vendor picks the first row whose rate is not below the
++ * one asked for, so 898 Mbps lands there.  It is the only operating point
++ * shipped for this panel, so a rate that is not in this table is refused
++ * rather than approximated: nothing writes down a formula from which these
++ * counters could be derived.
++ */
++static const struct exynos9820_dsim_phy_timing exynos9820_dsim_phy_timings[] = {
++	{
++		.hs_clk_rate = 898000000UL,
++		.clk_prepare = 35, .clk_zero = 14, .clk_post = 3,
++		.clk_trail = 56,
++		.hs_prepare = 36, .hs_zero = 5, .hs_trail = 50,
++		.lpx = 26, .hs_exit = 5,
++		/*
++		 * b_dphyctl[esc_clk - 7] for an 18 MHz escape clock.  The device
++		 * tree asks the host for 20 MHz, but the host divides the byte
++		 * clock down by sixteen and rounds up, so what the lanes see at
++		 * 898 Mbps is about 18.7 MHz and this is the row that goes with
++		 * it.  The PHY is never told the escape rate.
++		 */
++		.ulps_exit = 0x1c2,
++		/*
++		 * fout = m * 26 MHz / (p * 2^s) = 138 * 26 / (2 * 4), which is
++		 * 448.5 MHz and so 897 Mbps, not the 898 the device tree asks
++		 * for.  The vendor carries the same P/M/S under a node it calls
++		 * freq_897 and still labels the link 898 elsewhere, so the two
++		 * numbers come from the vendor, not from rounding here.
++		 */
++		.pll_p = 2, .pll_m = 138, .pll_s = 2, .pll_k = 0,
++	},
++};
++
++/* Dithering parameters, taken from the vendor device tree property. */
++#define EXYNOS9820_DSIM_PHY_DITHER_MFR	13
++#define EXYNOS9820_DSIM_PHY_DITHER_MRR	3
++
++/*
++ * Word clock buffer shift count.  The vendor writes a plain 3 after the
++ * divider is set (dsim_reg.c:1893), overriding the 0 its own constant
++ * block left there.  Its header gives a formula for the field, roundup of
++ * the word clock period over 38.46 plus 2 (regs-dsim.h:497), which this
++ * link's 56.1 MHz word clock does not satisfy; the constant is what runs.
++ */
++#define EXYNOS9820_DSIM_PHY_WCLK_BUF_SFT_CNT	3
++
++/*
++ * Lock counter, in cycles of the oscillator that feeds the PLL.  The
++ * vendor multiplies the pre divider by 500 (dsim_reg.c:1903, with
++ * PLL_LOCK_CNT_MARGIN_RATIO at 0, :42), also overriding its constant
++ * block.  For this link's P of 2 that is 1000 against the 5200 the block
++ * leaves behind, so the difference is real and not a rounding.
++ */
++#define EXYNOS9820_DSIM_PHY_PLL_LOCK_CNT_MULT	500
++
++/*
++ * Analog and "general" constant blocks.  The vendor documents none of the
++ * fields, so the values are copied verbatim (LineageOS/
++ * android_kernel_samsung_exynos9820, commit 7d08ec364a06, drivers/video/fbdev/
++ * exynos/dpu20/cal_9820/dsim_reg.c:45-90), and so is the order in which the
++ * blocks are written (:1846-1885): bias and PLL control first, then the clock
++ * lane, then the data lanes.  The timings and the dither setup land between
++ * them there, and do here as well, from their own functions.
++ */
++static const u32 exynos9820_dsim_phy_bias_con[] = {
++	0x00000010, 0x00000110, 0x00003223, 0x00000000, 0x00000000,
++};
++
++static const u32 exynos9820_dsim_phy_pll_con[] = {
++	0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
++	0x00000500, 0x0000008e, 0x00001450, 0x00000a28,
++};
++
++static const u32 exynos9820_dsim_phy_mc_gnr_con[] = {
++	0x00000000, 0x00001450,
++};
++
++/* EDGE_CON[14:12] = 3'b111 selects D-PHY; C-PHY would be 3'b001 */
++static const u32 exynos9820_dsim_phy_mc_ana_con[] = {
++	0x00007033, 0x00000000, 0x00000002,
++};
++
++static const u32 exynos9820_dsim_phy_md_gnr_con[] = {
++	0x00000000, 0x00001450,
++};
++
++static const u32 exynos9820_dsim_phy_md_ana_con[] = {
++	0x00007033, 0x00000000, 0x00000000, 0x00000000,
++};
++
++struct exynos9820_dsim_phy {
++	struct device *dev;
++	void __iomem *regs;		/* M4S0: PLL and lanes */
++	struct regmap *top;		/* M4S4 top: bias generator */
++	struct regmap *sysreg;	/* display unit: reset of this PHY */
++	struct clk *pclk;
++
++	const struct exynos9820_dsim_phy_timing *timing;
++	bool powered;
++	unsigned int lanes;
++};
++
++static void exynos9820_dsim_phy_update(struct exynos9820_dsim_phy *phy, u32 reg,
++				       u32 val, u32 mask)
++{
++	u32 tmp = readl(phy->regs + reg);
++
++	tmp = (tmp & ~mask) | (val & mask);
++	writel(tmp, phy->regs + reg);
++}
++
++/*
++ * The reset of this block is not in the block.  It is one bit of a display
++ * unit system register, and a second bit there chooses what drives it.  The
++ * vendor clears the chooser once, holds the block in reset while it is
++ * programmed and lets it go afterwards (dsim_reg.c:2198, :2211 and :2272
++ * of the vendor kernel).
++ */
++static void exynos9820_dsim_phy_reset(struct exynos9820_dsim_phy *phy,
++				      bool assert)
++{
++	regmap_update_bits(phy->sysreg, DPU_SYSREG_MIPI_PHY_CON,
++			   DPU_SYSREG_SEL_RESET_DSIM0, 0);
++	regmap_update_bits(phy->sysreg, DPU_SYSREG_MIPI_PHY_CON,
++			   DPU_SYSREG_RESETN_M4S4_MODULE,
++			   assert ? 0 : DPU_SYSREG_RESETN_M4S4_MODULE);
++}
++
++static void exynos9820_dsim_phy_const_blocks(struct exynos9820_dsim_phy *phy)
++{
++	unsigned int i, lane;
++
++	/*
++	 * UNVERIFIED: Whether a second controller sits behind this
++	 * block is not something the available sources answer, so the
++	 * constants are written on every power on: harmless for a block
++	 * only this link uses, and the right values if it is shared.
++	 */
++	for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_bias_con); i++)
++		regmap_write(phy->top, DSIM_PHY_BIAS_CON(i),
++			     exynos9820_dsim_phy_bias_con[i]);
++
++	for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_pll_con); i++)
++		writel(exynos9820_dsim_phy_pll_con[i],
++		       phy->regs + DSIM_PHY_PLL_CON(i));
++
++	for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_mc_gnr_con); i++)
++		writel(exynos9820_dsim_phy_mc_gnr_con[i],
++		       phy->regs + DSIM_PHY_MC_GNR_CON(i));
++
++	for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_mc_ana_con); i++)
++		writel(exynos9820_dsim_phy_mc_ana_con[i],
++		       phy->regs + DSIM_PHY_MC_ANA_CON(i));
++
++	/* the vendor finishes one register block for every lane before the next */
++	for (lane = 0; lane < phy->lanes; lane++)
++		for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_md_gnr_con); i++)
++			writel(exynos9820_dsim_phy_md_gnr_con[i],
++			       phy->regs + DSIM_PHY_MD_GNR_CON(lane, i));
++
++	for (lane = 0; lane < phy->lanes; lane++)
++		for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_md_ana_con); i++)
++			writel(exynos9820_dsim_phy_md_ana_con[i],
++			       phy->regs + DSIM_PHY_MD_ANA_CON(lane, i));
++}
++
++static void exynos9820_dsim_phy_set_timing(struct exynos9820_dsim_phy *phy)
++{
++	const struct exynos9820_dsim_phy_timing *t = phy->timing;
++	unsigned int i;
++
++	/* clock lane */
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_MC_TIME_CON4,
++				   DSIM_PHY_ULPS_EXIT(t->ulps_exit), 0x3ff);
++	/*
++	 * The vendor picks between two clock lane modes at 1500 Mbps: below it,
++	 * the HS transmit clock select bit is set and skew calibration stays
++	 * off, above it the opposite (dsim_reg.c:390-399).  Only the first
++	 * mode is programmed here, and only the first can be reached: the
++	 * timing table has one row, 898 Mbps, and validate turns away every
++	 * rate that has no row.  Skew calibration would have to be written
++	 * before a faster row could be added.
++	 */
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_MC_TIME_CON0,
++				   DSIM_PHY_HSTX_CLK_SEL | DSIM_PHY_TLPX(t->lpx),
++				   DSIM_PHY_HSTX_CLK_SEL | (0xff << 4));
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_MC_TIME_CON1,
++				   DSIM_PHY_TCLK_PREPARE(t->clk_prepare) |
++				   DSIM_PHY_TCLK_ZERO(t->clk_zero), 0xffff);
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_MC_TIME_CON2,
++				   DSIM_PHY_TCLK_TRAIL(t->clk_trail) |
++				   DSIM_PHY_THS_EXIT(t->hs_exit), 0xffff);
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_MC_TIME_CON3,
++				   DSIM_PHY_TCLK_POST(t->clk_post), 0xff);
++
++	/* data lanes */
++	for (i = 0; i < phy->lanes; i++) {
++		exynos9820_dsim_phy_update(phy, DSIM_PHY_MD_TIME_CON4(i),
++					   DSIM_PHY_ULPS_EXIT(t->ulps_exit),
++					   0x3ff);
++		exynos9820_dsim_phy_update(phy, DSIM_PHY_MD_TIME_CON0(i),
++					   DSIM_PHY_HSTX_CLK_SEL |
++					   DSIM_PHY_TLPX(t->lpx),
++					   DSIM_PHY_HSTX_CLK_SEL | (0xff << 4));
++		exynos9820_dsim_phy_update(phy, DSIM_PHY_MD_TIME_CON1(i),
++					   DSIM_PHY_THS_PREPARE(t->hs_prepare) |
++					   DSIM_PHY_THS_ZERO(t->hs_zero),
++					   0xffff);
++		exynos9820_dsim_phy_update(phy, DSIM_PHY_MD_TIME_CON2(i),
++					   DSIM_PHY_THS_TRAIL(t->hs_trail) |
++					   DSIM_PHY_THS_EXIT(t->hs_exit),
++					   0xffff);
++		exynos9820_dsim_phy_update(phy, DSIM_PHY_MD_TIME_CON3(i),
++					   DSIM_PHY_TTA_GET(3) |
++					   DSIM_PHY_TTA_GO(0), 0xff);
++	}
++}
++
++static void exynos9820_dsim_phy_set_pll(struct exynos9820_dsim_phy *phy)
++{
++	const struct exynos9820_dsim_phy_timing *t = phy->timing;
++
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON1,
++				   DSIM_PHY_PMS_K(t->pll_k),
++				   DSIM_PHY_PMS_K_MASK);
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON2,
++				   DSIM_PHY_PMS_M(t->pll_m),
++				   DSIM_PHY_PMS_M_MASK);
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON0,
++				   DSIM_PHY_PMS_P(t->pll_p) |
++				   DSIM_PHY_PMS_S(t->pll_s),
++				   DSIM_PHY_PMS_P_MASK | DSIM_PHY_PMS_S_MASK);
++
++	/*
++	 * Two fields the constant block above leaves at the wrong value and
++	 * the vendor rewrites here, in this order, right after the divider
++	 * (dsim_reg.c:1890-1904).
++	 */
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON6,
++				   DSIM_PHY_WCLK_BUF_SFT_CNT(EXYNOS9820_DSIM_PHY_WCLK_BUF_SFT_CNT),
++				   DSIM_PHY_WCLK_BUF_SFT_CNT_MASK);
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON7,
++				   DSIM_PHY_PLL_LOCK_CNT(EXYNOS9820_DSIM_PHY_PLL_LOCK_CNT_MULT *
++							 t->pll_p),
++				   DSIM_PHY_PLL_LOCK_CNT_MASK);
++
++	/* frequency dithering, as the vendor enables it for this panel */
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON3,
++				   DSIM_PHY_DITHER_MFR(EXYNOS9820_DSIM_PHY_DITHER_MFR) |
++				   DSIM_PHY_DITHER_MRR(EXYNOS9820_DSIM_PHY_DITHER_MRR),
++				   DSIM_PHY_DITHER_MFR_MASK |
++				   DSIM_PHY_DITHER_MRR_MASK);
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON4, DSIM_PHY_DITHER_EN,
++				   DSIM_PHY_DITHER_EN);
++}
++
++static int exynos9820_dsim_phy_validate(struct phy *_phy, enum phy_mode mode,
++					int submode,
++					union phy_configure_opts *opts)
++{
++	struct exynos9820_dsim_phy *phy = phy_get_drvdata(_phy);
++	struct phy_configure_opts_mipi_dphy *cfg = &opts->mipi_dphy;
++	unsigned int i;
++	int ret;
++
++	if (mode != PHY_MODE_MIPI_DPHY)
++		return -EINVAL;
++
++	ret = phy_mipi_dphy_config_validate(cfg);
++	if (ret)
++		return ret;
++
++	if (cfg->lanes < 1 || cfg->lanes > EXYNOS9820_DSIM_PHY_MAX_LANES)
++		return -EINVAL;
++
++	for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_timings); i++)
++		if (exynos9820_dsim_phy_timings[i].hs_clk_rate ==
++		    cfg->hs_clk_rate)
++			return 0;
++
++	dev_dbg(phy->dev, "no timing row for %lu bps\n", cfg->hs_clk_rate);
++	return -EINVAL;
++}
++
++static int exynos9820_dsim_phy_configure(struct phy *_phy,
++					 union phy_configure_opts *opts)
++{
++	struct exynos9820_dsim_phy *phy = phy_get_drvdata(_phy);
++	struct phy_configure_opts_mipi_dphy *cfg = &opts->mipi_dphy;
++	unsigned int i;
++	int ret;
++
++	/*
++	 * The registers below are written from .power_on, so a
++	 * configuration accepted while the PHY is running would be
++	 * stored and never reach the hardware.
++	 */
++	if (phy->powered) {
++		dev_err(phy->dev, "already powered, cannot reconfigure\n");
++		return -EBUSY;
++	}
++
++	ret = exynos9820_dsim_phy_validate(_phy, PHY_MODE_MIPI_DPHY, 0, opts);
++	if (ret)
++		return ret;
++
++	/*
++	 * Only the link rate and the lane count are taken from the caller.  The
++	 * per-transition values in phy_configure_opts_mipi_dphy are expressed in
++	 * picoseconds, and the vendor counters are not, so honouring them would
++	 * mean inventing a conversion.
++	 */
++	for (i = 0; i < ARRAY_SIZE(exynos9820_dsim_phy_timings); i++) {
++		if (exynos9820_dsim_phy_timings[i].hs_clk_rate ==
++		    cfg->hs_clk_rate) {
++			phy->timing = &exynos9820_dsim_phy_timings[i];
++			break;
++		}
++	}
++
++	phy->lanes = cfg->lanes;
++
++	return 0;
++}
++
++static int exynos9820_dsim_phy_power_on(struct phy *_phy)
++{
++	struct exynos9820_dsim_phy *phy = phy_get_drvdata(_phy);
++	int ret;
++
++	if (!phy->timing) {
++		dev_err(phy->dev, "powered on before being configured\n");
++		return -EINVAL;
++	}
++
++	ret = pm_runtime_resume_and_get(phy->dev);
++	if (ret)
++		return ret;
++
++	exynos9820_dsim_phy_reset(phy, true);
++
++	exynos9820_dsim_phy_const_blocks(phy);
++	exynos9820_dsim_phy_set_timing(phy);
++	exynos9820_dsim_phy_set_pll(phy);
++
++	exynos9820_dsim_phy_reset(phy, false);
++
++	/*
++	 * This PLL reports a lock of its own, but the register holding it
++	 * moves between silicon revisions while the link status bit of the
++	 * DSI host does not, so the host is the one that waits for it
++	 * after this returns.
++	 */
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON0, DSIM_PHY_PLL_EN,
++				   DSIM_PHY_PLL_EN);
++
++	phy->powered = true;
++
++	return 0;
++}
++
++static int exynos9820_dsim_phy_power_off(struct phy *_phy)
++{
++	struct exynos9820_dsim_phy *phy = phy_get_drvdata(_phy);
++
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON4, 0,
++				   DSIM_PHY_DITHER_EN);
++	exynos9820_dsim_phy_update(phy, DSIM_PHY_PLL_CON0, 0, DSIM_PHY_PLL_EN);
++
++	exynos9820_dsim_phy_reset(phy, true);
++
++	phy->powered = false;
++	/*
++	 * Forget the configuration too, so that a power on that is not
++	 * preceded by a configure is refused instead of reprogramming the
++	 * link with the previous mode's timings.
++	 */
++	phy->timing = NULL;
++	phy->lanes = 0;
++	pm_runtime_put(phy->dev);
++
++	return 0;
++}
++
++static int exynos9820_dsim_phy_runtime_resume(struct device *dev)
++{
++	struct exynos9820_dsim_phy *phy = dev_get_drvdata(dev);
++
++	return clk_prepare_enable(phy->pclk);
++}
++
++static int exynos9820_dsim_phy_runtime_suspend(struct device *dev)
++{
++	struct exynos9820_dsim_phy *phy = dev_get_drvdata(dev);
++
++	clk_disable_unprepare(phy->pclk);
++
++	return 0;
++}
++
++static const struct dev_pm_ops exynos9820_dsim_phy_pm_ops = {
++	RUNTIME_PM_OPS(exynos9820_dsim_phy_runtime_suspend,
++		       exynos9820_dsim_phy_runtime_resume, NULL)
++};
++
++static const struct phy_ops exynos9820_dsim_phy_ops = {
++	.power_on = exynos9820_dsim_phy_power_on,
++	.power_off = exynos9820_dsim_phy_power_off,
++	.configure = exynos9820_dsim_phy_configure,
++	.validate = exynos9820_dsim_phy_validate,
++	.owner = THIS_MODULE,
++};
++
++static int exynos9820_dsim_phy_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct exynos9820_dsim_phy *phy;
++	struct phy_provider *provider;
++	struct phy *generic_phy;
++	int ret;
++
++	phy = devm_kzalloc(dev, sizeof(*phy), GFP_KERNEL);
++	if (!phy)
++		return -ENOMEM;
++
++	phy->dev = dev;
++
++	phy->regs = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(phy->regs))
++		return PTR_ERR(phy->regs);
++
++	/*
++	 * UNVERIFIED: The block has an isolation bit of its own in
++	 * the PMU, separate from the one of the link, and nothing here
++	 * releases it: reaching these registers assumes the reset state or
++	 * the bootloader already did.
++	 */
++	phy->top = syscon_regmap_lookup_by_phandle(dev->of_node,
++						   "samsung,dphy-top-syscon");
++	if (IS_ERR(phy->top))
++		return dev_err_probe(dev, PTR_ERR(phy->top),
++				     "failed to get the D-PHY top block\n");
++
++	phy->sysreg = syscon_regmap_lookup_by_phandle(dev->of_node,
++						      "samsung,dpu-sysreg");
++	if (IS_ERR(phy->sysreg))
++		return dev_err_probe(dev, PTR_ERR(phy->sysreg),
++				     "failed to get the display system register block\n");
++
++	phy->pclk = devm_clk_get(dev, "apb");
++	if (IS_ERR(phy->pclk))
++		return dev_err_probe(dev, PTR_ERR(phy->pclk),
++				     "failed to get the APB clock\n");
++
++	generic_phy = devm_phy_create(dev, NULL, &exynos9820_dsim_phy_ops);
++	if (IS_ERR(generic_phy))
++		return dev_err_probe(dev, PTR_ERR(generic_phy),
++				     "failed to create the PHY\n");
++
++	phy_set_drvdata(generic_phy, phy);
++	platform_set_drvdata(pdev, phy);
++
++	ret = devm_pm_runtime_enable(dev);
++	if (ret)
++		return ret;
++
++	provider = devm_of_phy_provider_register(dev, of_phy_simple_xlate);
++
++	return PTR_ERR_OR_ZERO(provider);
++}
++
++static const struct of_device_id exynos9820_dsim_phy_of_match[] = {
++	{ .compatible = "samsung,exynos9820-mipi-dphy" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, exynos9820_dsim_phy_of_match);
++
++static struct platform_driver exynos9820_dsim_phy_driver = {
++	.probe = exynos9820_dsim_phy_probe,
++	.driver = {
++		.name = "exynos9820-mipi-dphy",
++		.of_match_table = exynos9820_dsim_phy_of_match,
++		.pm = pm_ptr(&exynos9820_dsim_phy_pm_ops),
++		.suppress_bind_attrs = true,
++	},
++};
++module_platform_driver(exynos9820_dsim_phy_driver);
++
++MODULE_DESCRIPTION("Samsung Exynos9820 MIPI DSI D-PHY driver");
++MODULE_AUTHOR("Artur Szafraniec <ganggg111@gmail.com>");
++MODULE_LICENSE("GPL");

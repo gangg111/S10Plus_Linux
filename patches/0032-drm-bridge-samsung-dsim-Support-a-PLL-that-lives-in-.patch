@@ -1,0 +1,231 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 15:42:40 +0200
+Subject: [PATCH] drm/bridge: samsung-dsim: Support a PLL that lives in a
+ separate PHY
+
+Every variant so far has its PLL inside the link, so runtime resume can
+power the PHY on and runtime suspend can power it off. A variant whose
+PLL sits in a D-PHY device cannot do that: the PHY has to be configured
+for a link rate, and the rate is not known until the mode is.
+
+Give driver_data a flag for it. When it is set, the PHY is configured
+and powered on from the clock setup, once the rate is known, and powered
+off by samsung_dsim_disable_clock(), which is what stops the link clock
+on a variant with no PLL control of its own. Everything that fails on
+the way there reaches it too, because the error path of
+samsung_dsim_init() calls it. Both sides go through one helper keyed off
+a flag in the host, because
+phy_power_off() decrements the reference count in the PHY core
+unconditionally: one call too many takes it negative and the next power
+on silently does nothing.
+
+The same flag skips the PHY control and PHY timing registers, which such
+a variant does not have, and the PLL control register, which is what
+stopping the clock would otherwise write to.
+
+No variant sets the flag yet, so nothing changes for any of them. The
+first one comes with the next patch.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/bridge/samsung-dsim.c | 118 ++++++++++++++++++++++++--
+ include/drm/bridge/samsung-dsim.h     |   3 +
+ 2 files changed, 113 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/gpu/drm/bridge/samsung-dsim.c b/drivers/gpu/drm/bridge/samsung-dsim.c
+index f7f617ace9d..44b8e2ade3a 100644
+--- a/drivers/gpu/drm/bridge/samsung-dsim.c
++++ b/drivers/gpu/drm/bridge/samsung-dsim.c
+@@ -15,6 +15,7 @@
+ #include <linux/clk.h>
+ #include <linux/delay.h>
+ #include <linux/export.h>
++#include <linux/iopoll.h>
+ #include <linux/irq.h>
+ #include <linux/media-bus-format.h>
+ #include <linux/of.h>
+@@ -886,10 +887,86 @@ static unsigned long samsung_dsim_set_pll(struct samsung_dsim *dsi,
+ 	return fout;
+ }
+ 
++/*
++ * An external PHY is powered on from samsung_dsim_set_external_pll(), once
++ * the link rate is known, so the layer that stops the link clock is the one
++ * that powers it off again.  phy_power_off() decrements the reference count
++ * in the PHY core unconditionally, so one call too many takes it negative and
++ * the next power on silently does nothing.
++ */
++static void samsung_dsim_phy_power_off(struct samsung_dsim *dsi)
++{
++	if (!dsi->driver_data->has_external_phy) {
++		phy_power_off(dsi->phy);
++		return;
++	}
++
++	if (dsi->phy_powered) {
++		phy_power_off(dsi->phy);
++		dsi->phy_powered = false;
++	}
++}
++
++/*
++ * Link rate for a SoC whose PLL sits in the D-PHY.  The PHY cannot be
++ * programmed before the rate is known, so it is configured and powered on
++ * here rather than in runtime resume.  Lock is reported through the link
++ * status register.
++ */
++static unsigned long samsung_dsim_set_external_pll(struct samsung_dsim *dsi,
++						   unsigned long freq)
++{
++	const struct samsung_dsim_driver_data *driver_data = dsi->driver_data;
++	union phy_configure_opts opts = { };
++	int ret;
++	u32 reg;
++
++	ret = phy_mipi_dphy_get_default_config_for_hsclk(freq, dsi->lanes,
++							 &opts.mipi_dphy);
++	if (ret < 0) {
++		dev_err(dsi->dev, "no D-PHY configuration for %lu Hz\n", freq);
++		return 0;
++	}
++
++	ret = phy_configure(dsi->phy, &opts);
++	if (ret < 0) {
++		dev_err(dsi->dev, "cannot configure the D-PHY: %d\n", ret);
++		return 0;
++	}
++
++	ret = phy_power_on(dsi->phy);
++	if (ret < 0) {
++		dev_err(dsi->dev, "cannot power on the D-PHY: %d\n", ret);
++		return 0;
++	}
++
++	dsi->phy_powered = true;
++
++	/*
++	 * UNVERIFIED: The PHY has a lock bit of its own, but its
++	 * offset moves between silicon revisions, while this one does not,
++	 * so the wait happens on the link side.  The vendor polls the PHY
++	 * and never reads this bit, so that it reports the lock of a PLL
++	 * that sits outside the link has not been shown.
++	 */
++	ret = read_poll_timeout(samsung_dsim_read, reg,
++				reg & BIT(driver_data->pll_stable_bit),
++				10, 20000, false, dsi, DSIM_LINK_STATUS_REG);
++	if (ret) {
++		dev_err(dsi->dev, "PLL failed to stabilize\n");
++		samsung_dsim_phy_power_off(dsi);
++		return 0;
++	}
++
++	dsi->hs_clock = freq;
++
++	return freq;
++}
++
+ static int samsung_dsim_enable_clock(struct samsung_dsim *dsi)
+ {
+ 	const struct samsung_dsim_driver_data *driver_data = dsi->driver_data;
+-	unsigned long hs_clk, byte_clk, esc_clk, pix_clk, esc_ref_clk;
++	unsigned long hs_clk, byte_clk, esc_clk, pix_clk, target_clk, esc_ref_clk;
+ 	unsigned long esc_div;
+ 	u32 reg;
+ 	struct drm_display_mode *m = &dsi->mode;
+@@ -900,9 +977,14 @@ static int samsung_dsim_enable_clock(struct samsung_dsim *dsi)
+ 
+ 	/* Use burst_clk_rate if available, otherwise use the pix_clk */
+ 	if (dsi->burst_clk_rate)
+-		hs_clk = samsung_dsim_set_pll(dsi, dsi->burst_clk_rate);
++		target_clk = dsi->burst_clk_rate;
++	else
++		target_clk = DIV_ROUND_UP(pix_clk * bpp, dsi->lanes);
++
++	if (driver_data->has_external_phy)
++		hs_clk = samsung_dsim_set_external_pll(dsi, target_clk);
+ 	else
+-		hs_clk = samsung_dsim_set_pll(dsi, DIV_ROUND_UP(pix_clk * bpp, dsi->lanes));
++		hs_clk = samsung_dsim_set_pll(dsi, target_clk);
+ 
+ 	if (!hs_clk) {
+ 		dev_err(dsi->dev, "failed to configure DSI PLL\n");
+@@ -949,6 +1031,10 @@ static void samsung_dsim_set_phy_ctrl(struct samsung_dsim *dsi)
+ 	int hs_exit, hs_prepare, hs_zero, hs_trail;
+ 	unsigned long long byte_clock = dsi->hs_clock / 8;
+ 
++	/* a separate PHY device owns these; this map has no such registers */
++	if (driver_data->has_external_phy)
++		return;
++
+ 	if (driver_data->has_freqband)
+ 		return;
+ 
+@@ -1047,6 +1133,16 @@ static void samsung_dsim_disable_clock(struct samsung_dsim *dsi)
+ 		| BIT(driver_data->byte_clken_bit));
+ 	samsung_dsim_write(dsi, DSIM_CLKCTRL_REG, reg);
+ 
++	/*
++	 * A variant whose PLL is in the D-PHY has no PLL control of its
++	 * own, and no entry for one in its register map: powering the PHY
++	 * off is what stops the link clock here.
++	 */
++	if (driver_data->has_external_phy) {
++		samsung_dsim_phy_power_off(dsi);
++		return;
++	}
++
+ 	reg = samsung_dsim_read(dsi, DSIM_PLLCTRL_REG);
+ 	reg &= ~DSIM_PLL_EN;
+ 	samsung_dsim_write(dsi, DSIM_PLLCTRL_REG, reg);
+@@ -2313,7 +2409,7 @@ static int samsung_dsim_suspend(struct device *dev)
+ 
+ 	dsi->state &= ~DSIM_STATE_CMD_LPM;
+ 
+-	phy_power_off(dsi->phy);
++	samsung_dsim_phy_power_off(dsi);
+ 
+ 	clk_bulk_disable_unprepare(driver_data->num_clks, driver_data->clk_data);
+ 
+@@ -2340,10 +2436,16 @@ static int samsung_dsim_resume(struct device *dev)
+ 	if (ret < 0)
+ 		goto err_clk;
+ 
+-	ret = phy_power_on(dsi->phy);
+-	if (ret < 0) {
+-		dev_err(dsi->dev, "cannot enable phy %d\n", ret);
+-		goto err_clk;
++	/*
++	 * An external PHY needs the link rate first, so it is powered on from
++	 * samsung_dsim_set_external_pll() once the mode is known.
++	 */
++	if (!driver_data->has_external_phy) {
++		ret = phy_power_on(dsi->phy);
++		if (ret < 0) {
++			dev_err(dsi->dev, "cannot enable phy %d\n", ret);
++			goto err_clk;
++		}
+ 	}
+ 
+ 	return 0;
+diff --git a/include/drm/bridge/samsung-dsim.h b/include/drm/bridge/samsung-dsim.h
+index f3258088e8a..baee4338e54 100644
+--- a/include/drm/bridge/samsung-dsim.h
++++ b/include/drm/bridge/samsung-dsim.h
+@@ -60,6 +60,8 @@ struct samsung_dsim_driver_data {
+ 	unsigned int has_clklane_stop:1;
+ 	unsigned int has_broken_fifoctrl_emptyhdr:1;
+ 	unsigned int has_sfrctrl:1;
++	/* the link PLL and the lane timings live in a separate PHY device */
++	unsigned int has_external_phy:1;
+ 	/* the software reset also drops the lanes, so re-enable them */
+ 	unsigned int reset_drops_lanes:1;
+ 	struct clk_bulk_data *clk_data;
+@@ -127,6 +129,7 @@ struct samsung_dsim {
+ 	u32 lanes;
+ 	u32 mode_flags;
+ 	const struct drm_dsc_config *dsc;
++	bool phy_powered;
+ 	u32 format;
+ 
+ 	bool swap_dn_dp_clk;

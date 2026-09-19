@@ -1,0 +1,12 @@
+# Kompilacja szkicu DECON/DSIM (Termux, to samo obejscie co przy panelu)
+# baza: linux@1200d84f4c0a (v7.2.0) + patche 0001-0006, clang 21.1.8
+# UWAGA: bez -O2 jadro sie nie kompiluje (inline asm 'i' constraint w alternative-macros.h)
+
+## exynos9820_drm_dsim.c  EXIT=0  ostrzezenia/bledy z naszego pliku: 0  obiekt: 12416 B
+## exynos9820_drm_decon.c  EXIT=0  ostrzezenia/bledy z naszego pliku: 0  obiekt: 14672 B
+
+# Sanity: panel tez sie nadal kompiluje z -O2
+## panel-samsung-s6e3ha9.c EXIT=0 own=0
+
+# Czego to NIE dowodzi: linkowania modulu (modpost nie dziala na Termuxie)
+# ani tego, ze sprzet cokolwiek wyswietli - patrz docs/R2-decon-dsim-driver.md

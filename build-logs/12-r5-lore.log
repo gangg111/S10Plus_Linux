@@ -1,0 +1,9 @@
+# R5 evidence: lore.kernel.org is behind anti-bot protection
+date: 2026-08-18T22:26:58Z
+
+$ curl "https://lore.kernel.org/all/?q=exynos8895&x=A"
+HTTP 403
+$ same with browser UA -> body title:
+<title>Making sure you&#39;re not a bot!</title>
+
+-> fallback: commit metadata from github.com/torvalds/linux (see R5-template.md)

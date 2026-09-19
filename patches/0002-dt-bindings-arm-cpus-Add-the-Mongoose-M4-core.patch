@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:48:03 +0200
+Subject: [PATCH] dt-bindings: arm: cpus: Add the Mongoose M4 core
+
+Exynos9820 pairs four Cortex-A55 and two Cortex-A75 cores with two
+Samsung Mongoose M4 cores. Only the compatible string is new; the CPU
+node layout is the one already documented.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/arm/cpus.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/arm/cpus.yaml b/Documentation/devicetree/bindings/arm/cpus.yaml
+index 5be89c58402..1a6daeff7ed 100644
+--- a/Documentation/devicetree/bindings/arm/cpus.yaml
++++ b/Documentation/devicetree/bindings/arm/cpus.yaml
+@@ -230,6 +230,7 @@ properties:
+           - qcom,scorpion
+           - samsung,mongoose-m2
+           - samsung,mongoose-m3
++          - samsung,mongoose-m4
+           - samsung,mongoose-m5
+       - enum:
+           - qcom,kryo

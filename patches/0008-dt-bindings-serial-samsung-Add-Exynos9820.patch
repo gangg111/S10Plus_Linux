@@ -1,0 +1,25 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:48:04 +0200
+Subject: [PATCH] dt-bindings: serial: samsung: Add Exynos9820
+
+The UART reuses the register layout of an already documented SoC, so
+only the compatible string is added.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/serial/samsung_uart.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/serial/samsung_uart.yaml b/Documentation/devicetree/bindings/serial/samsung_uart.yaml
+index 75ac2a08f25..d417c3f53e9 100644
+--- a/Documentation/devicetree/bindings/serial/samsung_uart.yaml
++++ b/Documentation/devicetree/bindings/serial/samsung_uart.yaml
+@@ -51,6 +51,7 @@ properties:
+               - axis,artpec9-uart
+               - samsung,exynos7870-uart
+               - samsung,exynos8890-uart
++              - samsung,exynos9820-uart
+           - const: samsung,exynos8895-uart
+ 
+   reg:

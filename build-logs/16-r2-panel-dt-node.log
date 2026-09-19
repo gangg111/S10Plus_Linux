@@ -1,0 +1,71 @@
+# R2 evidence: węzeł DT z timingami panelu dla beyond2lte
+repo: LineageOS/android_kernel_samsung_exynos9820@7d08ec364a0659edcf90a8dae4453b21e4542311
+plik: arch/arm64/boot/dts/samsung/exynos9820-beyond2lte_eur_open_26.dts (zdekompilowany overlay)
+
+## linie 690-725 — node s6e3ha9_beyond2 (phandle 0x38)
+			s6e3ha9_beyond2 {
+				mode = <0x2>;
+				resolution = <0x5a0 0xbe0>;
+				size = <0x46 0x94>;
+				timing,refresh = <0x3c>;
+				timing,h-porch = <0x2 0x2 0x2>;
+				timing,v-porch = <0xf 0x3 0x1>;
+				timing,dsi-hs-clk = <0x382>;
+				timing,pmsk = <0x2 0x8a 0x2 0x0 0xd 0x3 0x0 0x0 0x0 0x0 0x0 0x0 0x0 0x0>;
+				timing,dsi-escape-clk = <0x14>;
+				mic_en = <0x0>;
+				mic_ratio = <0x2>;
+				mic_ver = <0x2>;
+				type_of_ddi = <0x0>;
+				dsc_en = <0x1>;
+				dsc_cnt = <0x2>;
+				dsc_slice_num = <0x2>;
+				dsc_slice_h = <0x28>;
+				data_lane = <0x4>;
+				cmd_underrun_lp_ref = <0xb3d 0x149e 0x1b52>;
+				mres_en = <0x1>;
+				mres_number = <0x3>;
+				mres_width = <0x5a0 0x438 0x2d0>;
+				mres_height = <0xbe0 0x8e8 0x5f0>;
+				mres_dsc_width = <0x2d0 0x21c 0x168>;
+				mres_dsc_height = <0x28 0x28 0x4c>;
+				mres_dsc_en = <0x1 0x1 0x1>;
+				hdr_num = <0x3>;
+				hdr_type = <0x2 0x3 0x4 0x0>;
+				hdr_max_luma = <0x3d0900>;
+				hdr_max_avg_luma = <0x124f80>;
+				hdr_min_luma = <0x5>;
+				color_mode_num = <0x3>;
+				color_mode = <0x0 0x7 0x9>;
+				linux,phandle = <0x38>;
+				phandle = <0x38>;
+
+## odwołanie z dsim (linia 5074):
+	fragment@44 {
+		target = <0xffffffff>;
+
+		__overlay__ {
+			lcd_info = <0x38>;
+			gpios = <0xffffffff 0x4 0x1>;
+		};
+
+## kolejność parsowania (dpu20/dsim_drv.c:1731-1742):
+	of_property_read_u32_array(node, "timing,h-porch", res, 3);
+	dsim->lcd_info.hbp = res[0];
+	dsim->lcd_info.hfp = res[1];
+	dsim->lcd_info.hsa = res[2];
+	dsim_dbg("hbp(%d), hfp(%d), hsa(%d)\n", res[0], res[1], res[2]);
+
+	of_property_read_u32_array(node, "timing,v-porch", res, 3);
+	dsim->lcd_info.vbp = res[0];
+	dsim->lcd_info.vfp = res[1];
+	dsim->lcd_info.vsa = res[2];
+	dsim_dbg("vbp(%d), vfp(%d), vsa(%d)\n", res[0], res[1], res[2]);
+
+
+## enum trybu (dpu20/panels/decon_lcd.h:12-16):
+enum decon_psr_mode {
+	DECON_VIDEO_MODE = 0,
+	DECON_DP_PSR_MODE = 1,
+	DECON_MIPI_COMMAND_MODE = 2,
+};

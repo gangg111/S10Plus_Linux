@@ -1,0 +1,4 @@
+sources/
+.pc-tools/
+__pycache__/
+*.pyc

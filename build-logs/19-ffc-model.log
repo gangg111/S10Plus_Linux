@@ -1,0 +1,30 @@
+C (stała modelu) = 79153.7   [wyznaczona z 4 punktów davinci2]
+
+punkty referencyjne (davinci2, skala 0x64):
+    897.0 Mbps: w tablicy 0x2278 (8824), model 0x2278 (8824), błąd +0 LSB (+0.000%)
+    903.5 Mbps: w tablicy 0x2239 (8761), model 0x2239 (8761), błąd +0 LSB (+0.000%)
+    910.0 Mbps: w tablicy 0x21FA (8698), model 0x21FA (8698), błąd +0 LSB (+0.000%)
+    929.5 Mbps: w tablicy 0x2144 (8516), model 0x2144 (8516), błąd +0 LSB (+0.000%)
+
+punkt kontrolny (beyond*, skala 0xB4):
+    898.0 Mbps: w panelu   0x3E01 (15873), model 0x3DFA (15866), błąd -7 LSB (-0.044%)
+
+wynik dla f = 898.0 Mbps, skala 0xB4:
+  słowo = 0x3DFA (15866)
+  pakiet 5-bajtowy (beyond*):  0xC5, 0x0D, 0x10, 0xB4, 0x3D, 0xFA
+
+## Wyliczenia dla alternatywnych zegarow (skala 0xB4, model, NIEZWERYFIKOWANE na sprzecie):
+  f=850 Mbps ->   słowo = 0x417A (16762)
+  f=880 Mbps ->   słowo = 0x3F3F (16191)
+  f=897 Mbps ->   słowo = 0x3E0C (15884)
+  f=898 Mbps ->   słowo = 0x3DFA (15866)
+  f=910 Mbps ->   słowo = 0x3D29 (15657)
+  f=950 Mbps ->   słowo = 0x3A96 (14998)
+  f=1000 Mbps ->   słowo = 0x37A8 (14248)
+
+## Zrodla punktow referencyjnych:
+  davinci2_a3_s0_dyn_ffc_table  -> s6e3ha9_davinci2_a3_s0_panel.h:645-670 (4 zegary)
+  DAVINCI2_A3_S0_FFC (statyczny) -> s6e3ha9_davinci2_a3_s0_panel.h:844-850 (= wiersz 910)
+  BEYOND2_A3_S0_FFC              -> s6e3ha9_beyond2_a3_s0_panel.h:804-807
+  zegar davinci (Note10)         -> beyond2lte_eur_open_26.dts, node s6e3ha9_davinci: dsi-hs-clk 0x38e = 910
+  zegar beyond1/2/X              -> te same overlaye: dsi-hs-clk 0x382 = 898

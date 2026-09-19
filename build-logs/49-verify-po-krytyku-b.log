@@ -1,0 +1,81 @@
+==========================================================
+ bramki projektu s10-mainline
+ data: 2026-09-08T20:15:35Z
+==========================================================
+
+[1] seria patchy
+  patchy w serii: 40
+  OK      brak plikow .orig/.rej/~ w patches/
+  OK      seria stosuje sie na 1200d84f4c0a929a0780180d25063d93773be79c (40/40)
+  OK      seria daje dokladnie te pliki, ktore sprawdzaja pozostale bramki
+  OK      patche nie wnosza plikow .orig/.rej
+  OK      patche out-of-tree stosuja sie na przypiete drzewo obce
+  OK      patche out-of-tree wnosza komplet identyfikatorow zegarow
+
+[2] checkpatch --strict
+  OK      checkpatch przeliczyl kazdy patch (40/40)
+  errors=0 checks=0 warnings=17 dlugie=124
+  OK      checkpatch: 0 errors
+  OK      checkpatch: 0 checks
+  OK      checkpatch: warningow 17 (limit 18)
+  OK      checkpatch: dlugich linii 124 (limit 124)
+
+[3] device tree
+  OK      dtb bajt w bajt
+  OK      dt-validate na dtb (odpowiednik CHECK_DTBS): 0 naruszen
+  OK      dt-doc-validate na bindingach serii (odpowiednik dt_binding_check)
+  OK      przyklady bindingow (odpowiednik dt_binding_check): check-binding-examples: 16 przykladow zbudowanych i zwalidowanych
+
+[4] kompilacja arm64 (bez make)
+  OK      kompilacja clk-exynos9820.c (0 uwag)
+  OK      kompilacja W=1 clk-exynos9820.c (0 uwag)
+  OK      kompilacja clk-pll.c (0 uwag)
+  OK      kompilacja W=1 clk-pll.c (0 uwag)
+  OK      kompilacja pinctrl-exynos-arm64.c (0 uwag)
+  OK      kompilacja W=1 pinctrl-exynos-arm64.c (0 uwag)
+  OK      kompilacja pinctrl-samsung.c (0 uwag)
+  OK      kompilacja W=1 pinctrl-samsung.c (0 uwag)
+  OK      kompilacja exynos-pm-domains.c (0 uwag)
+  OK      kompilacja W=1 exynos-pm-domains.c (0 uwag)
+  OK      kompilacja panel-samsung-s6e3ha9-main.c (0 uwag)
+  OK      kompilacja W=1 panel-samsung-s6e3ha9-main.c (0 uwag)
+  OK      kompilacja panel-samsung-s6e3ha9-dimming.c (0 uwag)
+  OK      kompilacja W=1 panel-samsung-s6e3ha9-dimming.c (0 uwag)
+  OK      kompilacja exynos9820_drm_decon.c (0 uwag)
+  OK      kompilacja W=1 exynos9820_drm_decon.c (0 uwag)
+  OK      kompilacja phy-exynos9820-dsim.c (0 uwag)
+  OK      kompilacja W=1 phy-exynos9820-dsim.c (0 uwag)
+  OK      kompilacja samsung-dsim.c (0 uwag)
+  OK      kompilacja W=1 samsung-dsim.c (0 uwag)
+
+[5] stale i tablice wobec zrodel producenta
+  OK      PPS panelu beyond2 (128 B)
+  OK      PPS dpu20 (kontrola krzyzowa)
+  OK      model FFC (0xC5)
+  OK      sekwencja init rozwinieta
+  OK      sekwencja display-on
+  OK      DSC panelu: 30/30 pol zgodnych z firmowym PPS
+  OK      DSC enkoderow DECON: 18/18 pol
+  OK      tablice AID: wierszy w sterowniku: 74
+  OK      silnik dimmingu: 74/74 poziomy dla 7 zestawow MTP
+
+[5b] bisectowalnosc serii
+  OK      kazdy punkt serii kompiluje sie w swoim miejscu
+  OK      odsylacze do patchy w dokumentach
+  OK      cytaty do zrodel: cytatow z linia 159
+  OK      rejestry wobec producenta: rozwiazane wobec producenta 235
+  OK      predkosc lacza wobec tablicy D-PHY
+  OK      zegary wobec cmucal: offsetow 528/528 offsetow
+  OK      drzewo zegarow bez sierot: zegarow 533
+  OK      kazdy wezel DT ma sterownik: wezlow 59
+  OK      makra zegarow istnieja: uzyc 29
+  OK      zrodla producenta w sources/ds
+
+[6] spojnosc z docs/HW-BLOCKED.md
+  OK      kazdy wiersz mapy wskazuje na adnotacje w serii
+  OK      kazda pozycja z mapy jest opisana w HW-BLOCKED
+  OK      liczba adnotacji UNVERIFIED zgadza sie z mapa (11)
+
+==========================================================
+ przeszlo: 57  padlo: 0   nieuruchomione: 0
+==========================================================

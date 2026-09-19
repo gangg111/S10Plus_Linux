@@ -1,0 +1,736 @@
+[0:       0.137] Samsung S-Boot 4.0 for SM-G975F (Mar  2 2023 - 10:36:42 62768724)
+[0:       0.144] EXYNOS9820 EVT 1.1 (Base on ARM CortexA55)
+[0:       0.149] 8192MB / Rev 26 / G975FXXSGHWC1 / (PKG_ID 0x8d981a80) / LOT_ID N08HV / SHIP /SWRESET (0x20000000)
+[0:       0.161] PMUDBG_CL0_*: cpu0 0x10 cpu1 0x10 cpu2 0x10 cpu3 0x10 noncpu 0x10
+[0:       0.168] PMUDBG_CL1_*: cpu4 0x10 cpu5 0x10 noncpu 0x0
+[0:       0.173] PMUDBG_CL2_*: cpu6 0x10 cpu7 0x10 noncpu 0x10
+[0:       0.179] PMUDBG_*: top 0x0 mif 0x0
+[0:       0.183] FLEXPMU-DBG: [UP] RUNNING_SEQUENCER - DONE
+[0:       0.188] FLEXPMU-DBG: [DOWN] RUNNING_SEQUENCER - DONE
+[0:       0.193] FLEXPMU-DBG: APSOC_SEQ_TOTAL_COUNT - 453
+[0:       0.199] FLEXPMU-DBG: MIF_SEQ_TOTAL_COUNT - 676
+[0:       0.203] FLEXPMU-DBG: APSOC_SLEEP_SEQ_COUNT - 23
+[0:       0.209] FLEXPMU-DBG: MIF_SLEEP_SEQ_COUNT - 249
+[0:       0.213] FLEXPMU-DBG: APSOC_SICD_SEQ_COUNT - 430
+[0:       0.219] FLEXPMU-DBG: MIF_SICD_SEQ_COUNT - 427
+[0:       0.223] FLEXPMU-DBG:  NO POWER MODE
+[0:       0.227] FLEXPMU-DBG: CPU_SEQ_STATUS - cpu0:on, cpu1:on, cpu2:on, cpu3:on, cpu4:on, cpu5:on, cpu6:on, cpu7:on
+[0:       0.246] S2MPB03: [0x15]: 0x80
+[0:       0.250] set_rdx_mask: 0x4000
+[0:       0.253] s5p_check_dump_gpr: LLC init state clear!! (0x00000600)
+[0:       0.259] ccic_register_max77705:
+[0:       0.263] ccic_is_max77705:
+[0:       0.269] ccic_is_max77705: retry:2 rid:7 ret:0
+[0:       0.276] MAX77705 main:0x1A
+[0:       0.283] max77705_unmask_irq interrupt mask:15
+[0:       0.295] max77705_set_drp
+[0:       0.352] ccic_command_polling: OP 0x5E Response OP 0x5E @ 8msec
+[0:       0.359] ccic_command_polling : Command 0x5E delay : 8msec
+[0:       0.364] max77705  found.
+[0:       0.368] muic_register_max77705_apis
+[0:       0.376] muic_is_max77705 chip_id:0x15 muic_id:0x1a -> matched.
+[0:       0.382] [MUIC] print_init_regs
+[0:       0.390]  FW:1a.10 ST:07 31 00 CC:00 00 PD:00 07 IM:00 00 00 TOPCTRL:81
+[0:       0.421] 
+[0:       0.424] MUIC rev = MAX77705(02)
+[0:       0.428] init_multi_microusb_ic Active MUIC 0x10
+[0:       0.450] muic_command_polling: OP 0x01 Response OP 0x01 @ 1msec
+[0:       0.458] muic_command_polling : Command 0x01 delay : 1msec
+[0:       0.480] [MUIC] attached_dev=0x7
+[0:       0.485] charger_is_max77705 chip_id:0x15 -> matched.
+[0:       0.491] charger_register_max77705_apis: MAX77705 charger is registered
+[0:       0.498] init_multi_charger_ic Active CHARGER 0x05
+[0:       0.505] fuelgauge_is_max77705 chip_id:0x15 -> matched.
+[0:       0.511] fuelgauge_register_max77705_apis: MAX77705 fuelgauge is registered
+[0:       0.518] init_multi_fuelgauge_ic Active FUELGAUGE 0x05
+[0:       0.524] board_extern_device_init: Active ccic device.
+[0:       0.531] ifconn_init: CCIC Mode
+[0:       0.535] ccic_wait_auth:
+[0:       0.542] max77705_read_device_versions MAX77705 hw: A main:1Accic_read_adc:
+[0:       0.552] max77705_read_adc:
+[0:       0.557] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       0.562] board_ccic_check_uart: jig_adc=1f, cc_adc=07
+[0:       0.567] ccic_read_adc:
+[0:       0.570] max77705_read_adc:
+[0:       0.576] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       0.580] [MUIC] print_init_regs
+[0:       0.586] ifconn_get_jig_status: CCIC Mode
+[0:       0.590] ccic_read_adc:
+[0:       0.593] max77705_read_adc:
+[0:       0.599] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       0.603] ifconn_is_ccic_jig_device: rid=07
+[0:       0.608] MMU: enable start
+[0:       0.609] MMU: enable done
+[0:       0.609] MAGIC_CODE 0x0
+[0:       0.609] load_secure_payload: Start to Load
+[0:       0.642] load_secure_payload: Load done.
+[0:       0.642] EL3 Monitor information:
+[0:       0.642] Seoul-PPR1-9620R1-5-gdeb1 deb19a1 5a345ff f57a335 541d1bd 663e30c swp aarch64-linux-gnu-gc
+[SECLIB] Seoul-PPR1-9219R1-1-gc36e c36eac9 6029714 82f4c79 48d9f29 78b923f june aarch64-l
+
+[0:       0.642] ACPM: Framework's  version is 8b92f40 yulgon 15:03:16 Jun 04 2019
+[0:       0.642] ACPM: Plugin(id:1) version is da4dafb1 cmos80 15:08:16 Dec 27 2018
+[0:       0.642] ACPM: Plugin(id:2) version is de68428 hsgil 18:17:24 Jul 17 2018
+[0:       0.642] ACPM: Plugin(id:3) version is  
+[0:       0.642] ACPM: Plugin(id:4) version is 342aeb3 honey.kim 14:55:48 Jun 27 2019
+[0:       0.642] ACPM: Plugin(id:5) version is 92faa2d unknown 16:29:21 May 21 2019
+[0:       0.642] ACPM: Plugin(id:6) version is 6661f1c hsgil 16:29:57 Sep 18 2018
+[0:       0.642] ACPM: Plugin(id:7) version is 6469187 yulgon 20:43:56 Jul 10 2019
+[0:       0.642] ACPM: Plugin(id:8) version is 915c36a yulgon 19:29:17 Dec 11 2018
+[0:       0.652] DBGC: power_state up, VERSION: 596a8aa_hosung_REL-21:18:35_Jan_23_2019
+[0:       0.653] UFS EVT: 1
+[0:       0.670] ufs max_gear(3)
+[0:       0.673] UFS link established
+[0:       0.673] UFS active_tx_lane(1), active_rx_lane(1)
+[0:       0.690] UFS device initialized
+[0:       0.691] Use 2 lane connection
+[0:       0.694] UFS active_tx_lane(2), active_rx_lane(2)
+[0:       0.694] UFS Power mode change: M(1)G(3)L(2)HS-series(2)
+[0:       0.699] UFS SW unlock success
+[0:       0.699] UFS SW unlock success
+[0:       0.699] UFS SW unlock success
+[0:       0.703] UFS SW unlock success
+[0:       0.703] ifconn_com_to_open:
+[0:       0.747] muic_command_polling: OP 0x06 Response OP 0x06 @ 9msec
+[0:       0.747] muic_command_polling : Command 0x06 delay : 9msec
+[0:       0.759] muic_command_polling: OP 0x05 Response OP 0x05 @ 1msec
+[0:       0.761] muic_command_polling : Command 0x05 delay : 1msec
+[0:       0.761] max77705_set_muic_uart_early: MUIC: SWITCH_COMMAND: 0x3f
+[0:       0.761] 
+[Debug Info.]
+[0:       0.761]  SecureOS : 75 (MB)
+[0:       0.761] GetSignerVer : SignerVer03
+[0:       0.761] - read_bl1
+[0:       0.761] blk_bread_bootsector: LUN 1, from 0x0, size 0x18, buffer 0xc9b80000
+[0:       0.762] Verify_Signature_Ecdsa 0xc9b78970 6224, 0xc9b79fb0 512
+[0:       0.768] pit_check_signature (PIT) valid.
+[0:       0.771] PARAM ENV VERSION: v1.0..
+[0:       0.771] initialize_ddi_data: usable! (2:0x30e), warranty reason : (0x0e03)
+[0:       0.771] read whole keystorage partition from the storage
+[0:       0.778] keystorage: It is successfully loaded.
+[0:       0.778] keystorage: init done successfully.
+[0:       0.778] MAGIC_RAM_BASE: 0, MAGIC_RAM_BASE2: 0, ompin: 0
+[0:       0.778] [ldfw] Pass LDFW partition!
+[0:       0.778] [ldfw] read whole CM partition from the storage
+[0:       0.793] ldfw: 0th ldfw's version 0x50210714 name : CryptoManagerV50
+[0:       0.793] ldfw: 1th ldfw's version 0x20181201 name : fmp_fw_V20
+[0:       0.793] ldfw: 2th ldfw's version 0x20220616 name : drm_fw
+[0:       0.793] ldfw: 3th ldfw's version 0x24211108 name : srpmb_fw
+[0:       0.793] ldfw: 4th ldfw's version 0x20210907 name : hdcp_fw
+[0:       0.793] ldfw: 5th ldfw's version 0x20150828 name : tail_fw
+[0:       0.793] GetSignerVer : SignerVer03
+[0:       0.793] ldfw: G975FXXSGHWC1
+[0:       0.793] ldfw: init ldfw(s). whole ldfws size 0x3f4310
+[0:       0.840] ldfw: try to init 5 ldfw(s). except 0 ldfw 5 ldfw(s) have been inited done.
+[0:       0.840] Secure boot is enabled (secure chip)
+[0:       0.853] [TEEGRIS] register handler1, ret = 0x0
+[0:       0.861] [TEEGRIS] register handler2, ret = 0x0
+[0:       0.861] [TEEGRIS] disable handler registeration, ret = 0x0
+[0:       0.861] [OTP] MODEL_ID read start
+[0:       0.861] [OTP] MODEL_ID read value: 0x12e
+[0:       0.861] [OTP] USE_ROM_SEC_BOOT_KEY read: start
+[0:       0.861] [OTP] USE_ROM_SEC_BOOT_KEY read value: 0x1
+[0:       0.861] [OTP] ENABLE_AES read start
+[0:       0.861] [OTP] ENABLE_AES read value: 0x0
+[0:       0.861] [OTP] ANTIRBK_NS_AP0 read start
+[0:       0.862] [OTP] ANTIRBK_NS_AP0 read value: 0x10
+[0:       0.862] [OTP] ANTIRBK_SEC_CP read start
+[0:       0.862] [OTP] ANTIRBK_SEC_CP read value: 0x10
+[0:       0.862] [OTP] COMMERCIAL read start
+[0:       0.862] [OTP] COMMERCIAL read value: 0x1
+[0:       0.862] [OTP] TEST read start
+[0:       0.862] [OTP] TEST read value: 0x0
+[0:       0.862] [OTP] WARRANTY read start
+[0:       0.862] [OTP] WARRANTY read value: 0x1
+[0:       0.862] [OTP] JTAG_SW_LOCK read start
+[0:       0.863] [OTP] JTAG_SW_LOCK read value: 0x1
+[0:       0.863] [OTP] SSS_CPU_DEBUG_DISABLE read start
+[0:       0.863] [OTP] SSS_CPU_DEBUG_DISABLE read value: 0x0
+[0:       0.863] [OTP] CUSTOM_FLAG read start (7)
+[0:       0.863] [OTP] CUSTOM_FLAG read value: 0x1
+[0:       0.863] [OTP] CUSTOM_FLAG read start (8)
+[0:       0.863] [OTP] CUSTOM_FLAG read value: 0x1
+[0:       0.863] [OTP] CUSTOM_FLAG read start (9)
+[0:       0.863] [OTP] CUSTOM_FLAG read value: 0x0
+[0:       0.863] [OTP] ENABLE_MODEL_ID read start
+[0:       0.863] [OTP] ENABLE_MODEL_ID read value: 0x1
+[0:       0.863] [OTP] ENABLE_ANTIRBK read start
+[0:       0.864] [OTP] ENABLE_ANTIRBK read value: 0x1
+[0:       0.864] [OTP] CUSTOM_FLAG read start (15)
+[0:       0.864] [OTP] CUSTOM_FLAG read value: 0x1
+[0:       0.864] [OTP] CUSTOM_FLAG read start (16)
+[0:       0.864] [OTP] CUSTOM_FLAG read value: 0x0
+[0:       0.864] [EFUSE] SMC Read the 0x0 ...
+[0:       0.864] [EFUSE] SMC Read Count value: 16
+[0:       0.864] [EFUSE] SMC Read the 0x1 ...
+[0:       0.864] [EFUSE] SMC Read Count value: 1
+[0:       0.864] [EFUSE] SMC Read the 0x2 ...
+[0:       0.864] [EFUSE] SMC Read Count value: 0
+[0:       0.864] [EFUSE] SMC Read the 0x3 ...
+[0:       0.864] [EFUSE] SMC Read Count value: 1
+[0:       0.864] [OTP] JTAG_KEY check start
+[0:       0.864] [OTP] JTAG_KEY check: valid key
+[0:       0.864] (302) vs (302)
+[0:       0.864] [OTP] ROM_SECURE_BOOT_KEY check start
+[0:       0.864] [OTP] ROM_SECURE_BOOT_KEY check: valid key
+[0:       0.864] JTAG_LOCK is already enabled in this device.
+[0:       0.864] [EFUSE] Already fused for Market status
+[0:       0.864] check_secure_ch_key_prov_flag : No Flag
+[0:       0.864] [OTP] SSS_CPU_SECURE_BOOT_KEY check start
+[0:       0.864] [OTP] SSS_CPU_SECURE_BOOT_KEY check: valid key
+[0:       0.864] [OTP] SSS_SRAM_READ_DISABLE read start
+[0:       0.864] [OTP] SSS_SRAM_READ_DISABLE read value: 0x1
+[0:       0.864] [OTP] SSS_SRAM_BOOT_DISABLE read start
+[0:       0.865] [OTP] SSS_SRAM_BOOT_DISABLE read value: 0x1
+[0:       0.865] [EFUSE] This is commercial device.
+[0:       0.865] set_tzpc_secureport: successfully protected 0
+[0:       0.865] TEEGris MST gpio protection
+[0:       0.865] eSE Protection!!
+[0:       0.865] [SW] get random number: start
+[0:       0.865] [SW] get random number: success
+[0:       0.866] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.866] initialize_secdata_rpmb: usable! (0x52504d42), 1
+[0:       0.866] [SW] get random number: start
+[0:       0.866] [SW] get random number: success
+[0:       0.866] Reading of the Write Counter value request
+[0:       0.866] Reading of the Write Counter value request (Swapped)
+[0:       0.866] Reading of the Write Counter value response
+[0:       0.866] Reading of the Write Counter value response (Swapped)
+[0:       0.866] RPMB: MAC
+[0:       0.866] --> Write counter : 1b1c
+[0:       0.866] result : 0x0
+[0:       0.866] [CM] RPMB: key was derived successfully
+[0:       0.866] key derivation: success
+[0:       0.866] key: 
+[0:       0.866] 
+[0:       0.866] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.866] [CM] RPMB: get hmac value: success
+[0:       0.867] RPMB: Magic Block Write: success
+[0:       0.867] [SW] get random number: start
+[0:       0.867] [SW] get random number: success
+[0:       0.868] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.868] RPMB: Magic Block Read: success
+[0:       0.868] RPMB: Magic Block Compare: success
+[0:       0.868] set_fuse_history : no reason
+[0:       0.868] fuse history 0x1
+[0:       0.868] [SW] get random number: start
+[0:       0.868] [SW] get random number: success
+[0:       0.868] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.868] [SW] get random number: start
+[0:       0.868] [SW] get random number: success
+[0:       0.869] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.869] [SW] get random number: start
+[0:       0.869] [SW] get random number: success
+[0:       0.869] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.869] [SW] get random number: start
+[0:       0.869] [SW] get random number: success
+[0:       0.870] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.870] [SW] get random number: start
+[0:       0.870] [SW] get random number: success
+[0:       0.870] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.870] 
+[0:       0.870] [SW] get random number: start
+[0:       0.870] [SW] get random number: success
+[0:       0.870] [CM] RPMB: hmac calculation was finished successfully
+[0:       0.871] [KG] valid hash.
+[0:       0.871] [KG] state check finished
+[0:       0.871] read_coredata
+[0:       0.871] [CM] START: unwrap data with HWKEK
+[0:       0.871] [CM] wrap/unwrap key: start
+[0:       0.871] [CM] wrap/unwrap key: success
+[0:       0.871] [CM] PASS: unwrap data with HWKEK
+[0:       0.871] bl_read_esi
+[0:       0.871] bl_init: rpmb is provisioned
+[0:       0.871] em_create_cmd_req : num_of_items 4
+[0:       0.871] em_cmd_print_command : [CMD] : [EM_CMD_INIT]
+[0:       0.871] bootloader_key_first_do_step : init state is [COMPLETED], pass
+[0:       0.871] bl_init: no need to write Core data(0x0000000000000000)
+[0:       0.871] bl_init: no need to write ESI data(0x0000000000000000)
+[0:       0.871] bl_init: ret = 0x00000000
+[0:       0.871] bl_read_token
+[0:       0.872] em_token_get_issuer_info : token is all zero
+[0:       0.872] DDR SIZE: 8G
+[0:       0.872] LPDDR4 manufacturer : Samsung
+[0:       0.872] ECT Version: PARA2005
+[0:       0.872] DREX_CALIBRATION3: 0xc731919
+[0:       0.882] [TMU:0] [TMU:1] [TMU] 32 32
+[0:       0.892] UFS vendor: SAMSUNG
+[0:       0.892] UFS FW rev : 0002
+[0:       0.893] UFS Provision : PASS
+[0:       0.893] UFS Product KLUDG4U1EA-B0C1
+[0:       0.893] UFS Size(GB) 128
+[0:       0.893] UFS MD 1118
+[0:       0.893] UFS Provisioning Result : PASS
+[0:       0.899] UFS LC: 0
+[0:       0.900] board_early_init
+[0:       0.900] [MUIC] print_init_regs
+[0:       0.908] max77705_set_prequal_charge: CNFG_01(0x38)
+[0:       0.910] max77705_init_ific : MAX77705_CHG_REG_CHG_INT_OK(0x9f)
+[0:       0.920] max77705_set_charger_watchdog: state(1), reg_data(0x14)
+[0:       0.932] charger_command_polling: OP 0x57 Response OP 0x57 @ 1msec
+[0:       0.932] charger_command_polling : Command 0x57 delay : 1msec
+[0:       0.933] [CHARGER] max77705_set_fw_noautoibus AUTOIBUS: [0x3], chg_dtls00[0x80]
+[0:       0.933] ccic_read_pd_state:
+[0:       0.936] max77705_get_max_current rp_current:0,is_sink:0,pd_state:0
+[0:       0.936] ifconn_get_charger_status:
+[0:       0.939] ccic_read_adc:
+[0:       0.939] max77705_read_adc:
+[0:       0.941] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       0.941] ccic_is_valid_charger: Invalid charger
+[0:       0.941] ifconn_get_charger_status: valid_charger=0
+[0:       0.943] max77705_get_wireless_charger_detect: wireless check 0
+[0:       0.944] max77705_fuel_gauge_read_vcell: VCELL(4067), data(0xcb5a)
+[0:       0.944] max77705_set_auto_current: chg_state:0x0, wpc_status:0, pd_current_state:0
+[0:       0.944] ifconn_is_hc_cable:
+[0:       0.944] ifconn_get_device:
+[0:       0.946] ifconn_is_muic_jig_device: adc=0x1f
+[0:       0.946] ccic_read_adc:
+[0:       0.946] max77705_read_adc:
+[0:       0.948] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       0.948] ifconn_is_ccic_jig_device: rid=07
+[0:       0.948] ifconn_is_hc_cable: adc=0x1f
+[0:       0.949] max77705_set_auto_current: set charge current(in:500, out:450), vcell:4067mv
+[0:       0.953] max77705_set_charging_current: current(450), data(0x49)
+[0:       0.953] ifconn_get_charger_status:
+[0:       0.956] ccic_read_adc:
+[0:       0.956] max77705_read_adc:
+[0:       0.958] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       0.958] ccic_is_valid_charger: Invalid charger
+[0:       0.958] ifconn_get_charger_status: valid_charger=0
+[0:       0.960] max77705_get_wireless_charger_detect: wireless check 0
+[0:       0.960] max77705_set_charger_current: chg_state:0x0, wpc_status:0.
+[0:       0.960] max77705_set_charger_current: devices is not charging! skip the routine.
+[0:       1. 14] max77705_set_charger_state: buck(1), chg(1), reg(0x15)
+[0:       1. 14] ifconn_get_charger_status:
+[0:       1. 17] ccic_read_adc:
+[0:       1. 17] max77705_read_adc:
+[0:       1. 18] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       1. 18] ccic_is_valid_charger: Invalid charger
+[0:       1. 18] ifconn_get_charger_status: valid_charger=0
+[0:       1. 20] max77705_get_wireless_charger_detect: wireless check 0
+[0:       1. 20] fuelguage : wpc_status(0)
+[0:       1. 20] max77705_init_fuel_gauge: Start!!
+[0:       1. 20] max77705_adc_read_temp temp = 27, temp_adc = 1923
+[0:       1. 20] max77705_init_fuel_gauge: read temp = 27
+[0:       1. 23] max77705_check_batt_type: size : 2
+[0:       1. 28] max77705_init_fuel_gauge: Battery type : Battery, capacity: 3958, status: 128, Jig: 0, ver: 6
+[0:       1. 30] max77705_fuel_gauge_read_vcell: VCELL(4075), data(0xcbc6)
+[0:       1. 86] max77705_set_charger_state: buck(1), chg(0), reg(0x14)
+[0:       1.136] max77705_init_fuel_gauge: Already initialized (0x0f76, Battery type)
+[0:       1.136] max77705_check_validation_with_tablesoc: Start!!
+[0:       1.139] max77705_fuel_gauge_read_soc: SOC(90), data(0x5a5e)
+[0:       1.141] max77705_fuel_gauge_read_ocv: VFOCV(4121), data(0xce14)
+[0:       1.141] max77705_calculate_table_soc : low(8) high(15) mid(7) table_soc(0)
+[0:       1.141] max77705_calculate_table_soc : low(12) high(15) mid(11) table_soc(0)
+[0:       1.141] max77705_calculate_table_soc : low(14) high(15) mid(13) table_soc(0)
+[0:       1.141] max77705_calculate_table_soc : low(14) high(13) mid(14) table_soc(0)
+[0:       1.141] max77705_calculate_table_soc: vcell [4121] table_soc [89]
+[0:       1.141] differ(1), table_soc(89), RepSOC(90)
+[0:       1.143] max77705_fuel_gauge_read_ocv: VFOCV(4121), data(0xce14)
+[0:       1.143] ifconn_get_charger_status:
+[0:       1.146] ccic_read_adc:
+[0:       1.146] max77705_read_adc:
+[0:       1.148] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       1.148] ccic_is_valid_charger: Invalid charger
+[0:       1.148] ifconn_get_charger_status: valid_charger=0
+[0:       1.149] max77705_get_wireless_charger_detect: wireless check 0
+[0:       1.149] is_valid_charging_source: chg_state=0, wpc_status=0
+[0:       1.149]  vcell(4121),soc_diff_limit(40), low_temp_reset(0)
+[0:       1.151] max77705_fuel_gauge_read_soc: SOC(90), data(0x5a5e)
+[0:       1.153] max77705_fuel_gauge_read_ocv: VFOCV(4121), data(0xce14)
+[0:       1.155] max77705_fuel_gauge_read_vcell: VCELL(4075), data(0xcbc6)
+[0:       1.155] max77705_init_fuel_gauge : SOC(90), OCV(4121), VCELL(4075)
+[0:       1.209] max77705_set_charger_state: buck(1), chg(1), reg(0x15)
+[0:       1.209] PMIC_S2MPS19_ID	= 0x12
+[0:       1.209] PMIC_S2MPS20_ID	= 0x02
+[0:       1.209] PMIC TRIM (no reset:0)
+[0:       1.209] S2MPS19
+[0:       1.209] PMIC_INT1    	= 0x43 PWRONF PWRONR PWRON1S
+[0:       1.209] PMIC_INT2    	= 0x51 RTC60S RTC1S ADCDONE
+[0:       1.209] PMIC_INT3    	= 0x00
+[0:       1.209] PMIC_INT4    	= 0x00
+[0:       1.209] PMIC_INT5    	= 0x00
+[0:       1.209] PMIC_STATUS1 	= 0x1e JIGONB ACOKB MR2B MR1B
+[0:       1.209] PMIC_STATUS2 	= 0x00
+[0:       1.209] PMIC_PWRONSRC	= 0x01 PWRON
+[0:       1.209] PMIC_OFFSRC  	= 0x00
+[0:       1.209] S2MPS20
+[0:       1.209] PMIC_INT1    	= 0xc0 ADCDONE WRSTB
+[0:       1.209] PMIC_INT2    	= 0x00
+[0:       1.209] PMIC_STATUS1 	= 0x01 PWRON
+[0:       1.209] PMIC_OFFSRC  	= 0x00
+[0:       1.209] PMIC_RTC_CTRL	= 0x02
+[0:       1.209] PMIC_RTC_SMPL	= 0x13
+[0:       1.210] RTC TIME: 2026-09-17 02:03:08(0x10)AM
+[0:       1.210] PMIC MON[0] = [0x27: 0x2e]
+[0:       1.210] PMIC MON[1] = [0x27: 0x2b]
+[0:       1.210] PMIC MON[2] = [0x27: 0x2e]
+[0:       1.210] PMIC MON[3] = [0x27: 0x39]
+[0:       1.210] PMIC MON[4] = [0x27: 0x2b]
+[0:       1.210] PMIC MON[5] = [0x27: 0x39]
+[0:       1.210] PMIC MON[6] = [0x27: 0x2b]
+[0:       1.210] PMIC MON[7] = [0x27: 0x43]
+[0:       1.210] s5p_check_keypad: 0x0
+[0:       1.210] s5p_check_reboot_mode: PINFORM = 12345670 ... skip
+[0:       1.210] set_mrstb: set as LOW (C7)
+[0:       1.211] max77705_ific_set_mrstb: Not USE.
+[0:       1.211] [DPRM] init_debug_param_element: DEBUG PARAM ELEM VERSION: 20110610
+[0:       1.211] [SECD] sec_debug_next_init: sdn: 0x91388000 B: 20002 K: 10001
+[0:       1.211] [SECD] sec_debug_init_buffer: start 91388000 ~ 913929d0
+[0:       1.211] [SECD] sec_debug_init_buffer_each:     summary.html: 0x91392b00 ~ 0x91592b00 (clear)
+[0:       1.211] [SECD] sec_debug_init_buffer_each:     auto_comment: 0x91592d00 ~ 0x91593b78 (clear)
+[0:       1.211] [SECD] sec_debug_init_buffer_each:       extra_info: 0x91593d00 ~ 0x915a3d00
+[0:       1.212] [SECD] sec_debug_init_buffer_each:    auto_analysis: 0x915a3f00 ~ 0x916a3f00 (clear)
+[0:       1.212] [SECD] sec_debug_init_buffer_each:    init_task_log: 0x916a4100 ~ 0x916c4100
+[0:       1.212] [SECD] sec_debug_init_buffer_each:    debug_history: 0x916c4300 ~ 0x917c4300 (clear)
+[0:       1.212] [SECD] sec_debug_init_buffer_each:     first2m_kmsg: 0x917c4500 ~ 0x919c4500
+[0:       1.212] [SECD] sec_debug_init_buffer_each:       boot_reset: 0x919c4700 ~ 0x91ac4700 (clear)
+[0:       1.212] [9820] handle_acpm_dump: 23: acpm_dump: base: 95014000 size: 25000
+[0:       1.212] [9820] handle_info_summary: not implemented
+[0:       1.212] [SECD] sec_debug_init_buffer: End of SDN dump: 91ac4700
+[0:       1.212] [MTAB] dump_invalid_mtab_members: FAILED: rw_semaphore_count,rt_mutex_owner,task_struct_se__ftt_mark,task_struct_cpus_ptr,module_list,module_name,module_core_layout__base,module_core_layout__size,module_init_layout__base,module_init_layout__size,module_kallsyms,mod_kallsyms_symtab,mod_kallsyms_num_symtab,mod_kallsyms_strtab,mod_kallsyms_typetab,elf64_sym_st_name,elf64_sym_st_info,elf64_sym_st_value,elf64_sym_st_size,
+[0:       1.212] [KSYM] sec_debug_next_ksyms_init: ksyms init successfully 833d6000
+[0:       1.212] [SECD] sec_debug_next_init: target_dprm_mask: 0
+[0:       1.213] [BORE] init_debug_bootloader_reset_logs: magic = b0071257 / version = 20201230 / total sz = 639e4
+[0:       1.213] [BORE] init_debug_bootloader_reset_logs: current index 123
+[0:       1.216] init_cmdline: default: console=ram loglevel=4
+[0:       1.216] [SW] get random number: start
+[0:       1.216] [SW] get random number: success
+[0:       1.216] [CM] RPMB: hmac calculation was finished successfully
+[0:       1.216] [FMM] 'FMM' Unlock state
+[0:       1.217] [SECD] sec_debug_work:  --- let's burn ! --- 
+[0:       1.217] [RERE] show_reset_reason_rawdata: 
+ rst_stat: 0x20000000, inform2: 0x4E4E0000, inform3: 0x12345670, ram_base: 0x0
+[0:       1.217] RESET CAUSE - NORMAL RESET
+[0:       1.217] [RERE] set_reset_reason: set_reset_reason: set RR_THIS as RP(7)
+[0:       1.217] get_upload_mode: param value: 0x0
+[0:       1.217] [SECD] check_debug_flag: 1: DEBUG FLAG is NOTYET
+[0:       1.221] [DPHI] init_debug_param_hist: magic = 1f5f7f9f / version = 19040818
+[0:       1.221] [DPHI] init_debug_param_hist: index: 1 / this addr: 0x916c6f40
+[0:       1.221] [DPHI] init_debug_param_hist: available (0x30/0xf7800/0xf7840)
+[0:       1.221] [DPHI] update_total_rr: reset_reason is invalid
+[0:       1.221] [DPHI] update_total_rr: prev: K001D000S000P000
+[0:       1.221] [DPHI] update_total_rr: K001D000S000P000
+[0:       1.221] [DPHI] load_reset_counter: 89: p[0] is NULL, 
+[0:       1.221] [DPHI] load_reset_counter: TOTAL RSTCNT [1/index:1]: K2609111603,
+[0:       1.221] [HDSS] snapshot_init: skip, stage under B
+[0:       1.222] [EXIN] sec_debug_set_extra_info_reset_status: 0x20000000/0x4E4E0000/0x12345670/0x0
+[0:       1.222] [EXIN] sec_debug_set_extra_info_rstcnt: RSTCNT: 1
+[0:       1.222] [EXIN] sec_debug_print_bat: BAT 090/4124/0270/-00027
+[0:       1.223] [DCOM] sec_debug_add_kconfig_dump: skip, only for STAGE B
+[0:       1.223] [ANLS] check_run_condition: skip, not proper stage
+[0:       1.223] [USTR] init_upload_cause_buf: 0xc97ab7b8++200
+[0:       1.224] [SECD] sec_debug_work: backup sec debug result to DPRM
+[0:       1.224] [SECD] sec_debug_save_all: store all debug data to DPRM
+[0:       1.224] [SECD] store_reset_reason_to_param: set param reset_reason as (7, R)
+[0:       1.226] [COMM] sec_debug_store_auto_comment_to_param: store auto comment
+[0:       1.227] [SECD] update_cmdline: add cmdline as 7
+[0:       1.227] [IDEC] destroy_tree: free root
+[0:       1.227] [SECD] sec_debug_work:  --- in the pipe, five by five --- 
+[0:       1.241] max77705_fuel_gauge_read_vcell: VCELL(4077), data(0xcbda)
+[0:       1.243] max77705_fuel_gauge_read_soc: SOC(90), data(0x5a5e)
+[0:       1.254] get_upload_mode: param value: 0x0
+[0:       1.254] s5p_check_upload: MAGIC(0x0), RST(0x20000000), INF3(0x12345670)
+[0:       1.256] get_upload_mode: param value: 0x0
+[0:       1.256] s5p_check_upload: debug level is LO! (mode: 0, mask: 0x0)
+[0:       1.256] is_normal_booting: MINFORM: 4e4e0000
+[0:       1.256] is_normal_booting: intentional normal booting
+[0:       1.256] s5p_check_download: 0
+[0:       1.256] [SW] get random number: start
+[0:       1.256] [SW] get random number: success
+[0:       1.256] [CM] RPMB: hmac calculation was finished successfully
+[0:       1.256] [FMM] 'FMM' Unlock state
+[0:       1.258] ccic_get_jig_status:
+[0:       1.259] ccic_read_adc:
+[0:       1.259] max77705_read_adc:
+[0:       1.260] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       1.262] ifconn_get_charger_status:
+[0:       1.265] ccic_read_adc:
+[0:       1.265] max77705_read_adc:
+[0:       1.266] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       1.266] ccic_is_valid_charger: Invalid charger
+[0:       1.266] ifconn_get_charger_status: valid_charger=0
+[0:       1.268] max77705_get_wireless_charger_detect: wireless check 0
+[0:       1.268] max77705_adc_read_temp temp = 27, temp_adc = 1922
+[0:       1.268] check_pm_status: bat_temp=27, chg=0, wpc=0
+[0:       1.268] is_normal_booting: MINFORM: 4e4e0000
+[0:       1.268] is_normal_booting: intentional normal booting
+[0:       1.268] check_pm_status: normal reset, do not enter LPM mode.
+[0:       1.270] max77705_fuel_gauge_read_vcell: VCELL(4077), data(0xcbda)
+[0:       1.270] ifconn_is_hc_cable:
+[0:       1.270] ifconn_get_device:
+[0:       1.272] ifconn_is_muic_jig_device: adc=0x1f
+[0:       1.272] ccic_read_adc:
+[0:       1.272] max77705_read_adc:
+[0:       1.273] max77705_read_adc: RID = 07(RID_OPEN)
+[0:       1.273] ifconn_is_ccic_jig_device: rid=07
+[0:       1.273] ifconn_is_hc_cable: adc=0x1f
+[0:       1.275] vib_on
+[0:       1.275] vib_on
+[0:       1.275] [VIB] max77705_vibtonz_en 1
+[0:       1.275] PWM PCLK = 26000000 
+[0:       1.275] [PWM : 1] prescaler : 25, div : 1
+[0:       1.275] [PWM]tcnt : 52, tcmp : 2
+[0:       1.279] [VIB] max77705_vibtonz_en MCONFIG: [0x02] -> [0xc2]
+[0:       1.379] [VIB] max77705_vibtonz_en 0
+[0:       1.384] [VIB] max77705_vibtonz_en MCONFIG: [0xc2] -> [0x82]
+[0:       1.384] drawimg: type: 0
+[0:       1.386] read 'logo.jpg'(152650) completed.
+[0:       1.538] LoadJPEG took 149 msec
+[0:       1.740] max77705_fuel_gauge_read_vcell: VCELL(4069), data(0xcb7a)
+[0:       1.742] max77705_fuel_gauge_read_soc: SOC(90), data(0x5a5e)
+[0:       1.747] DISP:INFO:register_panel_drv : name : s6e3ha9
+[0:       1.747] DISP:INFO:panel_drv_get_info:get panel info success : ddi name : s6e3ha9
+[0:       1.747] DISP:INFO:set_panel_gpio:was called
+[0:       1.747] DISP:INFO:panel_drv_probe_drv:find : s6e3ha9
+[0:       1.747] DISP:INFO:set_panel_power:was called
+[0:       1.747] board_set_dev_pm: Display PMIC: reset regulators
+[0:       1.781] DSIM:INFO:dsim init start..
+[0:       1.781] dsim_sw_reset : state : 0
+[0:       1.781] DSIM:INFO:dsim_is_pll_stable:EVT1
+[0:       1.781] DISP:dsim_set_clocks:word clock is 56 MHz
+[0:       1.781] DISP:dsim_set_clocks:requested escape clock 20 MHz
+[0:       1.781] DISP:dsim_set_clocks:escape clock divider is 0x3
+[0:       1.781] DISP:dsim_set_clocks:escape clock is 18 MHz
+[0:       1.781] DSIM:INFO:dsim_get_dphy_timing:bps(898) clk_prepare(35) clk_zero(14) clk_post(3)
+[0:       1.781] DSIM:INFO:dsim_get_dphy_timing:clk_trail(56) hs_prepare(36) hs_zero(5) hs_trail(50)
+[0:       1.781] DSIM:INFO:dsim_get_dphy_timing:lpx(26) hs_exit(5)
+[0:       1.781] DSIM:INFO:dsim_get_dphy_timing:b_dphyctl(450)
+[0:       1.781] DISP:INFO:dsim_set_pll_freq: p : 2, m : 138, s : 2, k : 0
+[0:       1.781] DSIM:INFO:dsim_is_pll_stable:EVT1
+[0:       1.781] DSIM:INFO:dsim_is_pll_stable:EVT1
+[0:       1.781] DSIM:INFO:dsim_is_pll_stable:EVT1
+[0:       1.781] DISP:INFO:dsim_enable_pll:dsim pll is stable
+[0:       1.781] DSIM:INFO:dsim_enable_phy_lane : PHY ready done
+[0:       1.781] PANEL:INFO:dsim_set_cm_underrun_lp_ref:lp_ref : 2877
+[0:       1.781] DISP:INFO:dsim_set_config: dsc configuration is set
+[0:       1.781] DISP:INFO:dsim_set_config:dsim0: number of DSC slice(2)
+[0:       1.781] DISP:INFO:dsim_print_size_of_slice:dsim0: slice0 w(720), slice1 w(720), slice2 w(720), slice3(720)
+[0:       1.781] DISP:INFO:reset_panel:system rev : 26
+[0:       1.810] DISP:INFO:s6e3ha9_panel_read_id READ ID : A1 10 13
+[0:       1.810] s6e3ha9_probe s6e3ha9 panel
+[0:       1.810] s6e3ha9_enable_self_mask B1/2 (panel_rev:2, window_color:1)
+[0:       1.810] dsim_write_img_sd tx_size 496 len 496, remained 3504
+[0:       1.810] dsim_write_img_sd tx_size 496 len 992, remained 3008
+[0:       1.810] dsim_write_img_sd tx_size 496 len 1488, remained 2512
+[0:       1.810] dsim_write_img_sd tx_size 496 len 1984, remained 2016
+[0:       1.810] dsim_write_img_sd tx_size 496 len 2480, remained 1520
+[0:       1.811] dsim_write_img_sd tx_size 496 len 2976, remained 1024
+[0:       1.811] dsim_write_img_sd tx_size 496 len 3472, remained 528
+[0:       1.811] dsim_write_img_sd tx_size 496 len 3968, remained 32
+[0:       1.811] dsim_write_img_sd tx_size 32 len 4000, remained 0
+[0:       1.811] DISP:INFO:init_dpp:dpp-id:0
+[0:       1.811] DSIP:INFO:init_dpp:DPU DMA VER : 4000001
+[0:       1.811] DISP:INFO:init_decon:registered panel : s6e3ha9
+[0:       1.811] DISP:INFO:init_decon:xres 1440 yres 3040 win_start_pos 0 win_end_pos bdf059f
+[0:       1.811] DISP:WARN:decon_reg_set_win_bnd_function:1633 undefined blending mode
+[0:       1.835] UFS Provision Pass & DESC_LOCKED
+[0:       1.835] user_dram_test_flag : 0.
+[0:       1.835] f_load_hypervisor: loading uH image from 173056..
+[0:       1.835] [uH] uh page size = 0x43000
+[0:       1.835] [uH] uh total load size = 0x43698
+[0:       1.836] Verify_Signature_Ecdsa 0x86fff000 276120, 0x87042488 512
+[0:       1.843] pit_check_signature (UH) valid.
+[0:       1.843] [uH] load hypervisor
+[0:       1.873] load cp header successful
+[0:       1.878] load_kernel: loading boot image from 218112..
+[0:       1.878] kernel size = 0x2b5a000, ramdisk size = 0x0
+[0:       1.878] RPMB : LOCK state (0)
+[0:       1.878] patch_month_year : 10.22 , os_version : 12.0.0
+[0:       1.878] [CM] set os_version & patch_month_year: start
+[0:       1.878] [CM] set os_version & patch_month_year: success
+[0:       1.878] device_locked : 0
+[0:       1.878] [CM] set device_state: start
+[0:       1.878] [CM] set device_state: success
+[0:       1.878] verified_boot_state : 2
+[0:       1.878] [CM] set boot_state: start
+[0:       1.878] [CM] set boot_state: success
+[0:       1.878] [Fchandler]Jenkins build #106
+[0:       1.878] avbops functions are set successfully
+[0:       1.878] RPMB : LOCK state (0)
+[0:       1.878] avb_slot_verify.c:966: DEBUG: Loading vbmeta struct from partition 'vbmeta'.
+avb_vbmeta_image.c:212: ERROR: Hash does not match!
+avb_slot_verify.c:1027: ERROR: vbmeta: Error verifying vbmeta image: HASH_MISMATCH
+avb_slot_verify.c:1192: DEBUG: vbmeta: VERIFICATION_DISABLED bit is set.
+avb_slot_verify.c:788: DEBUG: bootloader: Loading entire partition.
+blk_bread_bootsector: LUN 1, from 0x0, size 0x2000, buffer 0xb0000000
+[0:       1.900] RPMB : LOCK state (0)
+[0:       1.900] avb_slot_verify.c:788: DEBUG: cm: Loading entire partition.
+RPMB : LOCK state (0)
+[0:       1.916] avb_slot_verify.c:788: DEBUG: dtb: Loading entire partition.
+RPMB : LOCK state (0)
+[0:       1.933] avb_slot_verify.c:788: DEBUG: dtbo: Loading entire partition.
+RPMB : LOCK state (0)
+[0:       1.947] avb_slot_verify.c:788: DEBUG: boot: Loading entire partition.
+RPMB : LOCK state (0)
+[0:       2. 54] avb_slot_verify.c:788: DEBUG: keystorage: Loading entire partition.
+RPMB : LOCK state (0)
+[0:       2. 57] avb_main : Check Samsung Secure Info
+[0:       2. 57] GetSignerVer : SignerVer03
+[0:       2. 57] Verify_Signature_Ecdsa 0xb0000000 9552, 0xb0002340 512
+[0:       2. 64] Verify_Signature_Ecdsa: failed.(FDAA3611)
+[0:       2. 64] pit_check_signature (VBMETA) invalid.
+[0:       2. 64] set_ddi_kernel_type : VBMETA, 0x200
+[0:       2. 64]  No need to update kernel type.
+[0:       2. 64] make_security_decisions : (VBMETA)
+[0:       2. 64] [SW] get random number: start
+[0:       2. 64] [SW] get random number: success
+[0:       2. 64] [CM] RPMB: hmac calculation was finished successfully
+[0:       2. 64] [RLC] hash is not matched
+[0:       2. 64] [SW] get random number: start
+[0:       2. 64] [SW] get random number: success
+[0:       2. 64] [CM] RPMB: hmac calculation was finished successfully
+[0:       2. 65] [RLC] hash is not matched(backup)
+[0:       2. 65] RPMB : LOCK state (0)
+[0:       2. 65] save_wb_snapshot: already saved
+[0:       2. 65] [EFUSE] warranty bit is already set.
+[0:       2. 66] Verify_Signature_Ecdsa 0xb0000000 240528, 0xb003a980 512
+[0:       2. 73] pit_check_signature (DTB) valid.
+[0:       2. 74] if_ddi_data: succeeded. (0x30e)
+[0:       2. 74] update_image_status_info: DTB image status has been updated to 0x 2
+[0:       2. 74] update_image_status_auth: Status for DTB image is already official
+[0:       2. 74] set_ddi_kernel_type : DTB, 0x0
+[0:       2. 75]  No need to update kernel type.
+[0:       2. 75] KERNEL RB count: DEVICE:16, BINARY:16 (DTB)
+[0:       2. 81] Verify_Signature_Ecdsa 0xb0000000 1806040, 0xb01b8cc8 512
+[0:       2. 91] pit_check_signature (DTBO) valid.
+[0:       2. 93] if_ddi_data: succeeded. (0x30e)
+[0:       2. 93] update_image_status_info: DTBO image status has been updated to 0x 2
+[0:       2. 93] update_image_status_auth: Status for DTBO image is already official
+[0:       2. 93] set_ddi_kernel_type : DTBO, 0x0
+[0:       2. 93]  No need to update kernel type.
+[0:       2. 93] KERNEL RB count: DEVICE:16, BINARY:16 (DTBO)
+[0:       2.172] Verify_Signature_Ecdsa 0xb0000000 45058848, 0xb2af8910 512
+[0:       2.260] Verify_Signature_Ecdsa: failed.(FDAA0001)
+[0:       2.260] pit_check_signature (BOOT) invalid.
+[0:       2.260] update_image_status_auth: Status for BOOT image is already custom
+[0:       2.260] set_ddi_kernel_type : BOOT, 0x2
+[0:       2.260]  No need to update kernel type.
+[0:       2.260] make_security_decisions : (BOOT)
+[0:       2.260] [SW] get random number: start
+[0:       2.260] [SW] get random number: success
+[0:       2.261] [CM] RPMB: hmac calculation was finished successfully
+[0:       2.261] [RLC] hash is not matched
+[0:       2.261] [SW] get random number: start
+[0:       2.261] [SW] get random number: success
+[0:       2.261] [CM] RPMB: hmac calculation was finished successfully
+[0:       2.261] [RLC] hash is not matched(backup)
+[0:       2.261] RPMB : LOCK state (0)
+[0:       2.261] save_wb_snapshot: already saved
+[0:       2.261] [EFUSE] warranty bit is already set.
+[0:       2.261] avb_main : vbmeta type : 3
+[0:       2.261] get_sign_info: (VBMETA)
+[0:       2.262] GetSignerVer : SignerVer03
+[0:       2.262] [AVB 2.0 ERR] authentication fail [ret: 0x3] (orange)
+[0:       2.262] drawimg: type: 13
+[0:       2.266] read 'svb_orange.jpg'(162031) completed.
+[0:       2.392] LoadJPEG took 123 msec
+avb_cmdline : root=PARTUUID=52444E41-494F-2044-7379-7374656D0000 androidboot.verifiedbootstate=orange
+[0:      12.677] [TIMA trusted boot]: SEANDROID ENFORCING
+[0:      12.677] [CM] erase public_key: start
+[0:      12.677] [CM] erase public_key: success
+[0:      12.677] [UFDT] BOOT IMG HDR V1.. FINDING DTB ENTRY
+[0:      12.678] [UFDT] Little Find DTB Entry[0]: Rev:(S:0, E:255, X:0, D:26)
+[0:      12.679] [UFDT] FINDING DTBO ENTRY
+[0:      12.686] [UFDT] Little Find DTBO Entry[9]: Rev:(S:26, E:255, X:0, D:26)
+[0:      12.730] [UFDT] DT Overlay Complete!
+[0:      12.730] RPMB: successfully set provision state(1)
+[0:      12.730] Do SMC to set data for TIMA (0xc9b7a910)
+[0:      12.730] ##memory_dump##
+[0:      12.730] 
+[0:      12.730]  c9b7a950h:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[0:      12.730]  c9b7a960h:  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+[0:      12.730] secure smc success!!!
+[0:      12.730] print_wb_snapshot
+[0:      12.730] 000000 : 53 69 67 6E 65 72 56 65 72 30 33 00 00 00 00 00 |SignerVer03.....|
+[0:      12.730] 000010 : 33 34 34 38 39 34 34 34 52 00 00 00 00 00 00 00 |34489444R.......|
+[0:      12.730] 000020 : 47 39 37 33 46 58 58 53 39 44 54 49 38 00 00 00 |G973FXXS9DTI8...|
+[0:      12.730] 000030 : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+[0:      12.730] 000040 : 32 30 32 30 30 39 31 38 31 37 32 34 30 38 00 00 |20200918172408..|
+[0:      12.730] 000050 : 53 4D 2D 47 39 37 33 46 5F 45 55 52 5F 58 58 5F |SM-G973F_EUR_XX_|
+[0:      12.730] 000060 : 45 55 52 30 00 00 00 00 00 00 00 00 00 00 00 00 |EUR0............|
+[0:      12.730] 000070 : 53 52 50 52 49 32 38 42 30 30 39 00 00 00 00 00 |SRPRI28B009.....|
+[0:      12.730] 000080 : 53 52 50 52 49 32 38 42 30 30 39 00 00 00 00 00 |SRPRI28B009.....|
+[0:      12.730] 000090 : 75 73 72 00 66 72 70 00 6D 72 6B 00 76 62 6D 65 |usr.frp.mrk.vbme|
+[0:      12.730] 0000A0 : 74 61 2E 69 6D 67 00 00 00 00 00 00 00 00 00 00 |ta.img..........|
+[0:      12.730] 0000B0 : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+[0:      12.730] 0000C0 : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+[0:      12.730] 0000D0 : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+[0:      12.730] 0000E0 : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+[0:      12.730] 0000F0 : 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 |................|
+[0:      12.730] 
+[0:      12.730] Send info to CP secure table 21
+[0:      12.730] [OTP] JTAG_SW_LOCK read start
+[0:      12.730] [OTP] JTAG_SW_LOCK read value: 0x1
+[0:      12.731] DDI value :0x0000030e
+[0:      12.734] UFS SW lock success
+[0:      12.734] UFS SW lock success
+[0:      12.735] UFS SW lock success
+[0:      12.738] UFS SW lock success
+[0:      12.738] set_minform_magic: before: 4e4e0000 (type: 4, magic: 0)
+[0:      12.738] set_minform_magic: after: 4e4e0000
+[0:      12.738] set_minform_magic: before: 4e4e0000 (type: 2, magic: 0)
+[0:      12.738] set_minform_magic: after: 4e4e0000
+[0:      12.738] set_minform_magic: before: 4e4e0000 (type: 3, magic: 0)
+[0:      12.738] set_minform_magic: after: 4e4e0000
+[0:      12.738] set_minform_magic: before: 4e4e0000 (type: 0, magic: 4e)
+[0:      12.738] set_minform_magic: after: 4e4e0000
+[0:      12.738] check_rustproof [1,0] Off
+[0:      12.738] check_ccic_info: [1] CCIC
+[0:      12.738] ucs flag is Unknown
+[0:      12.738] ucs flag : 00 00 00 00
+[0:      12.738] [DCOM] sec_debug_rooting_info: ddi set and warranty set
+[0:      12.739] [CM] get random number: start
+[0:      12.739] [CM] get random number: success
+param logs: (2022-04-03-03-03)N(2022-04-03-07-15)N(2022-04-03-07-20)N(2022-04-04-06-05)N(2022-04-04-07-38)R(2022-04-05-00-02)N(2022-04-05-00-08)N(2022-05-21-18-06)N(2022-05-21-19-11)R(2022-05-25-00-00)N(2022-05-25-00-06)N(2000-01-01-12-04)N(2019-01-01-12-01)N(2019-03-02-11-26)N(2000-01-01-12-01)N(2019-01-02-05-21)N(2022-05-02-03-50)N(2022-05-02-04-02)N(2000-01-01-12-00)N(2019-01-01-12-00)N(2022-05-02-03-38)N(2022-05-02-03-39)N(2022-05-02-03-42)N(2022-05-02-03-43)N(2022-05-02-03-43)N(2022-05-02-03-44)N(2022-05-02-03-44)N(2022-05-02-03-45)N(2022-05-02-03-46)N(2022-05-02-03-52)N(2022-05-02-03-57)N(2022-05-02-03-58)N(2022-05-02-03-59)N(2022-05-02-04-09)N(2022-05-02-04-15)N(2022-05-02-04-15)N(2022-05-02-04-15)N(2022-05-02-04-15)R(2022-05-02-04-18)N(2022-05-02-04-20)N(2023-02-21-23-51)N(2000-01-01-12-08)R(2023-02-22-00-40)N(2023-02-22-00-47)N(2023-02-22-10-01)N(2024-04-01-14-54)N(2024-07-08-18-26)N(2024-07-08-18-29)N(2024-07-08-18-31)R(2024-07-08-18-38)N(2024-07-08-18-42)N(2024-07-08-20-14)N(2024-07-08-20-50)N(2024-07-08-21-01)R(2024-07-08-21-03)N(2024-07-08-21-03)R(2024-07-08-21-10)R(2024-07-08-21-13)N(2024-07-08-21-19)N(2024-07-08-21-24)R(2024-07-08-21-29)N(2024-07-08-21-29)N(2024-07-10-15-53)N(2024-07-12-17-45)N(2024-07-13-13-05)N(2024-07-14-10-19)N(2024-07-15-15-30)N(2024-07-16-09-33)N(2024-07-19-16-35)N(2024-08-02-08-28)N(2024-08-04-12-15)N(2000-01-01-12-02)N(2019-01-01-12-10)N(2026-09-11-16-03)N(2026-09-17-01-17)N(2026-09-17-01-45)N(2026-09-17-01-50)N(2026-09-17-02-03)
+[0:      12.739] [DPRM] prepare_for_booting: initialize debug param elements
+[0:      12.739] [DPRM] prepare_for_booting: reset reason(0), debug flag(1), final kmsg(0x55), dprm once(NULL)
+[0:      12.743] [DPRM] erase_debug_param: TYPE: 1 / BLKLEN: 800
+[0:      12.743] [DPRM] dprm_erase: base: 12800 len: 800
+[0:      12.752] UPLOAD_MODE 0, Set S2D LOW, DUMP_DIS
+[0:      12.752] [COMM] retouch_auto_comment: START @91592d00
+[0:      12.752] [COMM] retouch_auto_comment: invalid comment, re-touch failed
+[0:      12.752] [SECD] remove_sec_debug_magic: remove some magics
+[0:      12.752] [SECD] set_dinf_magic: write dinf : 25b7ce71
+[0:      12.752] challenge_size is 0 0
+[0:      12.753] convert_WB_reason_to_char : 0xe03 -> 'F'
+[0:      12.753] secure info base: 0xc9b88000 and SMC Num = 0xb2000202
+
+[0:      12.753] secure smc success!!!
+[0:      12.753] svb_result: 1 and SMC Num = 0xb2000202
+[0:      12.753] secure smc success!!!
+[0:      12.753] iccc_data_lock : SMC Num = 0xb2000202
+[0:      12.753] secure smc success!!!
+[0:      12.753] [TEEGRIS] disable handler execution, ret = 0x0
+[0:      12.753] dtb_update: start
+[0:      12.811] dtb_merge_bootargs: bootargs_ext not found
+[0:      12.811] get_cmdline_buffer: last Index: 876|1000
+[0:      14. 55] max77705_adc_read_temp temp = 27, temp_adc = 1922
+[0:      14. 55] dtb_update: packing
+[0:      14. 92] Updating device tree @0x8a000000: done
+[0:      14. 92] Skip Mixture-check
+[0:      14. 92] [CM] RPMB: hmac was blocked successfully
+[0:      14. 92] [CM] RPMB: key was blocked successfully
+[0:      14. 92] [CM] block verified boot commands: start
+[0:      14. 92] [CM] block verified boot commands: success
+[0:      14. 92] [OTP] OTP_SW_BLOCK enable start
+[0:      14. 92] [OTP] OTP_SW_BLOCK enable success
+[0:      14. 92] cal_hash_lock: cal_hash locked
+[0:      14.100] max77705_fuel_gauge_read_vcell: VCELL(4051), data(0xca94)
+[0:      14.102] max77705_fuel_gauge_read_soc: SOC(90), data(0x5a55)
+[0:      14.109] [BORE] init_boot_reset_buffer: start: 91a28100, size: 9c600
+[0:      14.116] [BORE] make_boot_reset_dump: 91a28100 ++ 5669
+[0:      14.116] RPMB : LOCK state (0)
+[0:      14.116] drawimg: type: 0
+[0:      14.119] read 'logo.jpg'(152650) completed.
+[0:      14.271] LoadJPEG took 149 msec
+[0:      14.463] drawimg: cropped image!
+[0:      14.463] drawimg: type: 14
+[0:      14.464] read 'booting_warning.jpg'(12309) completed.
+[0:      14.484] LoadJPEG took 19 msec
+[0:      14.519] 
+[0:      14.519] Starting kernel...
+
+[0:      14.519] ifconn_show_switch_sel:
+[0:      14.519] SWITCH_SEL(3)
+[0:      14.519] BOOTING TIME : 14519

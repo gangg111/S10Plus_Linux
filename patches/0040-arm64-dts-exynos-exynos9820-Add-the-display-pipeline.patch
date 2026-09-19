@@ -1,0 +1,346 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:45:44 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the display pipeline
+
+DECON, the DSI host, the D-PHY and, on beyond2lte, the S6E3HA9 panel
+with the S2DOS05 PMIC that feeds it.
+
+The panel and the PMIC arrive together with the controllers rather than
+in a patch of their own: the three supplies the panel needs are outputs
+of that PMIC, and it hangs off the CMGP I2C controller, so a device tree
+that described the display without it would describe a panel that cannot
+be powered.
+
+UNVERIFIED, listed as open hardware questions in the porting notes:
+
+  - the framebuffer the bootloader leaves behind is placed at
+    0xca000000, taken from a port rather than read out of a running
+    device,
+
+  - the escape clock is asked for as 20 MHz, which the prescaler rounds
+    down to a divider of the word clock; the sources give both 18 and 20
+    MHz and the rate that actually reaches the lanes has to be measured,
+
+  - the power mask of the DPU domain is the vendor's own, but the
+    mainline power domain driver writes the whole word, so the remaining
+    31 bits are zeroed and no source says what they hold.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts |  69 ++++++++
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   |  14 ++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 160 ++++++++++++++++++
+ 3 files changed, 243 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 5fe21367cb2..ea48614ada2 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -226,6 +226,31 @@ el2_earlymem@9fd800000 {
+ 	};
+ };
+ 
++&decon0 {
++	status = "okay";
++};
++
++&dsim0 {
++	status = "okay";
++
++	panel@0 {
++		compatible = "samsung,s6e3ha9";
++		reg = <0>;
++
++		vdd3-supply = <&panel_vdd3>;
++		vci-supply = <&panel_vci>;
++		vddr-supply = <&panel_vddr>;
++
++		reset-gpios = <&gpa3 4 GPIO_ACTIVE_LOW>;
++
++		port {
++			panel_in: endpoint {
++				remote-endpoint = <&dsim0_out>;
++			};
++		};
++	};
++};
++
+ &hsi2c10 {
+ 	clock-frequency = <400000>;
+ 	status = "okay";
+@@ -244,6 +269,50 @@ touchscreen@48 {
+ 	};
+ };
+ 
++/*
++ * The display PMIC.  Its three rails are the panel's, and the names below are
++ * the roles the vendor gives them: ddi-3p0 is vci, ddi-1p8 is vdd3 and
++ * ddr-1p6 is vddr.  The buck can also run at 1.5 V in the vendor's low power
++ * mode, which is not modelled here.
++ *
++ * The bus is not a guess.  The vendor keeps this chip in a device tree
++ * overlay whose target is a label rather than a path, and the fixup table
++ * resolves it: hsi2c_44 owns the fragment that holds s2dos05_pmic@60
++ * (ds/exynos9820-beyond2lte_eur_open_26.dts:8271), and hsi2c_44 is the node
++ * at 0x15d50000 (ds/exynos9820.dts:11537), which is this one.
++ */
++&hsi2c2 {
++	status = "okay";
++
++	pmic@60 {
++		compatible = "samsung,s2dos05";
++		reg = <0x60>;
++
++		regulators {
++			panel_vddr: buck {
++				regulator-name = "panel_vddr";
++				regulator-min-microvolt = <1600000>;
++				regulator-max-microvolt = <1600000>;
++				regulator-boot-on;
++			};
++
++			panel_vdd3: ldo1 {
++				regulator-name = "panel_vdd3";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-boot-on;
++			};
++
++			panel_vci: ldo4 {
++				regulator-name = "panel_vci";
++				regulator-min-microvolt = <3000000>;
++				regulator-max-microvolt = <3000000>;
++				regulator-boot-on;
++			};
++		};
++	};
++};
++
+ &oscclk {
+ 	clock-frequency = <26000000>;
+ };
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index 52757a29a55..e37677140f7 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -454,6 +454,14 @@ gpm31: gpm31-gpio-bank {
+ 		interrupt-parent = <&gic>;
+ 		interrupts = <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
+ 	};
++
++	/* to the S2DOS05 display PMIC */
++	hsi2c2_bus: hsi2c2-bus-pins {
++		samsung,pins = "gpm10-0", "gpm11-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_3>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
+ };
+ 
+ &pinctrl_fsys0 {
+@@ -638,6 +646,12 @@ gph1: gph1-gpio-bank {
+ 		interrupt-controller;
+ 		#interrupt-cells = <2>;
+ 	};
++
++	/* tearing effect from the panel, the display trigger source */
++	decon_te_pins: decon-te-pins {
++		samsung,pins = "gpd0-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_F>;
++	};
+ };
+ 
+ &pinctrl_vts {
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 00da8504c53..155be359ba9 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -435,6 +435,16 @@ pd_dpu: power-domain@15861e00 {
+ 			label = "DPU";
+ 		};
+ 
++		cmu_cmgp: clock-controller@15c00000 {
++			compatible = "samsung,exynos9820-cmu-cmgp";
++			reg = <0x15c00000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_apm CLK_DOUT_CMU_CMGP_BUS>;
++			clock-names = "oscclk", "bus";
++		};
++
+ 		pinctrl_cmgp: pinctrl@15c30000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x15c30000 0x1000>;
+@@ -446,6 +456,27 @@ wakeup-interrupt-controller {
+ 			};
+ 		};
+ 
++		/*
++		 * This bus stays awake with the CMGP domain, which is why the
++		 * display PMIC hangs off it rather than off a PERIC bus: the panel
++		 * rails have to be reachable while the rest sleeps.
++		 */
++		hsi2c2: i2c@15d50000 {
++			compatible = "samsung,exynos9820-hsi2c",
++				     "samsung,exynosautov9-hsi2c";
++			reg = <0x15d50000 0x1000>;
++			interrupts = <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			clocks = <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_IPCLK>,
++				 <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_PCLK>;
++			clock-names = "hsi2c", "hsi2c_pclk";
++			pinctrl-0 = <&hsi2c2_bus>;
++			pinctrl-names = "default";
++			status = "disabled";
++		};
++
+ 		pinctrl_aud: pinctrl@18c60000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x18c60000 0x1000>;
+@@ -462,6 +493,111 @@ cmu_dpu: clock-controller@19000000 {
+ 			power-domains = <&pd_dpu>;
+ 		};
+ 
++		/*
++		 * The window of the display unit system registers that carries the
++		 * reset of the D-PHY and the choice of what drives it.  This is the
++		 * window the vendor maps, sixteen bytes at this address rather than
++		 * the whole block, so the offsets are the ones its sources use.
++		 */
++		sysreg_dpu: syscon@19011000 {
++			compatible = "samsung,exynos9820-dpu-sysreg",
++				     "syscon";
++			reg = <0x19011000 0x10>;
++		};
++
++		/*
++		 * The display controller and one of its window pipelines.  This
++		 * panel runs in command mode, so nothing scans out on its own: the
++		 * panel raises the tearing effect line and the controller sends one
++		 * frame in answer.
++		 */
++		decon0: display-controller@19030000 {
++			compatible = "samsung,exynos9820-decon";
++			reg = <0x19030000 0x10000>, <0x19070000 0x10000>;
++			reg-names = "decon", "dma";
++
++			interrupts = <GIC_SPI 183 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 184 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 189 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "frame-start", "frame-done", "extra";
++
++			/* the panel drives the frame trigger over this line */
++			pinctrl-names = "default";
++			pinctrl-0 = <&decon_te_pins>;
++
++			clocks = <&cmu_dpu CLK_GOUT_DPU_DPU_ACLK_DECON>,
++				 <&cmu_dpu CLK_GOUT_DPU_DPU_ACLK_DMA>,
++				 <&cmu_dpu CLK_GOUT_DPU_DPU_ACLK_DPP>;
++			clock-names = "aclk", "aclk-dma", "aclk-dpp";
++
++			power-domains = <&pd_dpu>;
++			iommus = <&sysmmu_dpud0>, <&sysmmu_dpud1>,
++				 <&sysmmu_dpud2>;
++			status = "disabled";
++
++			port {
++				decon0_out: endpoint {
++					remote-endpoint = <&dsim0_in>;
++				};
++			};
++		};
++
++		dsim0: dsi@19080000 {
++			compatible = "samsung,exynos9820-mipi-dsi";
++			reg = <0x19080000 0x300>;
++
++			phys = <&dsim0_dphy>;
++			phy-names = "dsim";
++
++			interrupts = <GIC_SPI 190 IRQ_TYPE_LEVEL_HIGH>;
++
++			clocks = <&cmu_dpu CLK_GOUT_DPU_AD_APB_MIPI_DSIM0_PCLKS>;
++			clock-names = "bus";
++
++			/*
++			 * The link runs at a rate the panel and the D-PHY timing table
++			 * agree on.  Without this the host would derive it from the
++			 * pixel clock and the uncompressed 24 bpp, which ignores DSC
++			 * and asks the PHY for a rate it has no timings for.
++			 */
++			samsung,burst-clock-frequency = <898000000>;
++
++			/*
++			 * UNVERIFIED: the sources give both 18 and 20 MHz for
++			 * this link.  The prescaler rounds whatever is asked for down
++			 * to a divider of the word clock, so the number that actually
++			 * reaches the lanes has to be measured.
++			 */
++			samsung,esc-clock-frequency = <20000000>;
++
++			power-domains = <&pd_dpu>;
++			status = "disabled";
++
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			ports {
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				port@0 {
++					reg = <0>;
++
++					dsim0_in: endpoint {
++						remote-endpoint = <&decon0_out>;
++					};
++				};
++
++				port@1 {
++					reg = <1>;
++
++					dsim0_out: endpoint {
++						remote-endpoint = <&panel_in>;
++					};
++				};
++			};
++		};
++
+ 		/*
+ 		 * One system MMU per display data path.  All three have to be
+ 		 * listed by the controller, because a frame is fetched through
+@@ -497,6 +633,30 @@ sysmmu_dpud2: iommu@190c0000 {
+ 			#iommu-cells = <0>;
+ 		};
+ 
++		/*
++		 * The bias generator of the display D-PHY.  The vendor sources
++		 * describe it as a block of its own rather than part of a link
++		 * (dphy_m4s4_dsim0 next to dphy_m4s0_dsim0), so the link nodes
++		 * point at it instead of each mapping it themselves.
++		 */
++		dphy_top: syscon@19160000 {
++			compatible = "samsung,exynos9820-dphy-top", "syscon";
++			reg = <0x19160000 0x100>;
++		};
++
++		dsim0_dphy: phy@19161000 {
++			compatible = "samsung,exynos9820-mipi-dphy";
++			reg = <0x19161000 0x800>;
++			samsung,dphy-top-syscon = <&dphy_top>;
++			samsung,dpu-sysreg = <&sysreg_dpu>;
++
++			clocks = <&cmu_dpu CLK_GOUT_DPU_AD_APB_MIPI_DSIM0_PCLKS>;
++			clock-names = "apb";
++
++			power-domains = <&pd_dpu>;
++			#phy-cells = <0>;
++		};
++
+ 		/*
+ 		 * Every other clock controller takes its input from this one, so it
+ 		 * is registered before them.

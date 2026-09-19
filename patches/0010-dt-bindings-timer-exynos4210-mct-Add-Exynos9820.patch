@@ -1,0 +1,34 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 7 Sep 2026 04:48:04 +0200
+Subject: [PATCH] dt-bindings: timer: exynos4210-mct: Add Exynos9820
+
+The MCT has the twelve interrupts every modern Exynos has, so the new
+compatible goes into the branch that requires twelve as well, not only
+into the top level enum.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../devicetree/bindings/timer/samsung,exynos4210-mct.yaml       | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/timer/samsung,exynos4210-mct.yaml b/Documentation/devicetree/bindings/timer/samsung,exynos4210-mct.yaml
+index a4b229e0e78..d2daceae71e 100644
+--- a/Documentation/devicetree/bindings/timer/samsung,exynos4210-mct.yaml
++++ b/Documentation/devicetree/bindings/timer/samsung,exynos4210-mct.yaml
+@@ -36,6 +36,7 @@ properties:
+               - samsung,exynos5433-mct
+               - samsung,exynos850-mct
+               - samsung,exynos8895-mct
++              - samsung,exynos9820-mct
+               - samsung,exynos990-mct
+               - tesla,fsd-mct
+           - const: samsung,exynos4210-mct
+@@ -140,6 +141,7 @@ allOf:
+               - samsung,exynos5433-mct
+               - samsung,exynos850-mct
+               - samsung,exynos8895-mct
++              - samsung,exynos9820-mct
+               - samsung,exynos990-mct
+     then:
+       properties:

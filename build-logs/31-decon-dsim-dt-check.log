@@ -1,0 +1,3 @@
+  UPD     include/config/kernel.release
+  DTC [C] arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dtb
+EXIT=0
