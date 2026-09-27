@@ -1,0 +1,126 @@
+From 65cf7923f0923f18d7576a4e58d506ff6591a1c8 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 21:55:52 +0200
+Subject: [PATCH 22/40] dts: exynos: sync the Galaxy S10+ tree with the main
+ PMIC
+
+The kernel series stopped describing the two touchscreen rails as fixed
+supplies: they come from LDO19M and LDO27M of the S2MPS19, which the kernel
+can now reach through the ACPM mailbox, so the placeholders are gone and
+the node of that chip took their place.
+
+The copy here follows, because this board's tree is that file verbatim.
+Nothing in the bootloader reads the new node; it is carried so the two
+trees stay the same file, which is what lets the board hand its own tree
+to the kernel.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../arm64/exynos/exynos9820-beyond2lte.dts    | 70 ++++++++++++-------
+ 1 file changed, 45 insertions(+), 25 deletions(-)
+
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+index a4d11f3c..6f81f18c 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
++++ b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+@@ -126,29 +126,6 @@
+ 		};
+ 	};
+ 
+-	/*
+-	 * The touchscreen rails really come from two LDOs of the main PMIC
+-	 * (LDO19M and LDO27M of the S2MPS19), which mainline cannot reach yet:
+-	 * that PMIC is behind the ACPM mailbox.  They are on when the bootloader
+-	 * hands over, so they are described as fixed supplies until the real
+-	 * regulators can be named.
+-	 */
+-	reg_tsp_io: regulator-tsp-io {
+-		compatible = "regulator-fixed";
+-		regulator-name = "tsp_io";
+-		regulator-min-microvolt = <1800000>;
+-		regulator-max-microvolt = <1800000>;
+-		regulator-always-on;
+-	};
+-
+-	reg_tsp_avdd: regulator-tsp-avdd {
+-		compatible = "regulator-fixed";
+-		regulator-name = "tsp_avdd";
+-		regulator-min-microvolt = <3000000>;
+-		regulator-max-microvolt = <3000000>;
+-		regulator-always-on;
+-	};
+-
+ 	/*
+ 	 * Memory the kernel must not hand out.  Every region below is taken
+ 	 * from a tree that describes this board, not from a calculation: the
+@@ -234,6 +211,40 @@
+ 	};
+ };
+ 
++/*
++ * The main PMIC of this board.  It does not answer on any bus of the CPU: it
++ * hangs off a SPEEDY link of the power management firmware, so the node sits
++ * under that firmware and every register access travels as an ACPM command.
++ *
++ * Only the two rails the touchscreen needs are described.  The rest of the
++ * chip carries the rails the CPU, the memory and the modem run from, and they
++ * are left without constraints on purpose, so that nothing in the kernel can
++ * be asked to change them.
++ */
++&acpm_ipc {
++	pmic-1 {
++		compatible = "samsung,s2mps19-pmic";
++		interrupts-extended = <&gpa0 1 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&main_pmic_irq>;
++		wakeup-source;
++
++		regulators {
++			ldo19m: LDO19M {
++				regulator-name = "tsp_io";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++			};
++
++			ldo27m: LDO27M {
++				regulator-name = "tsp_avdd";
++				regulator-min-microvolt = <3000000>;
++				regulator-max-microvolt = <3000000>;
++			};
++		};
++	};
++};
++
+ /*
+  * The cell, described because the charger has to be told what it is
+  * charging.  Every number here is read from the vendor tree of this exact
+@@ -298,8 +309,8 @@
+ 		compatible = "samsung,s6sy771";
+ 		reg = <0x48>;
+ 
+-		avdd-supply = <&reg_tsp_avdd>;
+-		vdd-supply = <&reg_tsp_io>;
++		avdd-supply = <&ldo27m>;
++		vdd-supply = <&ldo19m>;
+ 
+ 		interrupts-extended = <&gpa1 0 IRQ_TYPE_LEVEL_LOW>;
+ 
+@@ -446,6 +457,15 @@
+ 	};
+ };
+ 
++&pinctrl_alive {
++	main_pmic_irq: main-pmic-irq-pins {
++		samsung,pins = "gpa0-1";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV4>;
++	};
++};
++
+ &pinctrl_alive {
+ 	pmic_irq: pmic-irq-pins {
+ 		samsung,pins = "gpa1-6";
+-- 
+2.47.3
+

@@ -56,20 +56,96 @@ KONTROLERY = [
 # Grupy pinow, ktore opisuje ten plik.  Kazda z odsylaczem do wezla producenta,
 # z ktorego pochodzi, i przypisana do kontrolera, w ktorym leza jej piny.
 GRUPY = {
+    "pinctrl_alive": [
+        ("bt_hostwake_pins", "bt-hostwake-pins",
+         "/* the line the Bluetooth controller pokes to wake the host */",
+         ['"gpa2-3"', "<EXYNOS_PIN_FUNC_INPUT>", "<EXYNOS_PIN_PULL_DOWN>"]),
+        ("uart1_bus", "uart1-bus-pins",
+         "/* to the Bluetooth controller */",
+         ['"gpq0-3", "gpq0-2", "gpq0-1", "gpq0-0"', "<EXYNOS_PIN_FUNC_2>",
+          "<EXYNOS_PIN_PULL_UP>", "<EXYNOS5420_PIN_DRV_LV1>"]),
+    ],
+    "pinctrl_aud": [
+        ("aud_i2s0_bus", "aud-i2s0-bus-pins",
+         "/* UAIF0 of ABOX, to the audio codec */",
+         ['"gpb0-1", "gpb0-2", "gpb0-3", "gpb0-4"', "<EXYNOS_PIN_FUNC_2>",
+          "<EXYNOS_PIN_PULL_DOWN>"]),
+        ("aud_i2s1_bus", "aud-i2s1-bus-pins",
+         "/* UAIF1 of ABOX, to the two speaker amplifiers */",
+         ['"gpb1-0", "gpb1-1", "gpb1-2", "gpb1-3"', "<EXYNOS_PIN_FUNC_2>",
+          "<EXYNOS_PIN_PULL_DOWN>"]),
+    ],
     "pinctrl_cmgp": [
+        ("bt_en_pins", "bt-en-pins",
+         "/* the line the Bluetooth controller powers up from */",
+         ['"gpm8-0"', "<EXYNOS_PIN_FUNC_OUTPUT>", "<EXYNOS_PIN_PULL_NONE>",
+          None, "<EXYNOS_PIN_PDN_PREV>", "<EXYNOS_PIN_PULL_NONE>"]),
         ("hsi2c2_bus", "hsi2c2-bus-pins",
          "/* to the S2DOS05 display PMIC */",
          ['"gpm10-0", "gpm11-0"', "<EXYNOS_PIN_FUNC_3>",
           "<EXYNOS_PIN_PULL_NONE>",
           "<EXYNOS5420_PIN_DRV_LV1>"]),
+        ("hsi2c45_bus", "hsi2c45-bus-pins",
+         "/*" + NL
+         + " * To the MAX77705, which carries the charger and the fuel gauge."
+         + NL
+         + " * This one is a USI in I2C mode, not a dedicated I2C like the bus"
+         + NL
+         + " * above, which is why its pins take a different function." + NL
+         + " */",
+         ['"gpm12-0", "gpm13-0"', "<EXYNOS_PIN_FUNC_2>",
+          "<EXYNOS_PIN_PULL_NONE>",
+          "<EXYNOS5420_PIN_DRV_LV1>"]),
+    ],
+    "pinctrl_fsys1": [
+        ("pcie0_clkreq_pins", "pcie0-clkreq-pins",
+         "/* the clock request line of the PCIe endpoint */",
+         ['"gpf2-0"', "<EXYNOS_PIN_FUNC_2>", "<EXYNOS_PIN_PULL_UP>",
+          "<EXYNOS5420_PIN_DRV_LV4>", "<EXYNOS_PIN_PDN_PREV>",
+          "<EXYNOS_PIN_PULL_UP>"]),
+        ("pcie0_perst_pins", "pcie0-perst-pins",
+         "/* the reset line of the PCIe endpoint */",
+         ['"gpf2-2"', "<EXYNOS_PIN_FUNC_OUTPUT>", None,
+          "<EXYNOS5420_PIN_DRV_LV4>", "<EXYNOS_PIN_PDN_PREV>"]),
+        ("ufs_refclk_out", "ufs-refclk-out-pins",
+         "/*" + NL
+         + " * The two pins of the embedded storage: the reset line of the"
+         + " device" + NL
+         + " * and the reference clock going out to it.  Both take their"
+         + " second" + NL
+         + " * function and keep their level while the domain is down." + NL
+         + " */",
+         ['"gpf3-0"', "<EXYNOS_PIN_FUNC_2>", "<EXYNOS_PIN_PULL_NONE>",
+          None, "<EXYNOS_PIN_PDN_PREV>"]),
+        ("ufs_rst_n", "ufs-rst-n-pins", None,
+         ['"gpf3-1"', "<EXYNOS_PIN_FUNC_2>", "<EXYNOS_PIN_PULL_NONE>",
+          None, "<EXYNOS_PIN_PDN_PREV>"]),
     ],
     "pinctrl_peric0": [
+        ("bt_btwake_pins", "bt-btwake-pins",
+         "/* the line the host pokes to wake the Bluetooth controller */",
+         ['"gpg2-0"', "<EXYNOS_PIN_FUNC_OUTPUT>", "<EXYNOS_PIN_PULL_NONE>",
+          None, "<EXYNOS_PIN_PDN_PREV>", "<EXYNOS_PIN_PULL_NONE>"]),
         ("hsi2c10_bus", "hsi2c10-bus-pins",
          "/* to the touchscreen */",
          ['"gpp1-4", "gpp1-5"', "<EXYNOS_PIN_FUNC_2>",
           "<EXYNOS_PIN_PULL_NONE>", "<EXYNOS5420_PIN_DRV_LV1>"]),
+        # USI01 w trybie SPI, do kodeka CS47L93 (spi2_bus producenta); CS idzie
+        # jako GPIO z plyty, bo sprzetowy CS puszcza linie po kazdym transferze
+        ("spi2_bus", "spi2-bus-pins", None,
+         ['"gpp0-6", "gpp0-5", "gpp0-4"', "<EXYNOS_PIN_FUNC_2>",
+          "<EXYNOS_PIN_PULL_NONE>", "<EXYNOS5420_PIN_DRV_LV1>"]),
     ],
     "pinctrl_peric1": [
+        # USI16 w trybie SPI, do huba czujnikow BCM47752 (spi17_bus producenta);
+        # CS jako GPIO z plyty, jak przy kodeku
+        ("spi17_bus", "spi17-bus-pins", None,
+         ['"gph0-2", "gph0-1", "gph0-0"', "<EXYNOS_PIN_FUNC_2>",
+          "<EXYNOS_PIN_PULL_NONE>", "<EXYNOS5420_PIN_DRV_LV1>"]),
+        # USI17 w trybie I2C, do obu wzmacniaczy CS35L40 (hsi2c38 producenta)
+        ("hsi2c38_bus", "hsi2c38-bus-pins", None,
+         ['"gph0-6", "gph0-7"', "<EXYNOS_PIN_FUNC_3>",
+          "<EXYNOS_PIN_PULL_NONE>", "<EXYNOS5420_PIN_DRV_LV1>"]),
         ("decon_te_pins", "decon-te-pins",
          "/* tearing effect from the panel, the display trigger source */",
          ['"gpd0-0"', "<EXYNOS_PIN_FUNC_F>", None, None]),
@@ -77,7 +153,8 @@ GRUPY = {
 }
 
 POLA = ["samsung,pins", "samsung,pin-function", "samsung,pin-pud",
-        "samsung,pin-drv"]
+        "samsung,pin-drv", "samsung,pin-con-pdn",
+        "samsung,pin-pud-pdn"]
 
 NAGLOWEK = """// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 /*
@@ -166,8 +243,10 @@ def emituj_bank(nazwa, spi):
 
 
 def emituj_grupe(etykieta, wezel, komentarz, wartosci):
-    linie = [T + komentarz,
-             T + "%s: %s {" % (etykieta, wezel)]
+    linie = []
+    if komentarz:
+        linie += [T + w if w else T.rstrip() for w in komentarz.split(NL)]
+    linie.append(T + "%s: %s {" % (etykieta, wezel))
     for pole, w in zip(POLA, wartosci):
         if w is None:
             continue

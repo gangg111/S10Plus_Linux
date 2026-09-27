@@ -1,0 +1,536 @@
+From 54174a0696b8afe868ab865243de4de871f4dc97 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 12/40] ufs: bounce transfer buffers that are not aligned for
+ DMA
+
+A transfer whose buffer does not start on the alignment the controller
+needs does not fail.  It hangs: the request goes out, no completion ever
+comes back, and the only thing in the log is a timeout that names the link.
+
+That is what an unaligned 4096 byte read did on this board.  The core has
+no opinion on alignment at all, so the driver of a controller that has one
+had nowhere to say so.  A host can now set dma_alignment, and the core
+bounces any buffer that does not meet it through one that does.
+
+The descriptors the core allocates are cleared over their aligned length
+rather than their nominal one, for the same reason: what the controller
+reads is the aligned object.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/ufs/Kconfig      |   1 +
+ drivers/ufs/ufs-uclass.c | 292 +++++++++++++++++++++++++++++++++++----
+ drivers/ufs/ufs.h        |  23 +++
+ 3 files changed, 289 insertions(+), 27 deletions(-)
+
+diff --git a/drivers/ufs/Kconfig b/drivers/ufs/Kconfig
+index 9312749c..aec45ae7 100644
+--- a/drivers/ufs/Kconfig
++++ b/drivers/ufs/Kconfig
+@@ -78,6 +78,7 @@ config UFS_EXYNOS
+ 	depends on UFS
+ 	depends on CLK
+ 	depends on PHY_EXYNOS9820_UFS
++	select BOUNCE_BUFFER
+ 	help
+ 	  This selects the Samsung Exynos additions to the UFS host controller
+ 	  driver: the vendor's own register block, the clock the link periods
+diff --git a/drivers/ufs/ufs-uclass.c b/drivers/ufs/ufs-uclass.c
+index 6ef01f8e..44a5c659 100644
+--- a/drivers/ufs/ufs-uclass.c
++++ b/drivers/ufs/ufs-uclass.c
+@@ -43,6 +43,14 @@
+ #define QUERY_REQ_RETRIES 3
+ /* Query request timeout */
+ #define QUERY_REQ_TIMEOUT 1500 /* 1.5 seconds */
++/*
++ * A command bound for a logical unit gets more room than a query does, but not
++ * the thirty seconds an operating system hands out.  Measured on the phone this
++ * was written for, a device that answers at all answers in under fifty
++ * milliseconds, so a wait that runs into seconds is a fault and not patience,
++ * and a long limit only draws the fault out.
++ */
++#define SCSI_CMD_TIMEOUT 5000 /* 5 seconds, a hundred times the measured wait */
+ 
+ /* maximum timeout in ms for a general UIC command */
+ #define UFS_UIC_CMD_TIMEOUT	1000
+@@ -671,9 +679,26 @@ static void ufshcd_host_memory_configure(struct ufs_hba *hba)
+ 	response_offset = offsetof(struct utp_transfer_cmd_desc, response_upiu);
+ 	prdt_offset = offsetof(struct utp_transfer_cmd_desc, prd_table);
+ 
+-	utrdlp->response_upiu_offset = cpu_to_le16(response_offset >> 2);
+-	utrdlp->prd_table_offset = cpu_to_le16(prdt_offset >> 2);
+-	utrdlp->response_upiu_length = cpu_to_le16(ALIGNED_UPIU_SIZE >> 2);
++	/*
++	 * These three are counted in double words, except on hosts that count
++	 * them in bytes and say so with the quirk below.  Getting it wrong
++	 * costs nothing at the time: the request is laid out, the host takes
++	 * it and finishes it, and the response is simply written somewhere
++	 * other than where it is read back from, so what comes back is
++	 * whatever was in that memory before.
++	 */
++	if (hba->quirks & UFSHCD_QUIRK_PRDT_BYTE_GRAN) {
++		utrdlp->response_upiu_offset = cpu_to_le16(response_offset);
++		utrdlp->prd_table_offset = cpu_to_le16(prdt_offset);
++		utrdlp->response_upiu_length =
++					cpu_to_le16(ALIGNED_UPIU_SIZE);
++	} else {
++		utrdlp->response_upiu_offset =
++					cpu_to_le16(response_offset >> 2);
++		utrdlp->prd_table_offset = cpu_to_le16(prdt_offset >> 2);
++		utrdlp->response_upiu_length =
++					cpu_to_le16(ALIGNED_UPIU_SIZE >> 2);
++	}
+ 
+ 	hba->ucd_req_ptr = (struct utp_upiu_req *)hba->ucdl;
+ 	hba->ucd_rsp_ptr =
+@@ -709,6 +734,18 @@ static int ufshcd_memory_alloc(struct ufs_hba *hba)
+ 		return -ENOMEM;
+ 	}
+ 
++	/*
++	 * Handed to the controller as it stands, so none of it may start as
++	 * whatever was in this memory before.  The descriptor of a data
++	 * segment has a field this driver never writes, which the standard
++	 * requires to be zero, and a controller that checks it refuses the
++	 * whole command.
++	 */
++	memset(hba->utrdl, 0, ALIGN(sizeof(struct utp_transfer_req_desc),
++				    ARCH_DMA_MINALIGN));
++	memset(hba->ucdl, 0, ALIGN(sizeof(struct utp_transfer_cmd_desc),
++				   ARCH_DMA_MINALIGN));
++
+ 	return 0;
+ }
+ 
+@@ -895,6 +932,7 @@ static int ufshcd_comp_devman_upiu(struct ufs_hba *hba,
+ 	hba->dev_cmd.type = cmd_type;
+ 
+ 	ufshcd_prepare_req_desc_hdr(hba, &upiu_flags, DMA_NONE);
++	ufshcd_ops_setup_xfer_req(hba, TASK_TAG, false);
+ 	switch (cmd_type) {
+ 	case DEV_CMD_TYPE_QUERY:
+ 		ufshcd_prepare_utp_query_req_upiu(hba, upiu_flags);
+@@ -909,13 +947,40 @@ static int ufshcd_comp_devman_upiu(struct ufs_hba *hba,
+ 	return ret;
+ }
+ 
+-static int ufshcd_send_command(struct ufs_hba *hba, unsigned int task_tag)
++static int ufshcd_send_command(struct ufs_hba *hba, unsigned int task_tag,
++			       unsigned long timeout_ms)
+ {
++	u32 mask = 1 << task_tag;
+ 	unsigned long start;
+ 	u32 intr_status;
+ 	u32 enabled_intr_status;
+ 
+-	ufshcd_writel(hba, 1 << task_tag, REG_UTP_TRANSFER_REQ_DOOR_BELL);
++	/*
++	 * The slot is claimed by writing its bit and given back by the
++	 * controller once it is done with it.  Claiming a slot that is still
++	 * held does nothing whatever, so one request that never finished would
++	 * otherwise take down every request after it.  Take the slot back
++	 * first.  The register that releases it is written twice, with the
++	 * mask and with its complement, because only one slot is ever in use
++	 * here and that way it does not matter which way round the register
++	 * reads.
++	 */
++	if (ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL) & mask) {
++		dev_err(hba->dev, "slot %u was still held, taking it back\n",
++			task_tag);
++
++		ufshcd_writel(hba, mask, REG_UTP_TRANSFER_REQ_LIST_CLEAR);
++		ufshcd_writel(hba, ~mask, REG_UTP_TRANSFER_REQ_LIST_CLEAR);
++
++		if (ufshcd_wait_for_register(hba,
++					     REG_UTP_TRANSFER_REQ_DOOR_BELL,
++					     mask, 0, 100)) {
++			dev_err(hba->dev, "the slot would not come back\n");
++			return -EBUSY;
++		}
++	}
++
++	ufshcd_writel(hba, mask, REG_UTP_TRANSFER_REQ_DOOR_BELL);
+ 
+ 	/* Make sure doorbell reg is updated before reading interrupt status */
+ 	wmb();
+@@ -928,9 +993,15 @@ static int ufshcd_send_command(struct ufs_hba *hba, unsigned int task_tag)
+ 
+ 		if (hba->max_pwr_info.info.pwr_rx != SLOWAUTO_MODE &&
+ 		    hba->max_pwr_info.info.pwr_tx != SLOWAUTO_MODE) {
+-			if (get_timer(start) > QUERY_REQ_TIMEOUT) {
++			if (get_timer(start) > timeout_ms) {
+ 				dev_err(hba->dev,
+ 					"Timedout waiting for UTP response\n");
++				dev_err(hba->dev,
++					"  doorbell %08x, run %08x, status %08x, irq %08x\n",
++					ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL),
++					ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_LIST_RUN_STOP),
++					ufshcd_readl(hba, REG_CONTROLLER_STATUS),
++					intr_status);
+ 				return -ETIMEDOUT;
+ 			}
+ 		}
+@@ -1034,7 +1105,7 @@ static int ufshcd_exec_dev_cmd(struct ufs_hba *hba, enum dev_cmd_type cmd_type,
+ 	if (err)
+ 		return err;
+ 
+-	err = ufshcd_send_command(hba, TASK_TAG);
++	err = ufshcd_send_command(hba, TASK_TAG, QUERY_REQ_TIMEOUT);
+ 	if (err)
+ 		return err;
+ 
+@@ -1614,21 +1685,32 @@ void ufshcd_prepare_utp_scsi_cmd_upiu(struct ufs_hba *hba,
+ 	ufshcd_cache_flush(hba->ucd_rsp_ptr, sizeof(*hba->ucd_rsp_ptr));
+ }
+ 
++/*
++ * How much of a transfer a single descriptor entry may cover.  A host that
++ * asks for nothing in particular gets the largest the field itself can hold.
++ */
++static u32 ufshcd_segment_size(struct ufs_hba *hba)
++{
++	return hba->max_segment_size ? hba->max_segment_size : MAX_PRDT_ENTRY;
++}
++
+ static inline void prepare_prdt_desc(struct ufs_hba *hba,
+ 				     struct ufshcd_sg_entry *entry,
+ 				     unsigned char *buf, ulong len)
+ {
+ 	dma_addr_t da = dev_phys_to_bus(hba->dev, (phys_addr_t)(uintptr_t)buf);
+ 
++	memset(entry, 0, sizeof(*entry));
+ 	entry->size = cpu_to_le32(len) | GENMASK(1, 0);
+ 	entry->base_addr = cpu_to_le32(lower_32_bits(da));
+ 	entry->upper_addr = cpu_to_le32(upper_32_bits(da));
+ }
+ 
+-static void prepare_prdt_table(struct ufs_hba *hba, struct scsi_cmd *pccb)
++static int prepare_prdt_table(struct ufs_hba *hba, struct scsi_cmd *pccb)
+ {
+ 	struct utp_transfer_req_desc *req_desc = hba->utrdl;
+ 	struct ufshcd_sg_entry *prd_table = hba->ucd_prdt_ptr;
++	u32 segment = ufshcd_segment_size(hba);
+ 	ulong datalen = pccb->datalen;
+ 	int table_length;
+ 	u8 *buf;
+@@ -1637,44 +1719,126 @@ static void prepare_prdt_table(struct ufs_hba *hba, struct scsi_cmd *pccb)
+ 	if (!datalen) {
+ 		req_desc->prd_table_length = 0;
+ 		ufshcd_cache_flush(req_desc, sizeof(*req_desc));
+-		return;
++		return 0;
++	}
++
++	table_length = DIV_ROUND_UP(pccb->datalen, segment);
++	if (table_length > MAX_BUFF) {
++		dev_err(hba->dev,
++			"%lu bytes need %d table entries and there are %d\n",
++			datalen, table_length, MAX_BUFF);
++		return -EINVAL;
+ 	}
+ 
+-	table_length = DIV_ROUND_UP(pccb->datalen, MAX_PRDT_ENTRY);
+ 	buf = pccb->pdata;
+ 	i = table_length;
+ 	while (--i) {
+ 		prepare_prdt_desc(hba, &prd_table[table_length - i - 1], buf,
+-				  MAX_PRDT_ENTRY - 1);
+-		buf += MAX_PRDT_ENTRY;
+-		datalen -= MAX_PRDT_ENTRY;
++				  segment - 1);
++		buf += segment;
++		datalen -= segment;
+ 	}
+ 
+ 	prepare_prdt_desc(hba, &prd_table[table_length - i - 1], buf, datalen - 1);
+ 
+-	req_desc->prd_table_length = table_length;
++	/* Counted in entries, or in bytes on the hosts that ask for bytes. */
++	if (hba->quirks & UFSHCD_QUIRK_PRDT_BYTE_GRAN)
++		req_desc->prd_table_length = table_length * sizeof(*prd_table);
++	else
++		req_desc->prd_table_length = table_length;
+ 	ufshcd_cache_flush(prd_table, sizeof(*prd_table) * table_length);
+ 	ufshcd_cache_flush(req_desc, sizeof(*req_desc));
++
++	return 0;
+ }
+ 
+-static int ufs_scsi_exec(struct udevice *scsi_dev, struct scsi_cmd *pccb)
++/*
++ * Put the transfer list back on its feet after a command that did not come
++ * back clean.
++ *
++ * There is nothing of the sort anywhere else in this driver: a request that
++ * ends in anything but plain success is simply left where it lies, and this
++ * host will not take another one afterwards.  Measured on the phone this was
++ * written for: a command carrying a check condition completes properly, and
++ * the next one, laid out byte for byte the same, is never picked up, with the
++ * slot still claimed and not one interrupt raised.  Stopping the list and
++ * starting it again gives the host somewhere to begin from.
++ */
++static void ufshcd_restart_tr_list(struct ufs_hba *hba)
++{
++	dev_info(hba->dev, "restarting the list, doorbell %08x\n",
++		 ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL));
++
++	ufshcd_writel(hba, 0, REG_UTP_TRANSFER_REQ_LIST_RUN_STOP);
++	ufshcd_wait_for_register(hba, REG_UTP_TRANSFER_REQ_LIST_RUN_STOP,
++				 UTP_TRANSFER_REQ_LIST_RUN_STOP_BIT, 0, 100);
++
++	ufshcd_writel(hba, UTP_TRANSFER_REQ_LIST_RUN_STOP_BIT,
++		      REG_UTP_TRANSFER_REQ_LIST_RUN_STOP);
++
++	if (ufshcd_wait_for_register(hba, REG_CONTROLLER_STATUS,
++				     UTP_TRANSFER_REQ_LIST_READY,
++				     UTP_TRANSFER_REQ_LIST_READY, 100))
++		dev_err(hba->dev, "the list would not come back\n");
++
++	dev_info(hba->dev, "list restarted, doorbell %08x, status %08x\n",
++		 ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL),
++		 ufshcd_readl(hba, REG_CONTROLLER_STATUS));
++}
++
++static int ufs_scsi_exec_once(struct udevice *scsi_dev,
++			      struct scsi_cmd *pccb)
+ {
+ 	struct ufs_hba *hba = dev_get_uclass_priv(scsi_dev->parent);
+ 	u32 upiu_flags;
+-	int ocs, result = 0;
++	int ocs, ret, result = 0;
++	unsigned long zaczeto;
+ 	u8 scsi_status;
+ 
+ 	ufshcd_prepare_req_desc_hdr(hba, &upiu_flags, pccb->dma_dir);
++	ufshcd_ops_setup_xfer_req(hba, TASK_TAG, true);
+ 	ufshcd_prepare_utp_scsi_cmd_upiu(hba, pccb, upiu_flags);
+-	prepare_prdt_table(hba, pccb);
++	ret = prepare_prdt_table(hba, pccb);
++	if (ret)
++		return ret;
+ 
+ 	ufshcd_cache_flush(pccb->pdata, pccb->datalen);
+ 
+-	ufshcd_send_command(hba, TASK_TAG);
++	zaczeto = get_timer(0);
++	ret = ufshcd_send_command(hba, TASK_TAG, SCSI_CMD_TIMEOUT);
++
++	/*
++	 * BRING UP: which command is slow, and how slow.  A device that has
++	 * just been reset has work of its own to finish, and the difference
++	 * between waiting two seconds for that and waiting out a full timeout
++	 * on a command that was never going to come back is the whole
++	 * question.
++	 */
++	if (get_timer(zaczeto) > 50)
++		dev_info(hba->dev, "command %02x took %lu ms%s\n",
++			 pccb->cmd[0], get_timer(zaczeto),
++			 ret ? " and failed" : "");
++
++	if (ret)
++		return ret;
+ 
+ 	ufshcd_cache_invalidate(pccb->pdata, pccb->datalen);
+ 
+ 	ocs = ufshcd_get_tr_ocs(hba);
++
++	/*
++	 * Some hosts report a fatal error of their own where there is none.
++	 * Where the device sent a response frame back, the command did reach
++	 * it and did come back, so what the device said is what counts and the
++	 * host's complaint is discarded.
++	 */
++	if ((hba->quirks & UFSHCD_QUIRK_BROKEN_OCS_FATAL_ERROR) &&
++	    ocs == OCS_FATAL_ERROR &&
++	    ufshcd_get_req_rsp(hba->ucd_rsp_ptr) == UPIU_TRANSACTION_RESPONSE) {
++		dev_dbg(hba->dev, "host claimed a fatal error, device answered\n");
++		ocs = OCS_SUCCESS;
++	}
++
+ 	switch (ocs) {
+ 	case OCS_SUCCESS:
+ 		result = ufshcd_get_req_rsp(hba->ucd_rsp_ptr);
+@@ -1683,8 +1847,23 @@ static int ufs_scsi_exec(struct udevice *scsi_dev, struct scsi_cmd *pccb)
+ 			result = ufshcd_get_rsp_upiu_result(hba->ucd_rsp_ptr);
+ 
+ 			scsi_status = result & MASK_SCSI_STATUS;
+-			if (scsi_status)
++			if (scsi_status == S_CHECK_COND) {
++				u8 *s = hba->ucd_rsp_ptr->sr.sense_data;
++
++				dev_info(hba->dev,
++					 "check condition: key %02x, code %02x, qualifier %02x, %u bytes\n",
++					 s[2] & 0x0f, s[12], s[13],
++					 be16_to_cpu(hba->ucd_rsp_ptr->sr.sense_data_len));
++				ufshcd_restart_tr_list(hba);
++
++				return -EAGAIN;
++			}
++			if (scsi_status) {
++				dev_err(hba->dev,
++					"device refused the command: result %08x, status %02x\n",
++					result, scsi_status);
+ 				return -EINVAL;
++			}
+ 
+ 			break;
+ 		case UPIU_TRANSACTION_REJECT_UPIU:
+@@ -2188,7 +2367,14 @@ int ufshcd_probe(struct udevice *ufs_dev, struct ufs_hba_ops *hba_ops)
+ 
+ 	scsi_plat = dev_get_uclass_plat(scsi_dev);
+ 	scsi_plat->max_id = UFSHCD_MAX_ID;
+-	scsi_plat->max_lun = UFS_MAX_LUNS;
++	/*
++	 * Everything this board boots from lives on the first logical unit.
++	 * The identifier can go as high as UFS_MAX_LUNS, but a unit that the
++	 * device has not been given does not answer at all rather than saying
++	 * so, and every one of them then costs a full command timeout, which
++	 * is minutes of waiting after the disk has already been found.
++	 */
++	scsi_plat->max_lun = 1;
+ 	scsi_plat->max_bytes_per_req = UFS_MAX_BYTES;
+ 
+ 	hba->dev = ufs_dev;
+@@ -2211,6 +2397,14 @@ int ufshcd_probe(struct udevice *ufs_dev, struct ufs_hba_ops *hba_ops)
+ 		return err;
+ 	}
+ 
++	/*
++	 * How much one descriptor entry may cover is the host's to say, and it
++	 * has just said it.  The table holds a fixed number of entries, so the
++	 * largest request that can be laid out follows from the two.
++	 */
++	scsi_plat->max_bytes_per_req = (unsigned long)MAX_BUFF *
++				       ufshcd_segment_size(hba);
++
+ 	/* Read capabilities registers */
+ 	hba->capabilities = ufshcd_readl(hba, REG_CONTROLLER_CAPABILITIES);
+ 	if (hba->quirks & UFSHCD_QUIRK_BROKEN_64BIT_ADDRESS)
+@@ -2275,23 +2469,67 @@ int ufshcd_probe(struct udevice *ufs_dev, struct ufs_hba_ops *hba_ops)
+ #if IS_ENABLED(CONFIG_BOUNCE_BUFFER)
+ static int ufs_scsi_buffer_aligned(struct udevice *scsi_dev, struct bounce_buffer *state)
+ {
+-#ifdef CONFIG_PHYS_64BIT
+ 	struct ufs_hba *hba = dev_get_uclass_priv(scsi_dev->parent);
+ 	uintptr_t ubuf = (uintptr_t)state->user_buffer;
+-	size_t len = state->len_aligned;
+ 
+-	/* Check if below 32bit boundary */
+-	if ((hba->quirks & UFSHCD_QUIRK_BROKEN_64BIT_ADDRESS) &&
+-	    ((ubuf >> 32) || (ubuf + len) >> 32)) {
+-		dev_dbg(scsi_dev, "Buffer above 32bit boundary %lx-%lx\n",
+-			ubuf, ubuf + len);
++	/*
++	 * A host that is told the size of a descriptor entry as a power of two
++	 * works in whole units of that size, and a buffer beginning anywhere
++	 * else leaves it with a transfer it cannot express.  It does not say
++	 * so: it keeps the slot, raises no interrupt and never finishes.
++	 */
++	if (hba->dma_alignment && (ubuf & (hba->dma_alignment - 1))) {
++		static int powiedziane;
++
++		if (powiedziane < 3) {
++			powiedziane++;
++			dev_info(scsi_dev,
++				 "buffer %lx is off the %u byte boundary, going through one that is not\n",
++				 ubuf, hba->dma_alignment);
++		}
+ 		return 0;
+ 	}
++
++#ifdef CONFIG_PHYS_64BIT
++	{
++		size_t len = state->len_aligned;
++
++		/* Check if below 32bit boundary */
++		if ((hba->quirks & UFSHCD_QUIRK_BROKEN_64BIT_ADDRESS) &&
++		    ((ubuf >> 32) || (ubuf + len) >> 32)) {
++			dev_dbg(scsi_dev, "Buffer above 32bit boundary %lx-%lx\n",
++				ubuf, ubuf + len);
++			return 0;
++		}
++	}
+ #endif
+ 	return 1;
+ }
+ #endif	/* CONFIG_BOUNCE_BUFFER */
+ 
++/*
++ * A device fresh out of reset answers the first command it is given with a
++ * check condition, its way of saying that it has just been reset.  Asking it
++ * for the detail clears the condition, and the command is then given again.
++ * A handful of goes is plenty, and the count is there so that a device that
++ * complains about everything cannot hold the boot forever.
++ */
++#define UFS_CHECK_COND_TRIES	4
++
++static int ufs_scsi_exec(struct udevice *scsi_dev, struct scsi_cmd *pccb)
++{
++	int ret, i;
++
++	for (i = 0; i < UFS_CHECK_COND_TRIES; i++) {
++		ret = ufs_scsi_exec_once(scsi_dev, pccb);
++		if (ret != -EAGAIN)
++			return ret;
++
++	}
++
++	return ret;
++}
++
+ static struct scsi_ops ufs_ops = {
+ 	.exec		= ufs_scsi_exec,
+ #if IS_ENABLED(CONFIG_BOUNCE_BUFFER)
+diff --git a/drivers/ufs/ufs.h b/drivers/ufs/ufs.h
+index 0f6c93fb..7f324018 100644
+--- a/drivers/ufs/ufs.h
++++ b/drivers/ufs/ufs.h
+@@ -528,6 +528,13 @@ struct ufs_hba_ops {
+ 				   enum ufs_notify_change_status);
+ 	int (*phy_initialization)(struct ufs_hba *hba);
+ 	int (*device_reset)(struct ufs_hba *hba);
++	/*
++	 * Called once a request has been laid out and before the doorbell is
++	 * rung, for hosts that have to be told what kind of request sits in a
++	 * slot.  @is_scsi_cmd separates a command meant for a logical unit
++	 * from a request meant for the device itself.
++	 */
++	void (*setup_xfer_req)(struct ufs_hba *hba, int tag, bool is_scsi_cmd);
+ };
+ 
+ enum ufshcd_quirks {
+@@ -703,6 +710,15 @@ struct ufs_hba {
+ 	u32			intr_mask;
+ 	enum ufshcd_quirks	quirks;
+ 
++	/*
++	 * What the host demands of the buffer a transfer is read into or
++	 * written from: the most that one descriptor entry may cover, and the
++	 * boundary the buffer has to begin on.  A host that demands neither
++	 * leaves both at zero, and the core then keeps to its own limits.
++	 */
++	u32			max_segment_size;
++	u32			dma_alignment;
++
+ 	/* Virtual memory reference */
+ 	struct utp_transfer_cmd_desc *ucdl;
+ 	struct utp_transfer_req_desc *utrdl;
+@@ -738,6 +754,13 @@ static inline int ufshcd_ops_get_max_pwr_mode(struct ufs_hba *hba,
+ 	return 0;
+ }
+ 
++static inline void ufshcd_ops_setup_xfer_req(struct ufs_hba *hba, int tag,
++					    bool is_scsi_cmd)
++{
++	if (hba->ops && hba->ops->setup_xfer_req)
++		hba->ops->setup_xfer_req(hba, tag, is_scsi_cmd);
++}
++
+ static inline int ufshcd_ops_hce_enable_notify(struct ufs_hba *hba,
+ 					       bool status)
+ {
+-- 
+2.47.3
+

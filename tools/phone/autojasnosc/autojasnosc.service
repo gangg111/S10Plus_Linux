@@ -1,0 +1,12 @@
+[Unit]
+Description=Automatyczna jasnosc ekranu (czujnik swiatla pod ekranem)
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/lib/autojasnosc/autojasnosc.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical-session.target

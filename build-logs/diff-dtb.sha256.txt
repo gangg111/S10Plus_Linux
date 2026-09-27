@@ -1,0 +1,5 @@
+--- /c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/golden/dtb.sha256	2026-09-27 03:17:57.166661000 +0200
++++ /c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/.pc-tools/dtb.sha256	2026-09-27 04:58:19.488379200 +0200
+@@ -1 +1 @@
+-f8c3e263b1fe5aca9b4d7b6e823dc2374ed5c99ad1b5ed2df55640c89b67159a  exynos9820-beyond2lte.dtb
++8bdee11695ef370dfa724c3baa691ed101427dad340ddd5aa808a6c18624b0b8  exynos9820-beyond2lte.dtb

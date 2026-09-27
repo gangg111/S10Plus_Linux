@@ -429,12 +429,19 @@ i porownac z wartoscia oryginalnego kontrolera; `evtest` na /dev/input/eventN.
 
 #### HW-24 Domena zasilania G3D
 
-**Niepewne.** Nie wiadomo, czy wlaczenie domeny G3D wymaga SMC do EL3. Blok CMU_G3D nie istnieje
-w zadnej warstwie zegarow (ani mainline, ani chiffathefox), wiec pozycja jest zablokowana
-podwojnie: brak sterownika i nieznana sciezka wlaczania.
+**Czesciowo rozstrzygniete (24.09.2026).** Bootloader zostawia domene wlaczona (PMU 0x15862100
+CONFIGURATION = 1, STATUS = 1), a zegar i napiecie GPU prowadzi firmware APM (domena DVFS 10),
+wiec CMU_G3D nie jest potrzebne do pracy GPU: panfrost wstaje na tym stanie, GPU_ID 0x72110000
+(measurements/2026-09-24-gpu). Wezel GPU w drzewie celowo nie ma `power-domains`.
 
-**Zmierzyc.** Po dopisaniu bloku CMU_G3D: proba wlaczenia domeny i log. Jesli nie wstaje bez SMC,
-sprawdzic, czy EL3 wystawia odpowiedni identyfikator.
+Otwarte zostaje wylaczanie domeny. Producent wola wokol kazdego cyklu zasilania SMC
+0x82000410 z adresem 0x18410204 (need_smc z drzewa producenta) i grupa 2: tryb 0 przed
+wylaczeniem (zapis konfiguracji TrustZone bloku), tryb 1 po wlaczeniu (odtworzenie); kod
+w exynos-el3_mon.c i cal-if/pmucal_local.c drzewa LineageOS z SOURCES.md. Sterownik domen
+w mainline tego nie robi.
+
+**Zmierzyc.** Z dopisanym SMC w sterowniku domen: wylaczenie i wlaczenie domeny G3D, potem
+odczyt GPU_ID i test renderu. Bez SMC nie wlaczac `power-domains` w wezle GPU.
 
 #### HW-25 Wlasciciel bloku bias D-PHY
 
@@ -618,6 +625,16 @@ liczy z tej czestotliwosci opoznienia, dostanie zla liczbe.
 z `clk_summary` dla `gout_peris_gic_clk`. Bity wyboru sa nieudokumentowane,
 wiec dowodem bedzie zgodnosc czestotliwosci zmierzonej z jednym z dwoch wejsc,
 a nie sama zawartosc rejestru.
+
+**Ten sam przypadek w CMU_AUD.** `MUX_HCHGEN_CLK_AUD_CPU` ma rejestr pod
+0x101c (`sources/ds/cmucal-sfr.c:347`) i tylko pola BUSY i automatycznego
+bramkowania (`sources/ds/cmucal-sfr.c:3370`). Wejscia: `MUX_CLK_AUD_CPU`
+i `OSCCLK_AUD` (`sources/ds/cmucal-node.c:972`), odbiorcy: trzy dzielniki
+zegarow rdzenia audio i bramka CA32 (`sources/ds/cmucal-node.c:1244`,
+`sources/ds/cmucal-node.c:1480`). Sterownik podpina je pod `mout_aud_cpu`.
+Zmierzyc tak samo: odczyt 0x18c0101c przy wlaczonej domenie AUD i porownanie
+z `clk_summary`. Czestotliwosc tych zegarow nic nie znaczy, dopoki rdzen DSP
+audio nie jest uruchamiany.
 
 **Miejsce w serii:** `drivers/clk/samsung/clk-exynos9820.c`
 
@@ -922,3 +939,221 @@ a ich obsluga nalezy do sterownikow, ktorych ten port nie ma.
 **Pilnuje:** `scripts/check-memory-map.py` wymaga, zeby kazda zadeklarowana rezerwacja
 istniala w blobie z telefonu pod tym samym adresem i rozmiarem. Test negatywny wykonany:
 przesuniecie `el2_code` o 0x100000 zapala bramke.
+
+#### HW-41 Zegar odniesienia PHY pamieci masowej
+
+Wezel PHY w `arch/arm64/boot/dts/exynos/exynos9820.dtsi` podaje jako `ref_clk` oscylator
+plyty. **To jest wniosek, nie odczyt.** Drzewo producenta nie opisuje osobnego PHY dla UFS
+w ogole: jego sterownik siega do bloku PMA z wnetrza sterownika hosta i zadnego zegara przy
+tym nie pobiera. Nasz wlasny sterownik w bootloaderze tez zadnego nie pobiera, a lacze mimo
+to staje na HS Gear 3 po dwoch pasach, co znaczy tylko tyle, ze zegar plynie, nie skad plynie.
+
+Binding `samsung,ufs-phy.yaml` wymaga dokladnie jednego `ref_clk`, wiec pole musi byc
+wypelnione. Wybrano oscylator, bo to jego pin sasiad wyprowadza do kosci jako
+`ufs_refclk_out`.
+
+**Jak zamknac:** odczytac bit zatrzasku PLL w bloku PMA przy odcietym oscylatorze albo
+zmierzyc czestotliwosc na pinie `gpf3-0`. Jesli zatrzask znika razem z oscylatorem, wpis jest
+potwierdzony i wchodzi do `scripts/verify.sh` jako golden.
+
+**Czego NIE robic:** nie zastepowac tego modelem ani analogia do gs101. Tamten uklad ma
+wlasny wpis w swoim drzewie, nasz go nie ma.
+
+#### HW-42 Tryb bloku USI, na ktorym siedzi glowny PMIC
+
+`arch/arm64/boot/dts/exynos/exynos9820.dtsi` opisuje magistrale
+`i2c@15d60000` jako I2C, ale ten blok jest **USI**, nie dedykowanym kontrolerem:
+o tym, czy mowi I2C, SPI czy UART, decyduje rejestr trybu LEZACY POZA NIM,
+w bloku rejestrow systemowych domeny CMGP. Naszego wezla dla tego rejestru NIE MA.
+
+Bierzemy tryb, ktory zostawia firmware rozruchowe, na tej podstawie, ze ono
+odczytuje te bateria zanim odda maszyne, wiec musialo ten tryb ustawic. To jest
+wniosek, nie odczyt. Bazy samego bloku rejestrow systemowych CMGP rowniez nie
+mamy skad wziac: w zrzutach producenta nie ma ani wezla pod tym adresem, ani
+etykiety, a wartosc 0x15c20000 wychodzi z analogii do domeny PERIC0.
+
+**Jak zamknac:** odczytac rejestr trybu pod 0x15c22030 na wystartowanym
+systemie i porownac z wartoscia oznaczajaca I2C. Jesli magistrala nie odpowiada,
+to jest pierwsza rzecz do sprawdzenia, nie adres ukladu.
+
+**Czego NIE robic:** nie dopisywac wezla `sysreg` pod wyliczonym adresem
+"na probe". Na tym ukladzie zapis pod zly adres konczy sie zewnetrznym
+przerwaniem magistrali, co juz nas raz kosztowalo cala sesje przy PLL.
+
+**ZAMKNIETE: wezel jest, tryb ustawiany jawnie, a bez niego blok stoi.**
+Drzewo ma `sysreg_cmgp` i kazda magistrala tej domeny dostaje jawne
+`samsung,sysreg` z offsetem swojego rejestru trybu (`0x30` dla tej), a plyta
+wybiera tryb wpisem `samsung,mode`. Adres nie jest juz analogia: wezly
+producenta `usi_00_cmgp` do `usi_03_cmgp_i2c` wymieniaja te rejestry po
+jednym, od `0x15c22000` w gore. Zmierzone na telefonie: bez wezla USI blok
+stoi w resecie, zapisy sterownika nie docieraja i magistrala nie zglasza
+zadnego przerwania; z wezlem transfery dochodza do skutku.
+
+Osobno, i wazniejsze dla tej pozycji: **glowny uklad zasilania nie odpowiada
+na tej magistrali w ogole**, bo siedzi za firmware APM, a nie na szynie
+procesora. Opisuje to runda R11 i wezel `firmware/power-management`.
+
+#### HW-43 Adres licznika ladunku na magistrali PMIC-a
+
+`arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts` opisuje licznik ladunku
+pod adresem 0x36. **Ten adres jest analogia, nie odczytem.** Pochodzi z jedynej
+innej plyty w mainline noszacej ten sam uklad, Galaxy S9.
+
+Zrodla producenta dla tego telefonu nie kłada licznika ladunku na magistrali
+w ogole: wieszaja go w korzeniu drzewa bez adresu i wiaza z bateria po nazwie
+(`battery,fuelgauge_name = "max77705-fuelgauge"`), wiec nie da sie stamtad
+odczytac ani adresu, ani tego, czy jest taki sam jak w S9.
+
+**ZAMKNIETE 20.09.2026: adres potwierdzony pomiarem.** Magistrala zostala
+przeskanowana na wystartowanym telefonie, transferem wygenerowanym RECZNIE na jej
+wlasnych nogach (sterowanie otwartym drenem przez /dev/gpiochipN, okolo 100 kHz),
+z pominieciem kontrolera sprzetowego. Odpowiedzialy trzy uklady: **0x36** (licznik
+ladunku, czyli wlasnie ta analogia), 0x66 (uklad towarzyszacy) oraz 0x69. Kontrola
+spoczynku wypadla dobrze, obie linie czytaly sie jako wysokie.
+
+Analogia z Galaxy S9 okazala sie trafna i wezel zostaje bez zmian.
+
+#### HW-44 Wi-Fi wymaga kontrolera PCIe, ktorego mainline dla tego SoC nie ma
+
+**Stan na 23.09.2026: ROZWIAZANE NA SPRZECIE.** Lacze wstaje przy pierwszej
+probie, `brcmfmac` uruchamia obraz producenta na BCM4375B1, `wlan0` powstaje
+sam przy kazdym rozruchu, skan widzi 2,4 i 5 GHz (6 GHz modul nie ma).
+Brakowalo trzech rzeczy, ktorych bez telefonu nie bylo widac: zasilania
+ukladu linia WL_REG_ON (`gpg0-5`), kolejnosci PERST# przed PHY i odmowy MSI;
+wnosza je latki 0101-0103, a latka 0104 dopisuje slowo `host_cap`, bez
+ktorego firmware nie oddawal zadnej ramki danych (skan i asocjacja szly,
+WPA2 nie). Firmware musi lezec w initramfs, bo `brcmfmac`
+jest wbudowany. Pomiar i szczegoly: `measurements/2026-09-23-wifi/` oraz
+`docs/R14-wifi.md`.
+
+**Stan na 21.09.2026: obie sciany opisane nizej sa juz zbudowane w kodzie,
+niesprawdzone na sprzecie.** Latka 0084 wnosi opis wiazania, 0085 sterownik
+kontrolera razem z warstwa fizyczna, 0086 wezel w drzewie urzadzen, a 0087
+wpis ukladu 4375 do `brcmfmac`. Otwarte zostaje to, czego nie da sie
+rozstrzygnac bez telefonu: czy lacze w ogole wstaje i czy obraz firmware
+producenta (`bcmdhd`) jest do przyjecia przez `brcmfmac`. Opis ponizej
+pokazuje, skad ta robota sie wziela.
+
+Uklad lacznosci tego telefonu to **BCM4375**: Bluetooth wisi na porcie
+szeregowym (runda R12 go uruchamia), ale Wi-Fi jest **na PCIe**, i tu droga
+jest zamknieta z dwoch stron naraz.
+
+**Strona pierwsza, kontroler.** `drivers/pci/controller/dwc/pci-exynos.c`
+w mainline zna dokladnie jeden uklad: `samsung,exynos5433-pcie`. Dla Exynosa
+9820 nie ma ani wpisu, ani opisu wiazania, ani sterownika warstwy fizycznej.
+Napisanie tego to osobna robota rzedu tej, ktora poszla na pamiec masowa.
+
+**Strona druga, sam uklad.** `brcmfmac` w sciezce PCIe zna 43752, 4377 i 4378,
+ale **nie zna 4375**: nie ma dla niego ani wpisu identyfikatora, ani nazw
+plikow firmware. Nawet z dzialajacym kontrolerem uklad nie dostalby sterownika.
+
+**Czego NIE robic:** nie probowac obejscia przez USB ani przez tryb urzadzenia
+na jakiejkolwiek innej magistrali. Ten uklad ma tylko jedno wyprowadzenie
+danych Wi-Fi i jest nim PCIe.
+
+**Co jest zamiast:** Bluetooth na porcie szeregowym, ktory daje siec osobista
+i klawiature, oraz polaczenie po kablu. Dla samego SSH to wystarcza.
+
+**Skala roboty, gdyby jednak.** Producent ma dwa kontrolery, `13ed0000.pcie0`
+i `13120000.pcie1`, obsluzone czterema plikami downstreamu:
+`pcie-exynos-host-v0.c`, `pcie-exynos-host-v1.c`, `pci-exynos9820_cal.c`
+i `pci-host-v1-exynos9820_cal.c`. Sa wiec dane, z ktorych da sie napisac port
+na `pcie-designware`, tak jak zrobilismy to dla pamieci masowej. To znaczy, ze
+droga istnieje, ale jest rzedu calej rundy UFS, a nie poprawki: kontroler,
+warstwa fizyczna, opis sprzetu, do tego wpis ukladu w `brcmfmac` razem
+z nazwami plikow firmware, ktorych ten sterownik dla 4375 nie zna.
+
+#### HW-45 Kolejnosc rejestracji dzielnikow CMU_PERIC0 w bootloaderze
+
+**Co zmienione, 21.09.2026.** W `clk-exynos9820.c` bootloadera dwa dzielniki,
+`dout_cmu_peric0_bus` i `dout_cmu_peric0_ip`, lezaly w tablicy rejestrowanej
+PRZED tablica bramek, a ich rodzicami sa wlasnie bramki. `clk_register` wiaze
+rodzica po nazwie i przy jego braku nie przerywa, tylko wpisuje NULL, wiec oba
+dostawaly czestotliwosc policzona z `-ENODEV`. Wyszly do wlasnej tablicy
+`top_div_peric0_clks` rejestrowanej za bramkami, czyli dokladnie tak, jak juz
+stoja dzielniki APM, PERIS, DPU, UFS i USB w tym samym pliku. Bramka
+`scripts/check-uboot-clk-order.py` zglasza po tej zmianie zero naruszen przy
+259 zegarach w 9 CMU, a drzewo bootloadera buduje sie do `u-boot.bin`.
+
+**Dlaczego to jest pozycja sprzetowa, a nie zamknieta.** Te dwa zegary zasilaja
+CMU_PERIC0, z ktorego bierze takt konsola (`clk_uart_baud0`). Poprzednia proba
+naprawienia kolejnosci skonczyla sie bootloopem i zostala wycofana: poprawna
+czestotliwosc weszla do `serial_s5p.c`, ktory liczyl `uclk / baudrate`, a potem
+`val / 16 - 1`, wiec kazda wartosc ponizej 1 843 200 dawala w rejestrze podzialu
+0xFFFFFFFF. Port przestawal sie oprozniac, `putc` ponawial bez ogranicznika,
+a czujnik zawieszenia konczyl to resetem. **Ten lancuch jest juz przerwany**:
+`serial_s5p.c` ma dzis warunek `if (val < 16) return;`, czyli przy niedorzecznym
+takcie zostawia podzial, ktory ustawil S-Boot, i port dalej dziala.
+
+**Co ma pokazac wgranie.** Jedna zmienna, wylacznie bootloader:
+
+* telefon wstaje i menu BEYOND BOOT wyglada jak dotad  -> kolejnosc naprawiona
+  bez szkody, pozycja do zamkniecia;
+* rozruch staje miedzy paskiem magenty a cyjanem       -> wina NIE lezy
+  w wartosci taktu konsoli, bo ta jest teraz zabezpieczona, tylko w samej
+  mechanice rejestracji, i trzeba szukac dalej.
+
+Dowodem zamkniecia ma byc odczyt czestotliwosci obu zegarow z dzialajacego
+bootloadera, a nie sam fakt, ze telefon wstal: zly rodzic nie daje zadnego
+komunikatu, wiec rozruch moze przezyc obie wersje.
+
+#### HW-46 Czy pierwszy stopien rozruchu zostawia modem zasilony
+
+Sekwencja wlaczania domeny modemu u producenta jest zamknieta warunkiem
+"stan rowny zeru", czyli wykonuje sie WYLACZNIE wtedy, gdy modem nie jest
+jeszcze wlaczony. Nie wiemy, w ktorym stanie zostawia go S-Boot, a to
+rozstrzyga, czy w ogole trzeba pisac sekwencje wlaczania, czy raczej sciezke
+zatrzymania i zwolnienia resetu.
+
+**Jak zmierzyc:** odczyt `CP_STATUS` (0x15860000 + 0x3004) bit 0 z dzialajacego
+pmOS. To rejestr domeny zawsze zasilonej, bez bramki zegarowej, wiec odczyt
+jest bezpieczny; skrzynki pod 0x15920000 przy tej okazji NIE dotykac, bo
+odczyt peryferium za zamknieta bramka juz raz w tym projekcie zawiesil telefon.
+
+**Czego NIE dowodzi:** stan 1 nie znaczy, ze modem wykonuje kod. Znaczy tylko,
+ze domena jest zasilona.
+
+#### HW-47 Czy CP_CTRL_S nalezy do swiata bezpiecznego
+
+Warstwa kalibracyjna producenta kieruje do firmware **wylacznie** rejestr
+`CP_CTRL_S` (0x15860000 + 0x3014); pozostale rejestry tej domeny sa zwykle.
+Nie wiemy, czy zapis wprost do 0x3014 z naszego jadra cokolwiek robi.
+
+**Jak zmierzyc:** zapisac bit 3 wprost, a nastepnie odczytac TEN SAM rejestr
+droga przez firmware i porownac. Rozjazd miedzy zapisem a odczytem jest
+dowodem, ze rejestr nalezy do EL3.
+
+**Pulapka, ktora ta pozycja ma ominac:** bity potwierdzenia w 0x3004 i 0x3024
+reaguja na zapis do 0x3000, a nie do 0x3014. Sekwencja moze wiec pokazac
+komplet oczekiwanych bitow, mimo ze zapis do 0x3014 zostal po cichu polkniety.
+Rozstrzygac wylacznie na 0x3014.
+
+#### HW-48 Czy firmware bezpieczenstwa przyjmie wywolanie rozruchowe modemu
+z lancucha zaczynajacego sie od NASZEGO bootloadera
+
+Firmware modemu jest podpisane, a podpis sprawdza swiat bezpieczny przez
+wywolanie `SMC 0x82000700`. Nie wiemy, czy EL3 tego egzemplarza przyjmie to
+wywolanie, gdy rozruch nie przeszedl przez pelny lancuch Androida. To jest
+**jedyny warunek rozstrzygajacy** o powodzeniu calej drogi i nie da sie go
+sprawdzic inaczej niz proba.
+
+**Jak zmierzyc:** wykonac wywolanie i odczytac kod powrotu. Kod 0x100 znaczy
+"sprawdzanie niezakonczone" i wymaga odpytywania w petli; kazdy inny kod
+bledu trzeba porownac z tablica bledow producenta.
+
+**Ryzyko tego samego rodzaju co przy pamieci masowej:** deskryptory ochrony
+UFS naleza do firmware i proba zapisu konczy sie bledem zewnetrznym oraz
+panika. Tu moze byc tak samo.
+
+#### HW-49 Typ wyzwalania przerwania skrzynki modemu
+
+Drzewo producenta opisuje przerwanie skrzynki (SPI 41) wartoscia typu 0.
+W tym projekcie juz raz okazalo sie, ze deklarowany typ wyzwalania nie zgadza
+sie z tym, co robi egzemplarz (pozycja HW-39). Zly typ daje przerwanie, ktore
+albo nie przychodzi, albo nie daje sie skasowac.
+
+**Jak zmierzyc:** po zarejestrowaniu obslugi wyzwolic zgloszenie i policzyc
+wpisy w liczniku przerwan. Licznik rosnie albo stoi, bez miejsca na
+interpretacje. Najpierw jednak sprawdzic prostsza rzecz: czy rejestr
+wiadomosci oddaje zapisana wartosc, bo to dowodzi okna i zegara, zanim w ogole
+zacznie sie mowic o przerwaniach.

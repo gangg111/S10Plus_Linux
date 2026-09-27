@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 23:40:00 +0200
+Subject: [PATCH] input: s6sy761: Add S6SY771 support
+
+The chip is the same to this driver except for one register: the one
+holding the firmware status is not implemented and the chip NAKs it.
+Measured on a Galaxy S10+, where reading 0x21 fails with -ENXIO on every
+attempt and at every length, while 0x20, 0x22 and 0x24 read back 0x00, 0x53
+and 0x02.  Probe therefore failed on a chip that is otherwise healthy: it
+reports a device ID of 0x3771, a boot status of "application", a panel of
+4096 by 4096 and, once told to scan, a stream of coordinates.
+
+Carry that one difference as match data instead of guessing from an error
+code, which would also swallow a bus that is genuinely broken.
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/input/touchscreen/s6sy761.c | 42 +++++++++++++++++++++++------
+ 1 file changed, 34 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/input/touchscreen/s6sy761.c b/drivers/input/touchscreen/s6sy761.c
+index 5072d3f67e7..e684026976a 100644
+--- a/drivers/input/touchscreen/s6sy761.c
++++ b/drivers/input/touchscreen/s6sy761.c
+@@ -94,6 +94,23 @@
+ 
+ #define S6SY761_DEV_NAME	"s6sy761"
+ 
++/*
++ * The register holding the firmware status is not there on every chip of
++ * this family.  The S6SY771 answers every neighbouring register and NAKs
++ * that one, so the board tells us whether to ask for it at all.
++ */
++struct s6sy761_chip_info {
++	bool fw_integrity;
++};
++
++static const struct s6sy761_chip_info s6sy761_chip_info = {
++	.fw_integrity = true,
++};
++
++static const struct s6sy761_chip_info s6sy771_chip_info = {
++	.fw_integrity = false,
++};
++
+ enum s6sy761_regulators {
+ 	S6SY761_REGULATOR_VDD,
+ 	S6SY761_REGULATOR_AVDD,
+@@ -104,6 +121,7 @@ struct s6sy761_data {
+ 	struct regulator_bulk_data regulators[2];
+ 	struct input_dev *input;
+ 	struct touchscreen_properties prop;
++	const struct s6sy761_chip_info *chip;
+ 
+ 	u8 data[S6SY761_EVENT_SIZE * S6SY761_EVENT_COUNT];
+ 
+@@ -393,12 +411,14 @@ static int s6sy761_hw_init(struct s6sy761_data *sdata,
+ 	/* if no tx channels defined, at least keep one */
+ 	sdata->tx_channel = max_t(u8, buffer[8], 1);
+ 
+-	ret = i2c_smbus_read_byte_data(sdata->client,
+-				       S6SY761_FIRMWARE_INTEGRITY);
+-	if (ret < 0)
+-		return ret;
+-	else if (ret != S6SY761_FW_OK)
+-		return -ENODEV;
++	if (sdata->chip->fw_integrity) {
++		ret = i2c_smbus_read_byte_data(sdata->client,
++					       S6SY761_FIRMWARE_INTEGRITY);
++		if (ret < 0)
++			return ret;
++		else if (ret != S6SY761_FW_OK)
++			return -ENODEV;
++	}
+ 
+ 	return 0;
+ }
+@@ -430,6 +450,10 @@ static int s6sy761_probe(struct i2c_client *client)
+ 	i2c_set_clientdata(client, sdata);
+ 	sdata->client = client;
+ 
++	sdata->chip = i2c_get_match_data(client);
++	if (!sdata->chip)
++		return -ENODEV;
++
+ 	sdata->regulators[S6SY761_REGULATOR_VDD].supply = "vdd";
+ 	sdata->regulators[S6SY761_REGULATOR_AVDD].supply = "avdd";
+ 	err = devm_regulator_bulk_get(&client->dev,
+@@ -539,14 +563,16 @@ static const struct dev_pm_ops s6sy761_pm_ops = {
+ 
+ #ifdef CONFIG_OF
+ static const struct of_device_id s6sy761_of_match[] = {
+-	{ .compatible = "samsung,s6sy761", },
++	{ .compatible = "samsung,s6sy761", .data = &s6sy761_chip_info },
++	{ .compatible = "samsung,s6sy771", .data = &s6sy771_chip_info },
+ 	{ },
+ };
+ MODULE_DEVICE_TABLE(of, s6sy761_of_match);
+ #endif
+ 
+ static const struct i2c_device_id s6sy761_id[] = {
+-	{ .name = "s6sy761" },
++	{ "s6sy761", (kernel_ulong_t)&s6sy761_chip_info },
++	{ "s6sy771", (kernel_ulong_t)&s6sy771_chip_info },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, s6sy761_id);

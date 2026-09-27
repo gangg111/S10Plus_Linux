@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DeepSeek Harness
+Comment=Agent DeepSeek Harness
+Exec=/home/user/.local/bin/deepseek-harness
+Icon=/home/user/.local/share/icons/hicolor/256x256/apps/deepseek-harness.png
+Terminal=false
+Categories=Development;

@@ -1,7 +1,7 @@
-From 981aea3d15b082d165ab06981667be735a05edb7 Mon Sep 17 00:00:00 2001
+From c8cfa535a8b5235d98c8155c6a839ba58fc87669 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sat, 19 Sep 2026 03:54:48 +0200
-Subject: [PATCH 8/8] board: samsung: exynos-mobile: add the Samsung Galaxy
+Subject: [PATCH 08/40] board: samsung: exynos-mobile: add the Samsung Galaxy
  S10+
 
 Brings the pieces of this port together: a configuration for the phone, the
@@ -23,9 +23,9 @@ phones, with the three entries that name that SoC replaced and the drivers
 of this one added. Two other things had to change. The number of memory
 banks goes from three to six, because this phone has six and the parser
 stops at the limit, so three of them would simply have been invisible. And
-what is left out is USB, fastboot, eMMC and the power management chip:
-none of them is on the path from reset to reading storage and handing over,
-and none of them has been tried on this phone.
+what is left out is USB, fastboot, eMMC and the power management chip: none
+of them is on the path from reset to reading storage and handing over, and
+none of them has been tried on this phone.
 
 The early console is a fragment to merge by hand rather than part of the
 configuration, because only one of its two numbers is known. The address is

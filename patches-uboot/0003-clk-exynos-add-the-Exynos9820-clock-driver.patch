@@ -1,29 +1,30 @@
-From d2c830c2cd6d18ef1c742e74a440bfa9e27bc6e2 Mon Sep 17 00:00:00 2001
+From fd150d16d9e7bf47ab6953f7bd860adf8abae5b7 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sat, 19 Sep 2026 00:03:27 +0200
-Subject: [PATCH 3/8] clk: exynos: add the Exynos9820 clock driver
+Subject: [PATCH 03/40] clk: exynos: add the Exynos9820 clock driver
 
-A boot loader needs far less of this SoC's clock tree than an operating system
-does: a console and a way to read storage.  So three of the eight CMUs are
-described here, and only the paths that lead to those two things: CMU_TOP for
-the PLLs and the dividers every other block is fed from, CMU_PERIC0 for the
-debug UART, and CMU_FSYS1 for the embedded UFS.  The card UFS, MMC, PCIe, USB,
-display and audio paths are deliberately absent, because nothing in the boot
-path touches them.
+A boot loader needs far less of this SoC's clock tree than an operating
+system does: a console and a way to read storage.  So three of the eight
+CMUs are described here, and only the paths that lead to those two things:
+CMU_TOP for the PLLs and the dividers every other block is fed from,
+CMU_PERIC0 for the debug UART, and CMU_FSYS1 for the embedded UFS.  The
+card UFS, MMC, PCIe, USB, display and audio paths are deliberately absent,
+because nothing in the boot path touches them.
 
 Every offset is the one the Linux driver for this SoC uses, where each is
 checked against the vendor's own register map by a gate.
 
-Note that the PLLs are given their CON3 offset, not CON0.  The PLL driver reads
-the M, P and S coefficients straight from the offset it is handed, and those
-live in CON3; CON0 next to it is the control and mux register.  The vendor map
-shows the pairing on a PLL where it happens to name both registers,
-PLL_CON0_PLL_AUD0 at 0x120 and PLL_CON3_PLL_AUD0 at 0x12c.  Handing over CON0
-does not fail loudly, it just produces nonsense rates, so it is worth stating.
+Note that the PLLs are given their CON3 offset, not CON0.  The PLL driver
+reads the M, P and S coefficients straight from the offset it is handed,
+and those live in CON3; CON0 next to it is the control and mux register.
+The vendor map shows the pairing on a PLL where it happens to name both
+registers, PLL_CON0_PLL_AUD0 at 0x120 and PLL_CON3_PLL_AUD0 at 0x12c.
+Handing over CON0 does not fail loudly, it just produces nonsense rates, so
+it is worth stating.
 
-The bindings header comes along because Exynos9820 is not in the upstream device
-tree collection yet; once it lands there, this copy goes away with the usual
-dts/upstream sync.
+The bindings header comes along because Exynos9820 is not in the upstream
+device tree collection yet; once it lands there, this copy goes away with
+the usual dts/upstream sync.
 
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---

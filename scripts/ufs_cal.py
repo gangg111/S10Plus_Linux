@@ -89,11 +89,25 @@ def applies_to_board(board):
     return board != "BRD_ZEBU"
 
 
-def read_driver_from_patch(gate, patch_glob, driver_path):
-    """Wyciaga tresc sterownika z patcha, bo to patch jest tym, co sie wysyla."""
-    hits = sorted((ROOT / "patches-uboot").glob(patch_glob))
+def read_driver_from_patch(gate, patch_glob, driver_path, series="patches-uboot"):
+    """Wyciaga tresc sterownika z patcha, bo to patch jest tym, co sie wysyla.
+
+    Seria jest parametrem, bo te same tablice producenta trafiaja do dwoch
+    drzew: bootloadera w `patches-uboot/` i jadra w `patches/`.
+
+    Glob MUSI trafiac w dokladnie jeden patch. Wczesniej brano pierwszy
+    z brzegu, wiec seria, w ktorej sterownika dotyka kilka patchy, gubila
+    czesc tablic po cichu, a polowa bramki liczaca kompletnosc zglaszala je
+    jako pominiete linie producenta, co wyglada na blad w zupelnie innym
+    miejscu.
+    """
+    hits = sorted((ROOT / series).glob(patch_glob))
     if not hits:
-        skip(gate, "brak patcha %s w patches-uboot/" % patch_glob)
+        skip(gate, "brak patcha %s w %s/" % (patch_glob, series))
+    if len(hits) > 1:
+        fail(gate, "glob %s trafia w %d patchy w %s/, zawez go: %s"
+                   % (patch_glob, len(hits), series,
+                      ", ".join(h.name for h in hits)))
 
     lines, inside = [], False
     for raw in hits[0].read_text(encoding="utf-8", errors="replace").splitlines():

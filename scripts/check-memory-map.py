@@ -115,15 +115,21 @@ def rozbij_reg(dane, ac, sc):
 
 
 def zbierz(wezly, prefiks, rodzic):
-    """Mapa (adres, rozmiar) -> nazwa wezla dla dzieci danego rodzica."""
-    ac, sc = komorki(wezly, rodzic)
+    """Mapa (adres, rozmiar) -> nazwa wezla dla POTOMKOW danego rodzica.
+
+    Schodzimy glebiej niz jeden poziom, bo drzewo producenta trzyma czesc
+    rezerwacji w podgrupie: obszar log_kernel, ktory bierzemy pod ramoops,
+    siedzi w reserved-memory/debug_snapshot, a nie wprost pod reserved-memory.
+    Wczesniejsza wersja takie wezly pomijala i zglaszala nasza rezerwacje jako
+    nieistniejaca po stronie telefonu, choc adres i rozmiar zgadzaly sie co do
+    bitu.  Liczbe komorek adresu i rozmiaru bierzemy od BEZPOSREDNIEGO rodzica
+    kazdego wezla, bo podgrupa deklaruje je u siebie.
+    """
     out = {}
     for sciezka, w in wezly.items():
         if not sciezka.startswith(prefiks) or "reg" not in w:
             continue
-        reszta = sciezka[len(prefiks):]
-        if "/" in reszta:
-            continue
+        ac, sc = komorki(wezly, sciezka.rsplit("/", 1)[0] or rodzic)
         for para in rozbij_reg(w["reg"], ac, sc):
             out[para] = sciezka
     return out

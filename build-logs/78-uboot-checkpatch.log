@@ -1,0 +1,469 @@
+########## 0001-pinctrl-exynos-add-the-Exynos9820-pin-controller-dri.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#53: 
+new file mode 100644
+
+CHECK: Please don't use multiple blank lines
+#234: FILE: drivers/pinctrl/exynos/pinctrl-exynos9820.c:177:
++
++
+
+total: 0 errors, 1 warnings, 1 checks, 208 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0001-pinctrl-exynos-add-the-Exynos9820-pin-controller-dri.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0002-clk-exynos-add-the-PLL_0817X-PLL_0818X-and-PLL_1018X.patch
+total: 0 errors, 0 warnings, 0 checks, 21 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0002-clk-exynos-add-the-PLL_0817X-PLL_0818X-and-PLL_1018X.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0003-clk-exynos-add-the-Exynos9820-clock-driver.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#66: 
+new file mode 100644
+
+WARNING: DT binding docs and includes should be a separate patch. See: Documentation/devicetree/bindings/submitting-patches.rst
+
+total: 0 errors, 2 warnings, 0 checks, 902 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0003-clk-exynos-add-the-Exynos9820-clock-driver.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0004-phy-samsung-add-the-UFS-PHY-driver-for-Exynos9820.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#114: 
+new file mode 100644
+
+CHECK: Macro argument reuse 'o' - possible side-effects?
+#807: FILE: drivers/phy/phy-samsung-ufs.h:89:
++#define PHY_TRSV_REG_CFG_GEAR(o, v, g, stride) {	\
++	.off_0	= PHY_APB_ADDR(o),			\
++	.off_1	= PHY_APB_ADDR((o) + (stride)),		\
++	.val	= (v),					\
++	.gear	= (g),					\
++	.id	= PHY_CFG_TRSV,				\
++}
+
+total: 0 errors, 1 warnings, 1 checks, 874 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0004-phy-samsung-add-the-UFS-PHY-driver-for-Exynos9820.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0005-ufs-exynos-add-the-host-controller-driver-for-Exynos.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#103: 
+new file mode 100644
+
+CHECK: Macro argument reuse 'x' - possible side-effects?
+#828: FILE: drivers/ufs/ufs-exynos.h:42:
++#define BURST_LEN(x)			(((x) << 27) | (x))
+
+total: 0 errors, 1 warnings, 1 checks, 787 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0005-ufs-exynos-add-the-host-controller-driver-for-Exynos.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0006-board-samsung-exynos-mobile-stop-requiring-an-eMMC.patch
+WARNING: Use 'if (IS_ENABLED(CONFIG...))' instead of '#if or #ifdef' where possible
+#101: FILE: board/samsung/exynos-mobile/exynos-mobile.c:276:
++#if CONFIG_IS_ENABLED(FASTBOOT)
+
+total: 0 errors, 1 warnings, 0 checks, 91 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0006-board-samsung-exynos-mobile-stop-requiring-an-eMMC.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0007-dts-exynos-add-the-Exynos9820-and-Galaxy-S10-device-.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#33: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 1719 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0007-dts-exynos-add-the-Exynos9820-and-Galaxy-S10-device-.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0008-board-samsung-exynos-mobile-add-the-Samsung-Galaxy-S.patch
+WARNING: Use the livetree API (dev_read_...)
+#340: FILE: board/samsung/exynos-mobile/exynos-mobile.c:406:
++		base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg",
+
+WARNING: Use the livetree API (dev_read_...)
+#353: FILE: board/samsung/exynos-mobile/exynos-mobile.c:419:
++	base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg", 0,
+
+WARNING: Use the livetree API (dev_read_...)
+#358: FILE: board/samsung/exynos-mobile/exynos-mobile.c:424:
++	height = fdtdec_get_int(fdt, node, "height", 0);
+
+WARNING: Use the livetree API (dev_read_...)
+#359: FILE: board/samsung/exynos-mobile/exynos-mobile.c:425:
++	stride = fdtdec_get_int(fdt, node, "stride", 0);
+
+total: 0 errors, 4 warnings, 0 checks, 478 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0008-board-samsung-exynos-mobile-add-the-Samsung-Galaxy-S.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0009-dts-exynos-sync-the-Exynos9820-device-trees-with-the.patch
+WARNING: DT binding docs and includes should be a separate patch. See: Documentation/devicetree/bindings/submitting-patches.rst
+
+total: 0 errors, 1 warnings, 0 checks, 1055 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0009-dts-exynos-sync-the-Exynos9820-device-trees-with-the.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0010-clk-exynos-add-the-remaining-CMU-blocks-of-the-Exyno.patch
+total: 0 errors, 0 warnings, 0 checks, 1428 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0010-clk-exynos-add-the-remaining-CMU-blocks-of-the-Exyno.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0011-clk-exynos-register-the-CMU_PERIC0-dividers-after-th.patch
+total: 0 errors, 0 warnings, 0 checks, 30 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0011-clk-exynos-register-the-CMU_PERIC0-dividers-after-th.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0012-ufs-bounce-transfer-buffers-that-are-not-aligned-for.patch
+WARNING: Use 'if (IS_ENABLED(CONFIG...))' instead of '#if or #ifdef' where possible
+#443: FILE: drivers/ufs/ufs-uclass.c:2493:
++#ifdef CONFIG_PHYS_64BIT
+
+CHECK: Blank lines aren't necessary before a close brace '}'
+#478: FILE: drivers/ufs/ufs-uclass.c:2528:
++
++	}
+
+CHECK: Alignment should match open parenthesis
+#525: FILE: drivers/ufs/ufs.h:758:
++static inline void ufshcd_ops_setup_xfer_req(struct ufs_hba *hba, int tag,
++					    bool is_scsi_cmd)
+
+total: 0 errors, 1 warnings, 2 checks, 478 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0012-ufs-bounce-transfer-buffers-that-are-not-aligned-for.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0013-ufs-exynos-report-the-state-of-the-protector-and-lea.patch
+total: 0 errors, 0 warnings, 0 checks, 497 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0013-ufs-exynos-report-the-state-of-the-protector-and-lea.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0014-serial-s5p-leave-the-divider-alone-when-the-rate-mak.patch
+total: 0 errors, 0 warnings, 0 checks, 17 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0014-serial-s5p-leave-the-divider-alone-when-the-rate-mak.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0015-video-add-a-32x64-font-with-the-Polish-letters.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#103: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 8271 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0015-video-add-a-32x64-font-with-the-Polish-letters.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0016-video-exynos-take-over-the-framebuffer-the-first-sta.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#97: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 227 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0016-video-exynos-take-over-the-framebuffer-the-first-sta.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0017-cmd-bootmenu-let-a-board-draw-the-menu-itself.patch
+total: 0 errors, 0 warnings, 0 checks, 159 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0017-cmd-bootmenu-let-a-board-draw-the-menu-itself.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0018-board-samsung-exynos-mobile-the-boot-menu-of-the-Gal.patch
+CHECK: Please don't use multiple blank lines
+#55: FILE: board/samsung/exynos-mobile/exynos-mobile.c:32:
+ 
++
+
+WARNING: Use the livetree API (dev_read_...)
+#163: FILE: board/samsung/exynos-mobile/exynos-mobile.c:438:
++	base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg", 0,
+
+CHECK: Please don't use multiple blank lines
+#442: FILE: board/samsung/exynos-mobile/exynos-mobile.c:740:
++
++
+
+WARNING: Possible new command - make sure you add a test
+#596: FILE: board/samsung/exynos-mobile/exynos-mobile.c:894:
++static int do_bmenu(struct cmd_tbl *cmdtp, int flag, int argc,
+
+CHECK: Alignment should match open parenthesis
+#626: FILE: board/samsung/exynos-mobile/exynos-mobile.c:923:
++		log_warning("%s: carrying on without storage (%d)\n",
++				    __func__, ret);
+
+total: 0 errors, 2 warnings, 3 checks, 673 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0018-board-samsung-exynos-mobile-the-boot-menu-of-the-Gal.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0019-phy-exynos-add-the-Exynos9820-variant-of-the-USB-DRD.patch
+total: 0 errors, 0 warnings, 0 checks, 175 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0019-phy-exynos-add-the-Exynos9820-variant-of-the-USB-DRD.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0020-board-samsung-exynos-mobile-fastboot-over-the-cable.patch
+WARNING: Use 'if (IS_ENABLED(CONFIG...))' instead of '#if or #ifdef' where possible
+#90: FILE: board/samsung/exynos-mobile/exynos-mobile.c:333:
++#if CONFIG_IS_ENABLED(FASTBOOT_FLASH_BLOCK)
+
+WARNING: static char array declaration should probably be static const char
+#395: FILE: drivers/usb/gadget/f_fastboot.c:50:
++static char fb_ext_prop_data[] = "{F72FE0D4-CBCB-407D-8814-9ED673D0DD6B}";
+
+total: 0 errors, 2 warnings, 0 checks, 334 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0020-board-samsung-exynos-mobile-fastboot-over-the-cable.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0021-configs-exynos9820-beyond2lte-give-the-heap-room-for.patch
+total: 0 errors, 0 warnings, 0 checks, 8 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0021-configs-exynos9820-beyond2lte-give-the-heap-room-for.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0022-dts-exynos-sync-the-Galaxy-S10-tree-with-the-main-PM.patch
+total: 0 errors, 0 warnings, 0 checks, 94 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0022-dts-exynos-sync-the-Galaxy-S10-tree-with-the-main-PM.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0023-dts-exynos-let-the-kernel-tree-describe-the-whole-pa.patch
+total: 0 errors, 0 warnings, 0 checks, 82 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0023-dts-exynos-let-the-kernel-tree-describe-the-whole-pa.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0024-dts-exynos-take-the-ramoops-region-from-the-kernel-t.patch
+total: 0 errors, 0 warnings, 0 checks, 26 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0024-dts-exynos-take-the-ramoops-region-from-the-kernel-t.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0025-reboot-mode-add-a-driver-for-a-mode-kept-in-a-system.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#95: 
+new file mode 100644
+
+CHECK: Please use a blank line after function/struct/union/enum declarations
+#248: FILE: test/dm/reboot-mode.c:102:
++}
++DM_TEST(dm_test_reboot_mode_syscon,
+
+total: 0 errors, 1 warnings, 1 checks, 195 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0025-reboot-mode-add-a-driver-for-a-mode-kept-in-a-system.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0026-board-samsung-exynos-mobile-take-the-reboot-mode-fro.patch
+total: 0 errors, 0 warnings, 0 checks, 80 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0026-board-samsung-exynos-mobile-take-the-reboot-mode-fro.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0027-bcb-let-a-board-clear-one-field-from-C.patch
+total: 0 errors, 0 warnings, 0 checks, 44 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0027-bcb-let-a-board-clear-one-field-from-C.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0028-board-samsung-exynos-mobile-take-the-boot-mode-from-.patch
+total: 0 errors, 0 warnings, 0 checks, 81 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0028-board-samsung-exynos-mobile-take-the-boot-mode-from-.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0029-board-samsung-exynos-mobile-keep-the-loader-off-the-.patch
+WARNING: Use the livetree API (dev_read_...)
+#99: FILE: board/samsung/exynos-mobile/exynos-mobile.c:87:
++			start = fdtdec_get_addr_size_auto_parent(fdt, parent,
+
+total: 0 errors, 1 warnings, 0 checks, 109 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0029-board-samsung-exynos-mobile-keep-the-loader-off-the-.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0030-board-samsung-exynos-mobile-hand-the-kernel-memory-b.patch
+total: 0 errors, 0 warnings, 0 checks, 16 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0030-board-samsung-exynos-mobile-hand-the-kernel-memory-b.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0031-board-samsung-exynos-mobile-turn-a-ring-on-the-panel.patch
+WARNING: Possible new command - make sure you add a test
+#415: FILE: board/samsung/exynos-mobile/exynos-mobile.c:800:
++static int do_spinner(struct cmd_tbl *cmdtp, int flag, int argc,
+
+total: 0 errors, 1 warnings, 0 checks, 435 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0031-board-samsung-exynos-mobile-turn-a-ring-on-the-panel.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0032-board-samsung-exynos-mobile-keep-the-start-up-bands-.patch
+total: 0 errors, 0 warnings, 0 checks, 46 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0032-board-samsung-exynos-mobile-keep-the-start-up-bands-.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0033-board-samsung-exynos-mobile-leave-the-panel-to-the-p.patch
+total: 0 errors, 0 warnings, 0 checks, 87 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0033-board-samsung-exynos-mobile-leave-the-panel-to-the-p.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0034-dts-exynos-take-the-Wi-Fi-supply-from-the-kernel-tre.patch
+total: 0 errors, 0 warnings, 0 checks, 57 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0034-dts-exynos-take-the-Wi-Fi-supply-from-the-kernel-tre.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0035-dts-exynos-take-the-TMU-and-the-thermal-zones-from-t.patch
+total: 0 errors, 0 warnings, 0 checks, 110 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0035-dts-exynos-take-the-TMU-and-the-thermal-zones-from-t.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0036-dt-bindings-clock-add-the-Exynos9820-ACPM-clock-IDs.patch
+total: 0 errors, 0 warnings, 0 checks, 36 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0036-dt-bindings-clock-add-the-Exynos9820-ACPM-clock-IDs.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0037-dts-exynos-take-the-CPU-DVFS-nodes-from-the-kernel-t.patch
+total: 0 errors, 0 warnings, 0 checks, 497 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0037-dts-exynos-take-the-CPU-DVFS-nodes-from-the-kernel-t.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0038-dts-exynos-take-the-GPU-node-from-the-kernel-tree.patch
+total: 0 errors, 0 warnings, 0 checks, 25 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0038-dts-exynos-take-the-GPU-node-from-the-kernel-tree.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0039-dts-exynos-take-the-GPU-DVFS-nodes-from-the-kernel-t.patch
+total: 0 errors, 0 warnings, 0 checks, 107 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0039-dts-exynos-take-the-GPU-DVFS-nodes-from-the-kernel-t.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0040-dts-exynos-take-the-second-thermal-trip-from-the-ker.patch
+total: 0 errors, 0 warnings, 0 checks, 115 lines checked
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0040-dts-exynos-take-the-second-thermal-trip-from-the-ker.patch has no obvious style problems and is ready for submission.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE

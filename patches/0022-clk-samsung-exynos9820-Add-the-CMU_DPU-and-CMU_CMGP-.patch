@@ -31,14 +31,14 @@ on hardware. It is listed as an open question in the porting notes.
 
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---
- drivers/clk/samsung/clk-exynos9820.c | 752 +++++++++++++++++++++++++++
- 1 file changed, 752 insertions(+)
+ drivers/clk/samsung/clk-exynos9820.c | 760 +++++++++++++++++++++++++++
+ 1 file changed, 760 insertions(+)
 
 diff --git a/drivers/clk/samsung/clk-exynos9820.c b/drivers/clk/samsung/clk-exynos9820.c
-index 2d782859182..beb1bff1d22 100644
+index f9d19a8df9b..3ea1e9a631c 100644
 --- a/drivers/clk/samsung/clk-exynos9820.c
 +++ b/drivers/clk/samsung/clk-exynos9820.c
-@@ -1523,6 +1523,750 @@ static const struct samsung_cmu_info apm_cmu_info __initconst = {
+@@ -1540,6 +1540,758 @@ static const struct samsung_cmu_info apm_cmu_info __initconst = {
  	.clk_name		= "bus",
  };
  
@@ -162,8 +162,15 @@ index 2d782859182..beb1bff1d22 100644
 +};
 +
 +/*
-+ * On-chip oscillators the vendor tables give a rate for but no register:
-+ * cmucal-node.c carries them as FIXEDRATE entries.
++ * Clocks the vendor tables give a rate for but this SoC gives no readable
++ * register.  Two kinds sit here.  The on-chip oscillators have no register
++ * at all and cmucal-node.c carries them as FIXEDRATE entries.  The PLLs do
++ * have registers, but the window holding them answers no read: every attempt
++ * ends in a synchronous external abort, both from the boot loader and from
++ * here, always on the first one touched.  Registering them as PLLs is not an
++ * option either, because the core reads the register to learn the starting
++ * rate.  Their tables in cmucal-node.c hold exactly one entry each, so these
++ * are fixed by construction rather than tuned at runtime.
 + */
 +static const struct samsung_fixed_rate_clock cmgp_fixed_clks[] __initconst = {
 +	FRATE(CLK_OSCCLK_RCO_CMGP, "oscclk_rco_cmgp", NULL, 0, 49152000),
@@ -526,7 +533,8 @@ index 2d782859182..beb1bff1d22 100644
 +static const struct samsung_gate_clock dpu_gate_clks[] __initconst = {
 +	GATE(CLK_GOUT_DPU_DPU_CMU_DPU_PCLK, "gout_dpu_dpu_cmu_dpu_pclk",
 +	     "dout_dpu_busp",
-+	     CLK_CON_GAT_CLK_BLK_DPU_UID_DPU_CMU_DPU_IPCLKPORT_PCLK, 21, 0, 0),
++	     CLK_CON_GAT_CLK_BLK_DPU_UID_DPU_CMU_DPU_IPCLKPORT_PCLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
 +	GATE(CLK_GOUT_DPU_CLK_DPU_OSCCLK_CLK, "gout_dpu_clk_dpu_oscclk_clk",
 +	     "oscclk",
 +	     CLK_CON_GAT_CLK_BLK_DPU_UID_RSTNSYNC_CLK_DPU_OSCCLK_IPCLKPORT_CLK,
@@ -789,7 +797,7 @@ index 2d782859182..beb1bff1d22 100644
  /* ---- CMU_CMU ----------------------------------------------------------- */
  
  /* Register offsets for CMU_CMU (0x1a240000) */
-@@ -2463,6 +3207,14 @@ static const struct of_device_id exynos9820_cmu_of_match[] = {
+@@ -2483,6 +3235,14 @@ static const struct of_device_id exynos9820_cmu_of_match[] = {
  		.compatible = "samsung,exynos9820-cmu-apm",
  		.data = &apm_cmu_info,
  	},

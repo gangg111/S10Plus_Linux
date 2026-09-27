@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 04:58:48 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Enable the speaker
+ amplifier bus
+
+Both speaker amplifiers, CS35L40 at 0x40 for the bottom speaker and at
+0x41 for the earpiece that doubles as the second speaker, answer on the
+bus of usi17_i2c.  Enable the block in I2C mode and the bus at 400 kHz,
+the rate the vendor tree uses.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts  | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index abbad930765..327568ef1c6 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -386,6 +386,15 @@ panel_vci: ldo4 {
+ 	};
+ };
+ 
++/*
++ * The two speaker amplifiers answer on this bus, CS35L40 at 0x40 (the bottom
++ * speaker) and at 0x41 (the earpiece, which doubles as the second speaker).
++ */
++&hsi2c38 {
++	clock-frequency = <400000>;
++	status = "okay";
++};
++
+ /*
+  * The companion chip of the main PMIC: the fuel gauge, which answers how
+  * much charge is left, and the charger, which puts it back.  The charger
+@@ -630,6 +639,15 @@ &usbdrd_phy {
+ 	status = "okay";
+ };
+ 
++/*
++ * This I2C-only USI instance carries the bus of the speaker amplifiers.
++ * Picking the mode here is also what releases the block from reset.
++ */
++&usi17_i2c {
++	samsung,mode = <USI_V2_I2C>;
++	status = "okay";
++};
++
+ /* This USI instance is wired as the touchscreen I2C master on this board. */
+ &usi3 {
+ 	samsung,mode = <USI_V2_I2C>;

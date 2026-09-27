@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-2.0
+# Odpiecie gadzetu USB przy wylaczaniu telefonu.
+#
+# Zeby komputer zobaczyl telefon po restarcie bez wyjmowania kabla, musi
+# najpierw zobaczyc odlaczenie. Sam restart mu go nie daje, wiec robimy je
+# jawnie, zanim telefon zgasnie.
+#
+# Usluga nic nie robi przy starcie: caly sens siedzi w ExecStop, ktory systemd
+# wykona przy zatrzymywaniu, czyli przy kazdym restarcie i wylaczeniu.
+
+[Unit]
+Description=Odpiecie gadzetu USB przy wylaczaniu
+ConditionPathExists=/sys/kernel/config/usb_gadget/g1
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/true
+ExecStop=/usr/local/bin/usb-odepnij
+TimeoutStopSec=10
+
+[Install]
+WantedBy=multi-user.target

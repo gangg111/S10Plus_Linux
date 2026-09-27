@@ -1,0 +1,10 @@
+[General]
+count=1
+rules=firefox-pelny-ekran
+
+[firefox-pelny-ekran]
+Description=Firefox na pelnym ekranie
+wmclass=firefox
+wmclassmatch=1
+fullscreen=true
+fullscreenrule=3

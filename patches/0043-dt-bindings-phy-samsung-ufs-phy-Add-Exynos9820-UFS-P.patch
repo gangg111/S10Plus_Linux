@@ -1,0 +1,27 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 00:26:46 +0200
+Subject: [PATCH] dt-bindings: phy: samsung,ufs-phy: Add Exynos9820 UFS PHY
+
+The M-PHY of this SoC is driven the same way as the ones already
+described here: one register window of physical medium attachment
+registers, a single reference clock, and an isolation bit in the power
+management unit that has to be lifted before the link is brought up.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/phy/samsung,ufs-phy.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/phy/samsung,ufs-phy.yaml b/Documentation/devicetree/bindings/phy/samsung,ufs-phy.yaml
+index 2b20c0a5e50..a53ec19e2fd 100644
+--- a/Documentation/devicetree/bindings/phy/samsung,ufs-phy.yaml
++++ b/Documentation/devicetree/bindings/phy/samsung,ufs-phy.yaml
+@@ -17,6 +17,7 @@ properties:
+     enum:
+       - google,gs101-ufs-phy
+       - samsung,exynos7-ufs-phy
++      - samsung,exynos9820-ufs-phy
+       - samsung,exynosautov9-ufs-phy
+       - samsung,exynosautov920-ufs-phy
+       - tesla,fsd-ufs-phy

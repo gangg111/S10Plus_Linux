@@ -1,0 +1,30 @@
+=== przelacznik trybu USI, odczyt zwrotny ===
+[   17.786342] exynos-usi 104b00c0.usi: DIAG sw_conf offset=0x101c maska=0x7 zapisano=0x4 odczyt=0x00000004
+[   18.126079] exynos-usi 15d500c0.usi: DIAG sw_conf offset=0x24 maska=0x7 zapisano=0x4 odczyt=0x00000004
+[   18.464864] exynos-usi 15d600c0.usi: DIAG sw_conf offset=0x30 maska=0x7 zapisano=0x4 odczyt=0x00000004
+
+=== stan bloku USI po wyjsciu z resetu ===
+[   18.010587] exynos-usi 104b00c0.usi: DIAG usi con=00000000 option=00000003 clkreq_on=1
+[   18.350254] exynos-usi 15d500c0.usi: DIAG usi con=00000000 option=00000003 clkreq_on=1
+[   18.689091] exynos-usi 15d600c0.usi: DIAG usi con=00000000 option=00000003 clkreq_on=1
+
+=== zegary w chwili niepowodzenia ===
+[   21.298852] exynos5-hsi2c 104b0000.i2c: DIAG ret=-110 ipclk=200000000 pclk=66666667 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00ffeb fs3=00000000 sla=00000000 ctl=00000009
+[   22.078851] exynos5-hsi2c 15d50000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+[   22.970851] exynos5-hsi2c 15d50000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+[   23.638885] exynos5-hsi2c 15d60000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+
+=== wariant ===
+[   20.937210] exynos5-hsi2c 104b0000.i2c: DIAG wariant hw=3 fifo=64
+[   21.864351] exynos5-hsi2c 15d50000.i2c: DIAG wariant hw=3 fifo=64
+[   23.422570] exynos5-hsi2c 15d60000.i2c: DIAG wariant hw=3 fifo=64
+
+=== przerwania ===
+  95:          2  GIC-0  420 Level     104b0000.i2c
+  97:          4  GIC-0  113 Level     15d50000.i2c
+  98:          2  GIC-0  114 Level     15d60000.i2c
+
+=== bateria ===
+
+=== dotyk ===
+N: Name="gpio-keys"

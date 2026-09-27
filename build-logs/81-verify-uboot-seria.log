@@ -1,0 +1,218 @@
+==========================================================
+ bramki projektu s10-mainline
+ data: 2026-09-21T11:13:02Z
+==========================================================
+
+[1] seria patchy
+  patchy w serii: 88
+  OK      brak plikow .orig/.rej/~ w patches/
+  PADLA   seria stosuje sie na 1200d84f4c0a929a0780180d25063d93773be79c
+          padlo na 0001-drm-bridge-samsung-dsim-Do-not-mark-the-host-initial.patch (0/88)
+  PADLA   seria zgadza sie z drzewem roboczym
+          nie udalo sie zbudowac drzew do porownania
+  OK      drzewo robocze nie ma nic poza seria
+  OK      patche nie wnosza plikow .orig/.rej
+  PADLA   patche out-of-tree stosuja sie na przypiete drzewo obce
+          padlo: 0001-clk-samsung-exynos9820-add-CMU_DPU-CMU_CMGP.patch
+  OK      patche out-of-tree wnosza komplet identyfikatorow zegarow
+
+[2] checkpatch --strict
+  OK      checkpatch przeliczyl kazdy patch (88/88)
+  errors=0 checks=0 warnings=16 dlugie=125
+  OK      checkpatch: 0 errors
+  OK      checkpatch: 0 checks
+  OK      checkpatch: warningow 16 (limit 16)
+  OK      checkpatch: dlugich linii 125 (limit 125)
+
+[3] device tree
+  PADLA   dtb sie buduje
+          patrz build-logs/02-dtb.log
+  BRAK    dt-validate na dtb: brak dtschema albo .pc-tools/b2.dtb
+  PADLA   dt-doc-validate na bindingach serii
+          patrz build-logs/04-dt-binding-check.log
+  PADLA   przyklady bindingow
+          patrz build-logs/48-binding-examples.log
+
+[4] kompilacja arm64 (bez make)
+  PADLA   kompilacja clk-exynos9820.c
+          uwagi w build-logs/cc-clk-exynos9820.c.log
+  PADLA   kompilacja W=1 clk-exynos9820.c
+          uwagi w build-logs/cc-w1-clk-exynos9820.c.log
+  PADLA   kompilacja clk-pll.c
+          uwagi w build-logs/cc-clk-pll.c.log
+  PADLA   kompilacja W=1 clk-pll.c
+          uwagi w build-logs/cc-w1-clk-pll.c.log
+  PADLA   kompilacja pinctrl-exynos-arm64.c
+          uwagi w build-logs/cc-pinctrl-exynos-arm64.c.log
+  PADLA   kompilacja W=1 pinctrl-exynos-arm64.c
+          uwagi w build-logs/cc-w1-pinctrl-exynos-arm64.c.log
+  PADLA   kompilacja pinctrl-samsung.c
+          uwagi w build-logs/cc-pinctrl-samsung.c.log
+  PADLA   kompilacja W=1 pinctrl-samsung.c
+          uwagi w build-logs/cc-w1-pinctrl-samsung.c.log
+  PADLA   kompilacja exynos-pm-domains.c
+          uwagi w build-logs/cc-exynos-pm-domains.c.log
+  PADLA   kompilacja W=1 exynos-pm-domains.c
+          uwagi w build-logs/cc-w1-exynos-pm-domains.c.log
+  PADLA   kompilacja panel-samsung-s6e3ha9-main.c
+          uwagi w build-logs/cc-panel-samsung-s6e3ha9-main.c.log
+  PADLA   kompilacja W=1 panel-samsung-s6e3ha9-main.c
+          uwagi w build-logs/cc-w1-panel-samsung-s6e3ha9-main.c.log
+  PADLA   kompilacja panel-samsung-s6e3ha9-dimming.c
+          uwagi w build-logs/cc-panel-samsung-s6e3ha9-dimming.c.log
+  PADLA   kompilacja W=1 panel-samsung-s6e3ha9-dimming.c
+          uwagi w build-logs/cc-w1-panel-samsung-s6e3ha9-dimming.c.log
+  PADLA   kompilacja exynos9820_drm_decon.c
+          uwagi w build-logs/cc-exynos9820_drm_decon.c.log
+  PADLA   kompilacja W=1 exynos9820_drm_decon.c
+          uwagi w build-logs/cc-w1-exynos9820_drm_decon.c.log
+  PADLA   kompilacja phy-exynos9820-dsim.c
+          uwagi w build-logs/cc-phy-exynos9820-dsim.c.log
+  PADLA   kompilacja W=1 phy-exynos9820-dsim.c
+          uwagi w build-logs/cc-w1-phy-exynos9820-dsim.c.log
+  PADLA   kompilacja samsung-dsim.c
+          uwagi w build-logs/cc-samsung-dsim.c.log
+  PADLA   kompilacja W=1 samsung-dsim.c
+          uwagi w build-logs/cc-w1-samsung-dsim.c.log
+  OK      analizator statyczny clang: 2 znalezisk, zgodnie z wzorcem
+
+[5] stale i tablice wobec zrodel producenta
+  PADLA   PPS panelu beyond2 (128 B)
+          skrypt zwrocil blad
+  PADLA   PPS dpu20 (kontrola krzyzowa)
+          skrypt zwrocil blad
+  PADLA   model FFC (0xC5)
+          skrypt zwrocil blad
+  PADLA   sekwencja init rozwinieta
+          skrypt zwrocil blad
+  PADLA   sekwencja display-on
+          skrypt zwrocil blad
+  PADLA   DSC panelu
+          patrz build-logs/23-dsc-config-check.log
+  PADLA   DSC enkoderow DECON
+          patrz build-logs/33-decon-dsc-check.log
+  PADLA   tablice AID
+          patrz build-logs/40-aid-tables-check.log
+  PADLA   silnik dimmingu
+          patrz build-logs/42-dimming-engine-check.log
+  PADLA   odsylacze do patchy w dokumentach
+          patrz build-logs/47-doc-refs.log
+  PADLA   cytaty do zrodel
+          patrz build-logs/48-citations.log
+  PADLA   rejestry wobec producenta
+          patrz build-logs/49-regs.log
+  BRAK    PHY UFS wobec producenta: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-phy-cal.py': [Errno 2] No such file or directory
+  BRAK    host UFS wobec producenta: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-host-cal.py': [Errno 2] No such file or directory
+  BRAK    PHY UFS jadra wobec producenta: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-phy-kernel.py': [Errno 2] No such file or directory
+  BRAK    host UFS jadra wobec producenta: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-host-kernel.py': [Errno 2] No such file or directory
+  BRAK    wezel UFS wobec producenta: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-dts.py': [Errno 2] No such file or directory
+  BRAK    DT bootloadera: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-uboot-dts.py': [Errno 2] No such file or directory
+  PADLA   seria bootloadera
+          patrz build-logs/79-uboot-seria.log
+  BRAK    kolejnosc zegarow bootloadera: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-uboot-clk-order.py': [Errno 2] No such file or directory
+  OK      analiza statyczna bootloadera: plikow 6, clang 0
+  PADLA   predkosc lacza wobec tablicy D-PHY
+          patrz build-logs/51-link-rate.log
+  PADLA   zegary wobec cmucal
+          patrz build-logs/50-cmu.log
+  PADLA   drzewo zegarow bez sierot
+          patrz build-logs/52-clk-parents.log
+  PADLA   rodzice zegarow wobec producenta
+          patrz build-logs/53-clk-vendor-parents.log
+  PADLA   kazdy wezel DT ma sterownik
+          patrz build-logs/53-compatibles.log
+  PADLA   makra zegarow istnieja
+          patrz build-logs/54-clk-macros.log
+  OK      zrodla producenta w sources/ds
+  PADLA   kazde zrodlo producenta opisane w SOURCES.md
+          patrz build-logs/55-sources-doc.log
+  BRAK    oba pliki DT zgodne ze swoimi generatorami: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-gen-dts.py': [Errno 2] No such file or directory
+  PADLA   pliki generowane zgodne z generatorami
+          patrz build-logs/58-generatory.log
+  PADLA   latki serii poprawnie zbudowane
+          patrz build-logs/59-latki.log
+  PADLA   latki plikow generowanych zgodne z generatorami
+          uruchom scripts/odswiez-latki.py --zapisz
+  BRAK    czcionka klawiatury zgodna z generatorem: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-font-klawiatury.py': [Errno 2] No such file or directory
+  BRAK    uklad klawiatury spojny: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-uklad-klawiatury.py': [Errno 2] No such file or directory
+  BRAK    mapa pamieci zgodna z odczytem z telefonu: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-memory-map.py': [Errno 2] No such file or directory
+  BRAK    panel tego egzemplarza wybiera wariant, z ktorego sa tablice: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-panel-variant.py': [Errno 2] No such file or directory
+  BRAK    D-PHY i rewizja krzemu wobec logu S-Boota: C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-dphy-timing.py': [Errno 2] No such file or directory
+  BRAK    offsety CON3 w wywolaniach PLL(): C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-pll-con3.py': [Errno 2] No such file or directory
+  OK      fragment konfiguracji scala sie z defconfigiem: zamowionych symboli 59, swiadomie wylaczonych 2
+
+[6] spojnosc z docs/HW-BLOCKED.md
+  OK      kazdy wiersz mapy wskazuje na adnotacje w serii
+  OK      kazda pozycja z mapy jest opisana w HW-BLOCKED
+  OK      pozycja i wiersz mapy wskazuja ten sam plik
+  OK      liczba adnotacji UNVERIFIED zgadza sie z mapa (12)
+
+==========================================================
+ przeszlo: 17  padlo: 49  nieuruchomione: 15
+ REGRESJA, padly bramki:
+   - seria stosuje sie na 1200d84f4c0a929a0780180d25063d93773be79c
+   - seria zgadza sie z drzewem roboczym
+   - patche out-of-tree stosuja sie na przypiete drzewo obce
+   - dtb sie buduje
+   - dt-doc-validate na bindingach serii
+   - przyklady bindingow
+   - kompilacja clk-exynos9820.c
+   - kompilacja W=1 clk-exynos9820.c
+   - kompilacja clk-pll.c
+   - kompilacja W=1 clk-pll.c
+   - kompilacja pinctrl-exynos-arm64.c
+   - kompilacja W=1 pinctrl-exynos-arm64.c
+   - kompilacja pinctrl-samsung.c
+   - kompilacja W=1 pinctrl-samsung.c
+   - kompilacja exynos-pm-domains.c
+   - kompilacja W=1 exynos-pm-domains.c
+   - kompilacja panel-samsung-s6e3ha9-main.c
+   - kompilacja W=1 panel-samsung-s6e3ha9-main.c
+   - kompilacja panel-samsung-s6e3ha9-dimming.c
+   - kompilacja W=1 panel-samsung-s6e3ha9-dimming.c
+   - kompilacja exynos9820_drm_decon.c
+   - kompilacja W=1 exynos9820_drm_decon.c
+   - kompilacja phy-exynos9820-dsim.c
+   - kompilacja W=1 phy-exynos9820-dsim.c
+   - kompilacja samsung-dsim.c
+   - kompilacja W=1 samsung-dsim.c
+   - PPS panelu beyond2 (128 B)
+   - PPS dpu20 (kontrola krzyzowa)
+   - model FFC (0xC5)
+   - sekwencja init rozwinieta
+   - sekwencja display-on
+   - DSC panelu
+   - DSC enkoderow DECON
+   - tablice AID
+   - silnik dimmingu
+   - odsylacze do patchy w dokumentach
+   - cytaty do zrodel
+   - rejestry wobec producenta
+   - seria bootloadera
+   - predkosc lacza wobec tablicy D-PHY
+   - zegary wobec cmucal
+   - drzewo zegarow bez sierot
+   - rodzice zegarow wobec producenta
+   - kazdy wezel DT ma sterownik
+   - makra zegarow istnieja
+   - kazde zrodlo producenta opisane w SOURCES.md
+   - pliki generowane zgodne z generatorami
+   - latki serii poprawnie zbudowane
+   - latki plikow generowanych zgodne z generatorami
+ NIE URUCHOMIONO (to nie jest zaliczenie):
+   - dt-validate na dtb (brak dtschema albo .pc-tools/b2.dtb)
+   - PHY UFS wobec producenta (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-phy-cal.py': [Errno 2] No such file or directory)
+   - host UFS wobec producenta (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-host-cal.py': [Errno 2] No such file or directory)
+   - PHY UFS jadra wobec producenta (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-phy-kernel.py': [Errno 2] No such file or directory)
+   - host UFS jadra wobec producenta (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-host-kernel.py': [Errno 2] No such file or directory)
+   - wezel UFS wobec producenta (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-ufs-dts.py': [Errno 2] No such file or directory)
+   - DT bootloadera (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-uboot-dts.py': [Errno 2] No such file or directory)
+   - kolejnosc zegarow bootloadera (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-uboot-clk-order.py': [Errno 2] No such file or directory)
+   - oba pliki DT zgodne ze swoimi generatorami (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-gen-dts.py': [Errno 2] No such file or directory)
+   - czcionka klawiatury zgodna z generatorem (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-font-klawiatury.py': [Errno 2] No such file or directory)
+   - uklad klawiatury spojny (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-uklad-klawiatury.py': [Errno 2] No such file or directory)
+   - mapa pamieci zgodna z odczytem z telefonu (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-memory-map.py': [Errno 2] No such file or directory)
+   - panel tego egzemplarza wybiera wariant, z ktorego sa tablice (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-panel-variant.py': [Errno 2] No such file or directory)
+   - D-PHY i rewizja krzemu wobec logu S-Boota (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-dphy-timing.py': [Errno 2] No such file or directory)
+   - offsety CON3 w wywolaniach PLL() (C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-pll-con3.py': [Errno 2] No such file or directory)
+==========================================================

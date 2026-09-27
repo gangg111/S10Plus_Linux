@@ -1,0 +1,157 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 10:10:00 +0200
+Subject: [PATCH] dt-bindings: pci: Add the Exynos9820 PCIe host controller
+
+The controller is a DesignWare one, like the Exynos5433 controller this
+binding sits next to, but it carries its PHY differently: the resets that
+PHY needs are registers of the controller, in the middle of the window the
+DesignWare core owns, so the two halves cannot be handed to separate
+drivers.  Hence two more windows here and no phys property.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../bindings/pci/samsung,exynos9820-pcie.yaml | 121 ++++++++++++++++++
+ MAINTAINERS                                   |   1 +
+ 2 files changed, 122 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
+
+diff --git a/Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml b/Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
+new file mode 100644
+index 00000000000..cd97f935988
+--- /dev/null
++++ b/Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
+@@ -0,0 +1,121 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/pci/samsung,exynos9820-pcie.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Samsung Exynos9820 PCIe Host Controller
++
++maintainers:
++  - Artur Szafraniec <ganggg111@gmail.com>
++
++description: |+
++  The PCIe host controller of the Exynos9820 SoC is based on the Synopsys
++  DesignWare PCIe IP and thus inherits all the common properties defined in
++  snps,dw-pcie.yaml.
++
++  Unlike the Exynos5433 controller, the PHY of this one is driven by the host
++  controller driver rather than by a PHY driver of its own: the resets the PHY
++  needs are registers of the controller, in the middle of the window the
++  DesignWare core owns, so the two halves cannot be handed to separate drivers.
++  That is why this binding describes the two PHY windows here and takes no
++  phys property.
++
++allOf:
++  - $ref: /schemas/pci/snps,dw-pcie.yaml#
++
++properties:
++  compatible:
++    const: samsung,exynos9820-pcie
++
++  reg:
++    items:
++      - description: External Local Bus Interface (ELBI) registers.
++      - description: Data Bus Interface (DBI) registers.
++      - description: PCIe configuration space region.
++      - description: |
++          PHY registers, both halves in one window: the digital half (PCS) at
++          its start and the analogue half (PMA) 64 KiB further in.
++
++  reg-names:
++    items:
++      - const: elbi
++      - const: dbi
++      - const: config
++      - const: phy
++
++  interrupts:
++    maxItems: 1
++
++  clocks:
++    minItems: 1
++    maxItems: 8
++
++  samsung,pmu-syscon:
++    $ref: /schemas/types.yaml#/definitions/phandle
++    description:
++      Phandle to the PMU system controller, whose PCIE_PHY_CONTROL word lifts
++      the isolation of the PHY.
++
++  samsung,fsys-sysreg:
++    $ref: /schemas/types.yaml#/definitions/phandle
++    description:
++      Phandle to the FSYS1 system register block, which carries the two words
++      that select the lane and the PCS speed of this controller.
++
++  reset-gpios:
++    maxItems: 1
++    description:
++      The line that holds the endpoint in reset, released once the controller
++      is ready to train the link.
++
++required:
++  - compatible
++  - reg
++  - reg-names
++  - interrupts
++  - clocks
++  - samsung,pmu-syscon
++  - samsung,fsys-sysreg
++  - reset-gpios
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/clock/samsung,exynos9820.h>
++    #include <dt-bindings/gpio/gpio.h>
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
++
++    pcie@13ed0000 {
++        compatible = "samsung,exynos9820-pcie";
++        reg = <0x13ed0000 0x1000>,
++              <0x13f00000 0x1000>,
++              <0x14ffe000 0x2000>,
++              <0x13ee0000 0x11000>;
++        reg-names = "elbi", "dbi", "config", "phy";
++        interrupts = <GIC_SPI 253 IRQ_TYPE_LEVEL_HIGH>;
++
++        device_type = "pci";
++        #address-cells = <3>;
++        #size-cells = <2>;
++        ranges = <0x82000000 0 0x14000000 0x14000000 0 0x00ff0000>;
++        bus-range = <0x00 0xff>;
++        num-lanes = <1>;
++        max-link-speed = <1>;
++
++        #interrupt-cells = <1>;
++        interrupt-map-mask = <0 0 0 0>;
++        interrupt-map = <0 0 0 0 &gic GIC_SPI 253 IRQ_TYPE_LEVEL_HIGH>;
++
++        clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_DBI_ACLK>,
++                 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_MSTR_ACLK>,
++                 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_SLV_ACLK>,
++                 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_PHY_REFCLK_IN>,
++                 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_IA_GEN2_I_CLK>;
++
++        samsung,pmu-syscon = <&pmu_system_controller>;
++        samsung,fsys-sysreg = <&sysreg_fsys1>;
++
++        reset-gpios = <&gpf2 2 GPIO_ACTIVE_HIGH>;
++    };
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 9a60a94eabd..e4350a699bc 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24002,6 +24002,7 @@ L:	linux-arm-kernel@lists.infradead.org (moderated for non-subscribers)
+ L:	linux-samsung-soc@vger.kernel.org
+ S:	Maintained
+ F:	Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
++F:	Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
+ F:	arch/arm64/boot/dts/exynos/exynos9820*
+ F:	drivers/clk/samsung/clk-exynos9820.c
+ F:	drivers/phy/samsung/phy-exynos9820-ufs.c

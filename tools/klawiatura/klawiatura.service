@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: GPL-2.0
+# Klawiatura ekranowa dla konsoli tekstowej.
+#
+# Startuje schowana; pokazuje ja i chowa przycisk Bixby.
+
+[Unit]
+Description=Klawiatura ekranowa dla konsoli
+# Bez getty nie ma do czego pisac, a bez urzadzen wejsciowych program odmawia
+# startu i systemd liczylby to jako awarie.
+After=getty@tty1.service systemd-udev-settle.service
+Wants=getty@tty1.service
+# Nigdy razem z sesja graficzna: klawiatura zabiera dotyk i przyciski na
+# wylacznosc (EVIOCGRAB), wiec KWin dostalby martwy ekran, a przy blokadzie
+# z PIN-em zostaloby tylko ssh.  Konsola z klawiatura to tryb awaryjny,
+# gdy Plasmy nie ma albo padla (plasma-mobile.service.d/50-awaryjnie.conf).
+Conflicts=plasma-mobile.service
+After=plasma-mobile.service
+
+[Service]
+Type=exec
+# Polski uklad konsoli.  Bez niego przytrzymanie klawisza nie da ogonka:
+# klawiatura wysyla prawy Alt i litere, a ZNAK sklada mapa jadra.  Mapa `pl`
+# ma ogonki dokladnie w kolumnie prawego Alta (sprawdzone: `altgr keycode 30
+# = aogonek`), wiec wystarczy ja wczytac.  Trzeba podac konsole wprost, bo
+# usluga nie ma terminala, a `-` z przodu pozwala klawiaturze wstac nawet
+# wtedy, gdy w obrazie zabraknie pakietu kbd.
+ExecStartPre=-/usr/sbin/loadkeys -C /dev/tty0 pl
+ExecStart=/usr/local/bin/klawiatura
+# Zwezenie konsoli to trwaly stan jadra i przezywa nasz proces, takze po
+# zabiciu sygnalem, wiec przywracamy je osobnym wywolaniem.
+ExecStopPost=/usr/local/bin/klawiatura --przywroc
+# Przy gaszeniu klawiatura przelacza dotyk w tryb niskiego poboru, w ktorym
+# uklad nie podaje wspolrzednych, tylko gest budzenia.  Zatrzymana przy
+# zgaszonym ekranie zostawilaby go tak, a wtedy nastepny wlasciciel dotyku
+# (Plasma albo nowa klawiatura) dostaje martwy ekran.
+ExecStopPost=-/bin/sh -c 'echo 0 > /sys/bus/i2c/devices/0-0048/lowpower'
+Restart=on-failure
+RestartSec=2
+
+# Domyslne odciecie urzadzen zabiera rowniez /dev/fb0, /dev/uinput i wejscia,
+# przez co usluga pada na starcie, choc z powloki wszystko dziala.
+DevicePolicy=closed
+DeviceAllow=/dev/fb0 rw
+DeviceAllow=/dev/uinput rw
+DeviceAllow=/dev/tty0 rw
+DeviceAllow=char-input rw
+
+[Install]
+WantedBy=multi-user.target

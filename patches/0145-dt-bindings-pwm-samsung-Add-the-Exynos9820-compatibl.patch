@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 04:46:03 +0200
+Subject: [PATCH] dt-bindings: pwm: samsung: Add the Exynos9820 compatible
+
+The PWM timer block of the Exynos9820 is the 32 bit Samsung PWM timer
+with five channels and no external TCLK input, the same block the
+Exynos4210 compatible describes.  Add an SoC specific compatible that
+falls back to it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/pwm/pwm-samsung.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/pwm/pwm-samsung.yaml b/Documentation/devicetree/bindings/pwm/pwm-samsung.yaml
+index 97acbdec39f..cf516e681da 100644
+--- a/Documentation/devicetree/bindings/pwm/pwm-samsung.yaml
++++ b/Documentation/devicetree/bindings/pwm/pwm-samsung.yaml
+@@ -32,6 +32,7 @@ properties:
+               - samsung,exynos5433-pwm
+               - samsung,exynos7-pwm
+               - samsung,exynos8890-pwm
++              - samsung,exynos9820-pwm
+               - samsung,exynosautov9-pwm
+               - samsung,exynosautov920-pwm
+               - tesla,fsd-pwm
+-- 
+2.53.0.windows.1
+

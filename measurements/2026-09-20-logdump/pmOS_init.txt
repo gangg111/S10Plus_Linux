@@ -1,0 +1,22 @@
+  ❬❬ PMOS STAGE 1 ❭❭
+initramfs version: 3.12.3-r1
+  ❬❬ PMOS STAGE 2 ❭❭
+  Setting up USB gadget through configfs
+Trying to start server with parameters: Server IP addr: 172.16.42.1:67, client IP addr: 172.16.42.2, interface: usb0
+Trying to mount subpartitions for 10 seconds...
+--- diagnostyka portu S10+ ---
+urzadzenia blokowe wedlug jadra:
+major minor  #blocks  name
+
+co widzi blkid:
+szukany korzen: uuid=57990aa3-7e81-47bf-9a96-ae3d0090d3bd
+sektor obrazu z deviceinfo: 4096
+--- koniec diagnostyki ---
+Ostatnia proba: podpinam kandydatow sektorem 4096
+Ostatnia proba nie znalazla korzenia.
+ERROR: failed to mount subpartitions!
+Creating logs disk
+32+0 records in
+32+0 records out
+33554432 bytes (32.0MB) copied, 0.070279 seconds, 455.3MB/s
+modprobe: FATAL: Module vfat not found in directory /lib/modules/7.2.0-01001-ga9d566a524be-dirty

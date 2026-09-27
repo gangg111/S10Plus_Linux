@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 23 Sep 2026 21:12:06 +0200
+Subject: [PATCH] dt-bindings: pci: samsung,exynos9820-pcie: Add the endpoint
+ supply
+
+The Wi-Fi chip of the Galaxy S10+ sits on this controller and only answers
+once its Wi-Fi half is powered up by a GPIO line.  The vendor driver raises
+that line and waits 100 ms before it lets the controller train the link,
+so the controller needs a supply it can switch on before it releases the
+endpoint from reset.
+
+Describe it the way the other DesignWare hosts do, as vpcie3v3-supply.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../devicetree/bindings/pci/samsung,exynos9820-pcie.yaml    | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml b/Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
+index cd97f935988..ff208323697 100644
+--- a/Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
++++ b/Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
+@@ -69,6 +69,12 @@ properties:
+       The line that holds the endpoint in reset, released once the controller
+       is ready to train the link.
+ 
++  vpcie3v3-supply:
++    description:
++      Supply of the endpoint, switched on while the endpoint is still held in
++      reset.  On boards with the Wi-Fi chip soldered on, it is the line that
++      powers the Wi-Fi half of that chip up.
++
+ required:
+   - compatible
+   - reg

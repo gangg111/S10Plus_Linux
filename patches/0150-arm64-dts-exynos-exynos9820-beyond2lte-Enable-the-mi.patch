@@ -1,0 +1,172 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 23:11:27 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Enable the microSD
+ slot
+
+The Galaxy S10+ has a hybrid slot on the SD host of FSYS1: its tray
+takes either a second SIM or a microSD card.  The card is fed from
+LDO15M of the main PMIC at 2.8 V and its signal lines from LDO2M,
+which drops to 1.8 V for the UHS modes.  The switch on gpa1-5 senses
+the tray rather than the card and pulls the line low while the tray
+is in; the host finds a card in the tray by trying to bring it up.
+
+The vendor host reads its timing as four numbers, a divider, a fine
+drive phase, the drive phase and the sample phase, where this driver
+reads the sample and drive phase only; the vendor's <3 0 2 0> and
+<3 0 2 1> become a divider of 3 with <0 2> and <1 2>.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 107 +++++++++++++++++-
+ 1 file changed, 103 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 70cf91c2f12..85f122561fe 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -278,10 +278,11 @@ &abox {
+  * hangs off a SPEEDY link of the power management firmware, so the node sits
+  * under that firmware and every register access travels as an ACPM command.
+  *
+- * Only the rails the touchscreen and the audio codec need are described.
+- * The rest of the chip carries the rails the CPU, the memory and the modem
+- * run from, and they are left without constraints on purpose, so that
+- * nothing in the kernel can be asked to change them.
++ * Only the rails the touchscreen, the audio codec, the sensor hub and the
++ * SD card need are described.  The rest of the chip carries the rails the
++ * CPU, the memory and the modem run from, and they are left without
++ * constraints on purpose, so that nothing in the kernel can be asked to
++ * change them.
+  */
+ &acpm_ipc {
+ 	pmic-1 {
+@@ -292,6 +293,23 @@ pmic-1 {
+ 		wakeup-source;
+ 
+ 		regulators {
++			/*
++			 * The SD card slot: vqmmc feeds the signal lines and drops to
++			 * 1.8 V for the UHS modes, vmmc feeds the card.  Both ranges are
++			 * the vendor's, and neither rail is kept on without a card.
++			 */
++			ldo2m: LDO2M {
++				regulator-name = "vqmmc";
++				regulator-min-microvolt = <1700000>;
++				regulator-max-microvolt = <2800000>;
++			};
++
++			ldo15m: LDO15M {
++				regulator-name = "vmmc";
++				regulator-min-microvolt = <2800000>;
++				regulator-max-microvolt = <2800000>;
++			};
++
+ 			ldo17m: LDO17M {
+ 				regulator-name = "vdd_pmic_codec_1p8";
+ 				regulator-min-microvolt = <1800000>;
+@@ -603,6 +621,34 @@ haptic {
+ 	};
+ };
+ 
++&mmc_2 {
++	pinctrl-names = "default";
++	pinctrl-0 = <&sd2_clk &sd2_cmd &sd2_bus1 &sd2_bus4 &sd2_cd>;
++
++	vmmc-supply = <&ldo15m>;
++	vqmmc-supply = <&ldo2m>;
++	cd-gpios = <&gpa1 5 GPIO_ACTIVE_LOW>;
++	card-detect-delay = <200>;
++
++	bus-width = <4>;
++	cap-sd-highspeed;
++	sd-uhs-sdr50;
++	sd-uhs-sdr104;
++	disable-wp;
++
++	/*
++	 * The vendor host reads four numbers here, the divider, a fine drive
++	 * phase, the drive phase and the sample phase, while this one reads the
++	 * sample and the drive phase only.  Its <3 0 2 0> and <3 0 2 1> are
++	 * therefore a divider of 3 with these pairs.
++	 */
++	samsung,dw-mshc-ciu-div = <3>;
++	samsung,dw-mshc-sdr-timing = <0 2>;
++	samsung,dw-mshc-ddr-timing = <1 2>;
++
++	status = "okay";
++};
++
+ &oscclk {
+ 	clock-frequency = <26000000>;
+ };
+@@ -738,6 +784,23 @@ pmic_irq: pmic-irq-pins {
+ 	};
+ };
+ 
++/*
++ * The slot is a hybrid one: its tray takes either a second SIM or a microSD
++ * card, and the switch on gpa1-5 senses the tray, not the card.  The line is
++ * low with the tray in and high with it out; the vendor host logs a high
++ * line as "tray Removed" and does not invert it on this board.  Whether a
++ * card sits in the tray the host finds out itself, by trying to bring one
++ * up, so with an empty tray it probes the slot and powers it down again.
++ */
++&pinctrl_alive {
++	sd2_cd: sd2-cd-pins {
++		samsung,pins = "gpa1-5";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++};
++
+ &pinctrl_cmgp {
+ 	amp_int_pins: amp-int-pins {
+ 		samsung,pins = "gpm24-0";
+@@ -747,6 +810,42 @@ amp_int_pins: amp-int-pins {
+ 	};
+ };
+ 
++/*
++ * The SD card lines.  The vendor names six drive strengths of this bank from
++ * 1x to 4x and writes their index, which is how the HSI bank of the Exynos850
++ * is described: the clock is driven at 3x, the command and data lines at
++ * 2.5x, and those carry pull-ups.
++ */
++&pinctrl_fsys1 {
++	sd2_clk: sd2-clk-pins {
++		samsung,pins = "gpf1-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS850_HSI_PIN_DRV_LV3>;
++	};
++
++	sd2_cmd: sd2-cmd-pins {
++		samsung,pins = "gpf1-1";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS850_HSI_PIN_DRV_LV2_5>;
++	};
++
++	sd2_bus1: sd2-bus-width1-pins {
++		samsung,pins = "gpf1-2";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS850_HSI_PIN_DRV_LV2_5>;
++	};
++
++	sd2_bus4: sd2-bus-width4-pins {
++		samsung,pins = "gpf1-3", "gpf1-4", "gpf1-5";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS850_HSI_PIN_DRV_LV2_5>;
++	};
++};
++
+ &pinctrl_peric0 {
+ 	ssp_gps_pwr_en_pins: ssp-gps-pwr-en-pins {
+ 		samsung,pins = "gpg0-2";
+-- 
+2.53.0.windows.1
+

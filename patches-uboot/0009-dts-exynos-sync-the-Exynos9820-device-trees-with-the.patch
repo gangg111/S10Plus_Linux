@@ -1,0 +1,1147 @@
+From bac40b5fc9b9d026bec57dc1ed73572f07957263 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 13:11:50 +0200
+Subject: [PATCH 09/40] dts: exynos: sync the Exynos9820 device trees with the
+ kernel series
+
+The three device tree files this board uses are copies of the ones the
+kernel series carries, and they had fallen behind it by 547 lines.  What
+comes over: the UFS host and its PHY with all four windows, the pin
+configuration of the storage lines and of the Bluetooth controller, the bus
+the main PMIC sits on, the mailbox the power firmware answers from, the CMU
+blocks added since, the PCIe controller, and the reboot modes the first
+stage reads.
+
+The clock identifiers header comes over with them.  It had fallen behind by
+105 lines, which is not a cosmetic difference: without it the tree does not
+build at all, because the nodes that arrive here name clocks the old header
+has never heard of.
+
+One thing does not come over, and the board tree now says so explicitly.
+The kernel describes this panel's framebuffer 32 pixels narrower on each
+side, so that its text console keeps clear of the curved edges, and that
+moved the node to a different address.  The node the board carries stayed
+where it was, so after this sync the two no longer merge and both end up in
+the built tree. The first one wins, and with the narrower one first the
+diagnostic bands stop being drawn: their own guard against writing past the
+buffer sees a size 128 bytes smaller than stride times height and refuses
+every band.  That would take away the only thing that says how far the boot
+loader got, without a word anywhere, because at that point there is no log
+yet.  So the board tree deletes the narrower node and keeps its own.
+
+A copy that drifts is worse than no copy, because both sides look right on
+their own.  scripts/check-uboot-dts.py in the port repository compares the
+two byte for byte, and it is what found this: it had been reading the copy
+out of a single patch, which stopped being the whole story once the series
+carried the sync in a second one.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../arm/dts/exynos9820-beyond2lte-u-boot.dtsi |  28 ++
+ .../arm64/exynos/exynos9820-beyond2lte.dts    | 209 +++++++-
+ .../src/arm64/exynos/exynos9820-pinctrl.dtsi  |  82 ++++
+ dts/upstream/src/arm64/exynos/exynos9820.dtsi | 464 +++++++++++++++++-
+ .../dt-bindings/clock/samsung,exynos9820.h    | 105 ++++
+ 5 files changed, 873 insertions(+), 15 deletions(-)
+
+diff --git a/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+index bd2d5247..3a0a8c43 100644
+--- a/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
++++ b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+@@ -37,6 +37,34 @@
+ 		#size-cells = <1>;
+ 		ranges;
+ 
++		/*
++		 * Zwezony ekran ze wspolnego drzewa nie moze tu zostac.
++		 *
++		 * Seria jadra opisuje ten bufor o 32 piksele wezszy z kazdej
++		 * strony i zaczyna go o tyle dalej, bo panel zakrzywia sie
++		 * wzdluz obu dlugich krawedzi, a konsola tekstowa Linuksa nie
++		 * umie odsunac swojego obszaru sama.  Wezel dostal przez to
++		 * inny adres w nazwie niz nasz, wiec przestal sie z nim scalac
++		 * i w zbudowanym drzewie stoja DWA wezly simple-framebuffer.
++		 *
++		 * Zmierzone skutki, gdyby zostawic oba: exynos_mark() bierze
++		 * PIERWSZY wezel z tym compatible, a pierwszy jest wlasnie
++		 * zwezony.  Jego rozmiar jest o 128 bajtow mniejszy niz
++		 * stride * height, wiec bramka "nie pisz poza bufor" zamyka sie
++		 * na kazdym stopniu i nie powstaje ani jeden pasek
++		 * diagnostyczny.  Narzedzie, ktore jako jedyne mowi, gdzie
++		 * stanal rozruch, przestaloby dzialac bez sladu w logu, bo loga
++		 * na tym etapie jeszcze nie ma.  Do tego menu jest liczone
++		 * w znakach czcionki 32x64, czyli 1440 / 32 = 45 kolumn; przy
++		 * 1376 pikselach wychodzi 43 i caly uklad ekranu wymaga
++		 * przeliczenia.
++		 *
++		 * Czy bootloader tez ma odsuwac sie od zakrzywionych krawedzi,
++		 * rozstrzygnie spojrzenie na panel.  Do tego czasu obowiazuje
++		 * geometria, ktora zostala na nim sprawdzona.
++		 */
++		/delete-node/ framebuffer@ca000080;
++
+ 		/*
+ 		 * The screen this phone comes up with, left running by whatever
+ 		 * ran before.  Its address is not guessed: the primary boot
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+index ea48614a..a4d11f3c 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
++++ b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+@@ -70,10 +70,18 @@
+ 		 * the boot loader itself passes on this phone: the vendor kernel
+ 		 * receives "s3cfb.bootloaderfb=0xca000000" on its command line.
+ 		 */
+-		framebuffer0: framebuffer@ca000000 {
++		framebuffer0: framebuffer@ca000080 {
+ 			compatible = "simple-framebuffer";
+-			reg = <0x0 0xca000000 (1440 * 3040 * 4)>;
+-			width = <1440>;
++			/*
++			 * The panel curves along both long edges, so the outermost
++			 * columns are distorted and hard to hit with a finger.  The
++			 * text console cannot offset its own area, so the buffer is
++			 * described 32 pixels narrower on each side instead: the
++			 * start moves by that many pixels and the line length stays
++			 * as the hardware has it.
++			 */
++			reg = <0x0 0xca000080 ((1440 * 3040 - 32) * 4)>;
++			width = <1376>;
+ 			height = <3040>;
+ 			stride = <(1440 * 4)>;
+ 			format = "a8r8g8b8";
+@@ -226,6 +234,37 @@
+ 	};
+ };
+ 
++/*
++ * The cell, described because the charger has to be told what it is
++ * charging.  Every number here is read from the vendor tree of this exact
++ * phone rather than from a datasheet of a similar one: the end of charge
++ * voltage is battery,chg_float_voltage, the capacity is
++ * battery,battery_full_capacity, the charge current is
++ * battery,max_charging_current and the current at which the charge counts
++ * as finished is full_check_current_1st.
++ *
++ * The cell itself agrees: an EB-BG975ABU is labelled 4000 mAh rated,
++ * 3.85 V nominal, and a charging limit of 4.40 V.  The limit is what the
++ * cell survives, not what it is charged to, and the vendor stops at 4.35 V;
++ * that margin is where the life of the cell comes from, so the lower number
++ * is the one described here and it is not a rounding to fix later.
++ *
++ * voltage-min-design-microvolt is left out.  The vendor tree never states a
++ * cutoff as a voltage, and a number invented here would be the one thing in
++ * this node that nothing measured.
++ */
++/ {
++	battery: battery {
++		compatible = "simple-battery";
++		device-chemistry = "lithium-ion";
++		charge-full-design-microamp-hours = <4000000>;
++		voltage-max-design-microvolt = <4350000>;
++		constant-charge-voltage-max-microvolt = <4350000>;
++		constant-charge-current-max-microamp = <2850000>;
++		charge-term-current-microamp = <400000>;
++	};
++};
++
+ &decon0 {
+ 	status = "okay";
+ };
+@@ -256,7 +295,7 @@
+ 	status = "okay";
+ 
+ 	touchscreen@48 {
+-		compatible = "samsung,s6sy761";
++		compatible = "samsung,s6sy771";
+ 		reg = <0x48>;
+ 
+ 		avdd-supply = <&reg_tsp_avdd>;
+@@ -313,6 +352,59 @@
+ 	};
+ };
+ 
++/*
++ * The companion chip of the main PMIC: the fuel gauge, which answers how
++ * much charge is left, and the charger, which puts it back.  The charger
++ * needs a cell to charge against, so it points at the battery node above,
++ * whose numbers come from the vendor tree of this phone.
++ *
++ * The address of the fuel gauge started out as an analogy with the only
++ * other board in mainline carrying this chip, a Galaxy S9, because the
++ * vendor sources for this phone never put the fuel gauge on a bus at all:
++ * they hang it in the root of the tree with no address and bind it to the
++ * battery by name.  It has since been measured on the phone, by driving
++ * this bus by hand over its own pins: 0x36 answers, and so do 0x66 for the
++ * companion chip and 0x69 beside them.  The analogy held.
++ *
++ * maxim,rsns-microohm is not guessed either, it is derived from what the
++ * gauge itself reports.  The vendor gives the resistor as a plain index
++ * rather than as a resistance, so the value comes from the measurement:
++ * with the driver default of 10 mohm the gauge reported a design capacity
++ * of 1979 mAh for a cell labelled 4000 mAh, and that ratio is the resistor.
++ * Half the assumed resistance gives twice the reported capacity, so 5 mohm
++ * it is, and the reported capacity then lands on the printed one.
++ */
++&hsi2c45 {
++	status = "okay";
++
++	max77705: pmic@66 {
++		compatible = "maxim,max77705";
++		reg = <0x66>;
++		interrupt-parent = <&gpa1>;
++		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
++		interrupt-controller;
++		#interrupt-cells = <1>;
++		pinctrl-0 = <&pmic_irq>;
++		pinctrl-names = "default";
++	};
++
++	fuel-gauge@36 {
++		compatible = "maxim,max77705-battery";
++		reg = <0x36>;
++		maxim,rsns-microohm = <5000>;
++		interrupt-parent = <&max77705>;
++		interrupts = <2>;
++	};
++
++	charger@69 {
++		compatible = "maxim,max77705-charger";
++		reg = <0x69>;
++		monitored-battery = <&battery>;
++		interrupt-parent = <&max77705>;
++		interrupts = <0>;
++	};
++};
++
+ &oscclk {
+ 	clock-frequency = <26000000>;
+ };
+@@ -354,12 +446,121 @@
+ 	};
+ };
+ 
++&pinctrl_alive {
++	pmic_irq: pmic-irq-pins {
++		samsung,pins = "gpa1-6";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++};
++
++/ {
++	reg_usb_dummy: regulator-usb-dummy {
++		compatible = "regulator-fixed";
++		regulator-name = "usb_dummy";
++	};
++};
++
+ &serial0 {
+ 	status = "okay";
+ };
+ 
++/*
++ * The Bluetooth controller answers on the serial port of the PERIC1 USI
++ * block.  Three lines go with the port: the one the chip powers up from, the
++ * one the host pokes to wake the controller, and the one the controller pokes
++ * to wake the host.  The last one is an interrupt, so it is described as one
++ * rather than as the deprecated gpio property.
++ */
++&serial1 {
++	status = "okay";
++
++	bluetooth {
++		compatible = "brcm,bcm4375-bt";
++		pinctrl-names = "default";
++		pinctrl-0 = <&bt_en_pins>, <&bt_btwake_pins>,
++			    <&bt_hostwake_pins>;
++		shutdown-gpios = <&gpm8 0 GPIO_ACTIVE_HIGH>;
++		device-wakeup-gpios = <&gpg2 0 GPIO_ACTIVE_HIGH>;
++		interrupts-extended = <&gpa2 3 IRQ_TYPE_EDGE_RISING>;
++		interrupt-names = "host-wakeup";
++	};
++};
++
++&ufs_0 {
++	status = "okay";
++};
++
++/*
++ * The port is described as peripheral only.  It is wired as dual role and
++ * the phone changes roles with a USB-C controller sitting on the max77705,
++ * which nothing in this series can reach; a dual role port without that
++ * controller waits for a role that never arrives.  Peripheral is the half
++ * that works with a plain cable to a PC, and it is the half this series
++ * needs to be able to report anything about itself.
++ *
++ * The supplies are named against a stand-in.  They really come from rails
++ * of the main PMIC, which sits behind the ACPM mailbox and which nothing
++ * here can reach, and the driver would be happy with the dummy the
++ * regulator core hands out for a supply nobody names.  The binding is not:
++ * it lists both as required, so they are named, and named honestly as what
++ * they are rather than as rails this series pretends to drive.
++ */
++&usbdrd {
++	status = "okay";
++	vdd10-supply = <&reg_usb_dummy>;
++	vdd33-supply = <&reg_usb_dummy>;
++};
++
++/*
++ * The port is wired to the only connector this phone has, so it has to work
++ * both ways: as a device, which is how the machine is reached from a computer,
++ * and as a host, so that a keyboard can be plugged into the phone.
++ *
++ * There is no Type-C driver here to sense which way the cable goes, so the
++ * role is switched by hand through the role switch dwc3 registers, and the
++ * default is spelled out: a board that came up as a host would drop the
++ * connection to the computer and leave no way back in.
++ */
++&usbdrd_dwc3 {
++	dr_mode = "otg";
++	usb-role-switch;
++	role-switch-default-mode = "peripheral";
++};
++
++&usbdrd_phy {
++	status = "okay";
++};
++
+ /* This USI instance is wired as the touchscreen I2C master on this board. */
+ &usi3 {
+ 	samsung,mode = <USI_V2_I2C>;
+ 	status = "okay";
+ };
++
++/*
++ * This one is wired as the I2C master the display PMIC answers on.  Picking
++ * the mode here is also what releases the block from reset, so the bus below
++ * cannot work without it.
++ */
++&usi_cmgp2 {
++	samsung,mode = <USI_V2_I2C>;
++	status = "okay";
++};
++
++/*
++ * This USI instance is wired as the I2C master the main PMIC's companion
++ * answers on.  Picking the mode here is also what releases the block from
++ * reset, so the bus below cannot work without it.
++ */
++&usi_cmgp3 {
++	samsung,mode = <USI_V2_I2C>;
++	status = "okay";
++};
++
++/* This USI instance is wired as the serial port the Bluetooth chip uses. */
++&usi_uart_bt {
++	samsung,mode = <USI_V2_UART>;
++	status = "okay";
++};
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820-pinctrl.dtsi b/dts/upstream/src/arm64/exynos/exynos9820-pinctrl.dtsi
+index e3767714..477ba04a 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820-pinctrl.dtsi
++++ b/dts/upstream/src/arm64/exynos/exynos9820-pinctrl.dtsi
+@@ -106,6 +106,21 @@
+ 		gpio-controller;
+ 		#gpio-cells = <2>;
+ 	};
++
++	/* the line the Bluetooth controller pokes to wake the host */
++	bt_hostwake_pins: bt-hostwake-pins {
++		samsung,pins = "gpa2-3";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_INPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_DOWN>;
++	};
++
++	/* to the Bluetooth controller */
++	uart1_bus: uart1-bus-pins {
++		samsung,pins = "gpq0-3", "gpq0-2", "gpq0-1", "gpq0-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
+ };
+ 
+ &pinctrl_aud {
+@@ -455,6 +470,15 @@
+ 		interrupts = <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
+ 	};
+ 
++	/* the line the Bluetooth controller powers up from */
++	bt_en_pins: bt-en-pins {
++		samsung,pins = "gpm8-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
++	};
++
+ 	/* to the S2DOS05 display PMIC */
+ 	hsi2c2_bus: hsi2c2-bus-pins {
+ 		samsung,pins = "gpm10-0", "gpm11-0";
+@@ -462,6 +486,18 @@
+ 		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+ 		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
+ 	};
++
++	/*
++	 * To the MAX77705, which carries the charger and the fuel gauge.
++	 * This one is a USI in I2C mode, not a dedicated I2C like the bus
++	 * above, which is why its pins take a different function.
++	 */
++	hsi2c45_bus: hsi2c45-bus-pins {
++		samsung,pins = "gpm12-0", "gpm13-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
+ };
+ 
+ &pinctrl_fsys0 {
+@@ -498,6 +534,43 @@
+ 		interrupt-controller;
+ 		#interrupt-cells = <2>;
+ 	};
++
++	/* the clock request line of the PCIe endpoint */
++	pcie0_clkreq_pins: pcie0-clkreq-pins {
++		samsung,pins = "gpf2-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV4>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_UP>;
++	};
++
++	/* the reset line of the PCIe endpoint */
++	pcie0_perst_pins: pcie0-perst-pins {
++		samsung,pins = "gpf2-2";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV4>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
++
++	/*
++	 * The two pins of the embedded storage: the reset line of the device
++	 * and the reference clock going out to it.  Both take their second
++	 * function and keep their level while the domain is down.
++	 */
++	ufs_refclk_out: ufs-refclk-out-pins {
++		samsung,pins = "gpf3-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
++
++	ufs_rst_n: ufs-rst-n-pins {
++		samsung,pins = "gpf3-1";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
+ };
+ 
+ &pinctrl_peric0 {
+@@ -565,6 +638,15 @@
+ 		#interrupt-cells = <2>;
+ 	};
+ 
++	/* the line the host pokes to wake the Bluetooth controller */
++	bt_btwake_pins: bt-btwake-pins {
++		samsung,pins = "gpg2-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
++	};
++
+ 	/* to the touchscreen */
+ 	hsi2c10_bus: hsi2c10-bus-pins {
+ 		samsung,pins = "gpp1-4", "gpp1-5";
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820.dtsi b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+index 155be359..87d95413 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820.dtsi
++++ b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+@@ -23,6 +23,7 @@
+  */
+ 
+ #include <dt-bindings/clock/samsung,exynos9820.h>
++#include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
+ 
+ / {
+@@ -46,6 +47,8 @@
+ 		pinctrl5 = &pinctrl_peric0;
+ 		pinctrl6 = &pinctrl_peric1;
+ 		pinctrl7 = &pinctrl_vts;
++		serial0 = &serial0;
++		serial1 = &serial1;
+ 	};
+ 
+ 	/*
+@@ -213,6 +216,20 @@
+ 		#size-cells = <1>;
+ 		ranges = <0x0 0x0 0x0 0x20000000>;
+ 
++		/*
++		 * The memory the firmware and the processor pass messages through.
++		 * Its size is the one the vendor states for this SoC; the channel
++		 * configuration sits at an offset inside it that the protocol driver
++		 * knows from the compatible.
++		 */
++		apm_sram: sram@2039000 {
++			compatible = "mmio-sram";
++			reg = <0x2039000 0x30000>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++			ranges = <0x0 0x2039000 0x30000>;
++		};
++
+ 		chipid@10000000 {
+ 			compatible = "samsung,exynos9820-chipid",
+ 				     "samsung,exynos850-chipid";
+@@ -323,6 +340,14 @@
+ 				 <&cmu_peric0 CLK_GOUT_PERIC0_USI03_USI_IPCLK>;
+ 			clock-names = "pclk", "ipclk";
+ 			samsung,sysreg = <&sysreg_peric0 0x101c>;
++			/*
++			 * Without this the block keeps its automatic clock stop, and
++			 * a master that has no clock cannot drive the line it is
++			 * supposed to clock.  Measured on the phone: with the property
++			 * the bus raises interrupts and the controller reports the
++			 * result of a transfer; without it the block is silent.
++			 */
++			samsung,clkreq-on;
+ 			status = "disabled";
+ 
+ 			hsi2c10: i2c@104b0000 {
+@@ -342,24 +367,293 @@
+ 			};
+ 		};
+ 
++		cmu_peric1: clock-controller@10800000 {
++			compatible = "samsung,exynos9820-cmu-peric1";
++			reg = <0x10800000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_PERIC1_BUS>,
++				 <&cmu_top CLK_DOUT_CMU_PERIC1_IP>;
++			clock-names = "oscclk", "bus", "ip";
++		};
++
++		/* Holds the mode register the USI blocks of this domain use. */
++		sysreg_peric1: syscon@10820000 {
++			compatible = "samsung,exynos9820-peric1-sysreg",
++				     "syscon";
++			reg = <0x10820000 0x2000>;
++			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_SYSREG_PERIC1_PCLK>;
++		};
++
+ 		pinctrl_peric1: pinctrl@10830000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x10830000 0x1000>;
+ 			interrupts = <GIC_SPI 407 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		/*
++		 * The Bluetooth controller hangs off a serial port, and that port is
++		 * one mode of a USI block, the same kind of block the I2C buses above
++		 * use.  The mode register sits in the PERIC1 system register at
++		 * offset 0x1000, the window the vendor tree calls usi_uart_bt.
++		 */
++		usi_uart_bt: usi@108400c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x108400c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_PCLK>,
++				 <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_peric1 0x1000>;
++			/*
++			 * The same reason as on the I2C blocks above: without this the
++			 * block keeps its automatic clock stop.  Carried over from
++			 * those buses, where it was measured on the phone.
++			 */
++			samsung,clkreq-on;
++			status = "disabled";
++
++			serial1: serial@10840000 {
++				compatible = "samsung,exynos9820-uart",
++					     "samsung,exynos8895-uart";
++				/*
++				 * The window stops where the USI one starts: were
++				 * it any longer, both drivers would request the
++				 * same memory and the second one would be turned
++				 * away.
++				 */
++				reg = <0x10840000 0xc0>;
++				interrupts = <GIC_SPI 408 IRQ_TYPE_LEVEL_HIGH>;
++				clocks = <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_PCLK>,
++					 <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_IPCLK>;
++				clock-names = "uart", "clk_uart_baud0";
++				samsung,uart-fifosize = <256>;
++				pinctrl-0 = <&uart1_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
++		cmu_fsys0a: clock-controller@10a00000 {
++			compatible = "samsung,exynos9820-cmu-fsys0a";
++			reg = <0x10a00000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS0A_BUS>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS0A_USB31DRD>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS0A_USBDP_DEBUG>;
++			clock-names = "oscclk", "bus", "usb31drd", "usbdp_debug";
++		};
++
++		/*
++		 * Only the USB 2.0 window of this PHY is described.  The vendor
++		 * gives the block three windows and calls it a combined PHY: the
++		 * other two carry the SuperSpeed lanes and the DisplayPort side,
++		 * and driving them needs calibration tables that are in none of
++		 * the sources this series is built from.  A port that enumerates
++		 * at high speed is worth more than a window nobody writes.
++		 */
++		usbdrd_phy: phy@10b00000 {
++			compatible = "samsung,exynos9820-usbdrd-phy";
++			reg = <0x10b00000 0x200>;
++			#phy-cells = <1>;
++
++			clocks = <&cmu_fsys0a CLK_GOUT_FSYS0A_USB31DRD_ACLK_PHYCTRL>,
++				 <&oscclk>;
++			clock-names = "phy", "ref";
++
++			samsung,pmu-syscon = <&pmu_system_controller>;
++			status = "disabled";
++		};
++
++		usbdrd: usb@10c00000 {
++			compatible = "samsung,exynos9820-dwusb3",
++				     "samsung,exynos850-dwusb3";
++			ranges = <0x0 0x10c00000 0x10000>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_fsys0a CLK_GOUT_FSYS0A_USB31DRD_BUS_CLK_EARLY>,
++				 <&cmu_fsys0a CLK_GOUT_FSYS0A_USB31DRD_I_USB31DRD_REF_CLK_40>;
++			clock-names = "bus_early", "ref";
++			status = "disabled";
++
++			usbdrd_dwc3: usb@0 {
++				compatible = "snps,dwc3";
++				reg = <0x0 0x10000>;
++				interrupts = <GIC_SPI 241 IRQ_TYPE_LEVEL_HIGH>;
++				phys = <&usbdrd_phy 0>;
++				phy-names = "usb2-phy";
++				/*
++				 * A suspended PHY stops driving the line, and this
++				 * board has nothing to wake it up: the port runs as
++				 * a peripheral with no Type-C driver, so nothing
++				 * tells the controller that a cable is attached.
++				 * Measured on a Galaxy S10+: after a reboot, with
++				 * the cable never touched, the controller sits in
++				 * "not attached" and the host sees no device at all,
++				 * while unplugging and replugging brings it back.
++				 * The Exynos-derived port in tree, Google gs101,
++				 * disables the suspend for the same reason.
++				 */
++				snps,has-lpm-erratum;
++				snps,dis_u2_susphy_quirk;
++			};
++		};
++
+ 		pinctrl_fsys0: pinctrl@13030000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x13030000 0x1000>;
+ 			interrupts = <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		cmu_fsys1: clock-controller@13c00000 {
++			compatible = "samsung,exynos9820-cmu-fsys1";
++			reg = <0x13c00000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_GOUT_CMU_FSYS1_BUS>,
++				 <&cmu_top CLK_GOUT_CMU_FSYS1_MMC_CARD>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS1_PCIE>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS1_UFS_CARD>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS1_UFS_EMBD>;
++			clock-names = "oscclk", "bus", "mmc_card", "pcie",
++				      "ufs_card", "ufs_embd";
++		};
++
++		sysreg_fsys1: syscon@13c10000 {
++			compatible = "samsung,exynos9820-fsys1-sysreg",
++				     "syscon";
++			reg = <0x13c10000 0x2000>;
++			clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_SYSREG_FSYS1_PCLK>;
++		};
++
+ 		pinctrl_fsys1: pinctrl@13c40000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x13c40000 0x1000>;
+ 			interrupts = <GIC_SPI 251 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		ufs_0: ufs@13d60000 {
++			compatible = "samsung,exynos9820-ufs";
++			reg = <0x13d60000 0x200>,
++			      <0x13d61100 0x200>,
++			      <0x13d50000 0x8000>,
++			      <0x13d70000 0x100>;
++			reg-names = "hci", "vs_hci", "unipro", "ufsp";
++			interrupts = <GIC_SPI 249 IRQ_TYPE_LEVEL_HIGH>;
++
++			clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_UFS_EMBD_I_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_UFS_EMBD_I_CLK_UNIPRO>;
++			clock-names = "core_clk", "sclk_unipro_main";
++			/*
++			 * Without this the core never puts the two clocks above on the
++			 * list the host driver reads them from: the parser that fills it
++			 * returns early when no table is given, the driver then finds an
++			 * empty list and reports success without having read a single
++			 * rate, and the link is asked to start on a period of zero.  A
++			 * pair of zeroes means no scaling, which is what every other SoC
++			 * of this family writes here.
++			 */
++			freq-table-hz = <0 0>, <0 0>;
++
++			pinctrl-names = "default";
++			pinctrl-0 = <&ufs_rst_n &ufs_refclk_out>;
++
++			phys = <&ufs_0_phy>;
++			phy-names = "ufs-phy";
++
++			/*
++			 * The bits that would put this controller on the coherent
++			 * path.  Without a dma-coherent property beside them the
++			 * driver clears them, which is what the descriptors of this
++			 * driver are kept for.
++			 */
++			samsung,sysreg = <&sysreg_fsys1 0x700>;
++
++			status = "disabled";
++		};
++
++		ufs_0_phy: phy@13d64000 {
++			compatible = "samsung,exynos9820-ufs-phy";
++			/*
++			 * The vendor gives this window 0x800, which covers the first
++			 * lane only, while its own calibration reaches past that on
++			 * the second one.  A page is asked for here instead.
++			 */
++			reg = <0x13d64000 0x1000>;
++			reg-names = "phy-pma";
++			#phy-cells = <0>;
++
++			/*
++			 * UNVERIFIED: the reference this PHY locks to is taken to be
++			 * the board oscillator, which is what the pin beside it
++			 * carries out to the device.  The vendor describes no phy of
++			 * its own, so there is nothing to read this off; confirm it
++			 * by reading the lock status of the PHY with that oscillator
++			 * gated away.
++			 */
++			clocks = <&oscclk>;
++			clock-names = "ref_clk";
++
++			samsung,pmu-syscon = <&pmu_system_controller 0x724>;
++		};
++
++		/*
++		 * The first of the two PCIe controllers of this SoC, and the only
++		 * one wired on this board: the combined Wi-Fi and Bluetooth chip
++		 * answers on it, one lane at Gen1.  The second controller is left
++		 * out, because nothing is attached to it here.
++		 *
++		 * Five windows, of which the DesignWare core claims three by name
++		 * and the driver maps the two halves of the PHY itself.  The
++		 * addresses are the ones the vendor tree gives.
++		 */
++		pcie0: pcie@13ed0000 {
++			compatible = "samsung,exynos9820-pcie";
++			reg = <0x13ed0000 0x1000>,
++			      <0x13f00000 0x1000>,
++			      <0x14ffe000 0x2000>,
++			      <0x13ee0000 0x11000>;
++			reg-names = "elbi", "dbi", "config", "phy";
++			interrupts = <GIC_SPI 253 IRQ_TYPE_LEVEL_HIGH>;
++
++			device_type = "pci";
++			#address-cells = <3>;
++			#size-cells = <2>;
++			ranges = <0x82000000 0 0x14000000 0x14000000 0 0x00ff0000>;
++			bus-range = <0x00 0xff>;
++			num-lanes = <1>;
++			max-link-speed = <1>;
++
++			#interrupt-cells = <1>;
++			interrupt-map-mask = <0 0 0 0>;
++			interrupt-map = <0 0 0 0 &gic GIC_SPI 253
++					 IRQ_TYPE_LEVEL_HIGH>;
++
++			clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_DBI_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_MSTR_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_SLV_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_PHY_REFCLK_IN>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_IA_GEN2_I_CLK>;
++
++			samsung,pmu-syscon = <&pmu_system_controller>;
++			samsung,fsys-sysreg = <&sysreg_fsys1>;
++
++			pinctrl-0 = <&pcie0_clkreq_pins>, <&pcie0_perst_pins>;
++			pinctrl-names = "default";
++			reset-gpios = <&gpf2 2 GPIO_ACTIVE_HIGH>;
++
++			status = "disabled";
++		};
++
+ 		/*
+ 		 * The VTS and AUD pin controllers sit inside power domains that can
+ 		 * be off, so they carry no interrupt and the driver leaves their
+@@ -401,6 +695,7 @@
+ 				     "samsung,exynos7-pmu",
+ 				     "syscon";
+ 			reg = <0x15860000 0x10000>;
++			samsung,pmu-intr-gen-syscon = <&pmu_intr_gen>;
+ 
+ 			poweroff: syscon-poweroff {
+ 				compatible = "syscon-poweroff";
+@@ -410,6 +705,21 @@
+ 				value = <0x0>;
+ 			};
+ 
++			/*
++			 * What the bootloader reads after a reset to learn where it
++			 * should go.  The values are the ones the vendor driver
++			 * writes: a fixed prefix and the number of the mode.
++			 */
++			reboot_mode: reboot-mode {
++				compatible = "syscon-reboot-mode";
++				offset = <0x080c>;
++				mode-download = <0x12345671>;
++				mode-upload = <0x12345672>;
++				mode-charging = <0x12345673>;
++				mode-recovery = <0x12345674>;
++				mode-bootloader = <0x1234567d>;
++			};
++
+ 			reboot: syscon-reboot {
+ 				compatible = "syscon-reboot";
+ 				regmap = <&pmu_system_controller>;
+@@ -435,6 +745,32 @@
+ 			label = "DPU";
+ 		};
+ 
++		/*
++		 * Where the per-core interrupt block sits.  The firmware does not
++		 * bring a core up on the PSCI call alone: the host has to lift the
++		 * block of that core here first, which is what the vendor power
++		 * sequences do before every core they start.
++		 */
++		pmu_intr_gen: syscon@15870000 {
++			compatible = "samsung,exynos9820-pmu-intr-gen",
++				     "syscon";
++			reg = <0x15870000 0x10000>;
++		};
++
++		/*
++		 * The doorbell the processor rings to make the firmware look at the
++		 * memory above.  It carries no payload of its own, which is why the
++		 * driver needs no channel number here.
++		 */
++		ap2apm_mailbox: mailbox@15900000 {
++			compatible = "samsung,exynos9820-mbox";
++			reg = <0x15900000 0x1000>;
++			interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_apm CLK_GOUT_APM_MAILBOX_APM_AP_PCLK>;
++			clock-names = "pclk";
++			#mbox-cells = <0>;
++		};
++
+ 		cmu_cmgp: clock-controller@15c00000 {
+ 			compatible = "samsung,exynos9820-cmu-cmgp";
+ 			reg = <0x15c00000 0x8000>;
+@@ -445,6 +781,25 @@
+ 			clock-names = "oscclk", "bus";
+ 		};
+ 
++		/*
++		 * Holds the mode registers the USI blocks of this domain use.
++		 * The address is read, not worked out: the vendor tree names
++		 * these registers one by one, usi_00_cmgp at 0x15c22000 through
++		 * usi_03_cmgp_i2c at 0x15c22034, each as its own node.  That
++		 * matters here, because on this SoC a write to a wrong system
++		 * register is how an external abort is earned.
++		 *
++		 * The window starts at the first of those registers rather than
++		 * at the start of the block, because where the block starts is
++		 * exactly the part no source states.
++		 */
++		sysreg_cmgp: syscon@15c22000 {
++			compatible = "samsung,exynos9820-cmgp-sysreg",
++				     "syscon";
++			reg = <0x15c22000 0x1000>;
++			clocks = <&cmu_cmgp CLK_GOUT_CMGP_SYSREG_CMGP_PCLK>;
++		};
++
+ 		pinctrl_cmgp: pinctrl@15c30000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x15c30000 0x1000>;
+@@ -460,21 +815,91 @@
+ 		 * This bus stays awake with the CMGP domain, which is why the
+ 		 * display PMIC hangs off it rather than off a PERIC bus: the panel
+ 		 * rails have to be reachable while the rest sleeps.
++		 *
++		 * The controller below is the dedicated I2C half of a CMGP
++		 * channel, not the USI half, but it is wrapped the same way and
++		 * has its own mode register, named usi_02_cmgp_i2c by the vendor.
++		 * Mainline describes every such controller like this, dedicated or
++		 * not; see the three hsi2c blocks of exynos850.  Measured on the
++		 * phone without this node: the block stays in reset, the driver's
++		 * writes never land, and the bus raises no interrupt at all.
+ 		 */
+-		hsi2c2: i2c@15d50000 {
+-			compatible = "samsung,exynos9820-hsi2c",
+-				     "samsung,exynosautov9-hsi2c";
+-			reg = <0x15d50000 0x1000>;
+-			interrupts = <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>;
++		usi_cmgp2: usi@15d500c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x15d500c0 0x20>;
++			ranges;
+ 			#address-cells = <1>;
+-			#size-cells = <0>;
++			#size-cells = <1>;
+ 
+-			clocks = <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_IPCLK>,
+-				 <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_PCLK>;
+-			clock-names = "hsi2c", "hsi2c_pclk";
+-			pinctrl-0 = <&hsi2c2_bus>;
+-			pinctrl-names = "default";
++			clocks = <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_PCLK>,
++				 <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_cmgp 0x24>;
++			samsung,clkreq-on;
+ 			status = "disabled";
++
++			hsi2c2: i2c@15d50000 {
++				compatible = "samsung,exynos9820-hsi2c",
++					     "samsung,exynosautov9-hsi2c";
++				reg = <0x15d50000 0xc0>;
++				interrupts = <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_IPCLK>,
++					 <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_PCLK>;
++				clock-names = "hsi2c", "hsi2c_pclk";
++				pinctrl-0 = <&hsi2c2_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
++		/*
++		 * The bus the main PMIC's companion sits on.  Like the display
++		 * PMIC's bus above it, it stays awake with the CMGP domain, which
++		 * is what a fuel gauge needs: the charge it counts has to go on
++		 * being counted while the rest of the chip sleeps.
++		 *
++		 * This block is a USI, not a dedicated I2C like the one before
++		 * it, so a register outside it picks whether it speaks I2C, SPI
++		 * or UART, and the driver behind that register is also the one
++		 * that releases the block from reset.  Without the node below
++		 * nothing does either, and it shows: measured on the phone, this
++		 * bus raised not one interrupt, while the touchscreen bus, which
++		 * does have such a node, raised two.
++		 */
++		usi_cmgp3: usi@15d600c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x15d600c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_PCLK>,
++				 <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_cmgp 0x30>;
++			samsung,clkreq-on;
++			status = "disabled";
++
++			hsi2c45: i2c@15d60000 {
++				compatible = "samsung,exynos9820-hsi2c",
++					     "samsung,exynosautov9-hsi2c";
++				reg = <0x15d60000 0xc0>;
++				interrupts = <GIC_SPI 82 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_IPCLK>,
++					 <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_PCLK>;
++				clock-names = "hsi2c", "hsi2c_pclk";
++				pinctrl-0 = <&hsi2c45_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
+ 		};
+ 
+ 		pinctrl_aud: pinctrl@18c60000 {
+@@ -671,6 +1096,23 @@
+ 		};
+ 	};
+ 
++	/*
++	 * The firmware on the Active Power Manager, and the only way to reach the
++	 * main PMIC of this board: it is not on a bus of the processor at all.
++	 * The vendor describes it as sitting on a SPEEDY channel of this firmware
++	 * rather than of the CPU, and leaves the SPEEDY controllers disabled.
++	 * Everything the board powers, the touchscreen rails among it, hangs off
++	 * the other end of this mailbox.
++	 */
++	firmware {
++		acpm_ipc: power-management {
++			compatible = "samsung,exynos9820-acpm-ipc";
++			#clock-cells = <1>;
++			mboxes = <&ap2apm_mailbox>;
++			shmem = <&apm_sram>;
++		};
++	};
++
+ 	timer {
+ 		compatible = "arm,armv8-timer";
+ 
+diff --git a/include/dt-bindings/clock/samsung,exynos9820.h b/include/dt-bindings/clock/samsung,exynos9820.h
+index 22a578cd..c63d8d3e 100644
+--- a/include/dt-bindings/clock/samsung,exynos9820.h
++++ b/include/dt-bindings/clock/samsung,exynos9820.h
+@@ -130,6 +130,111 @@
+ #define CLK_GOUT_PERIC0_USI15_USI_PCLK								89
+ #define CLK_GOUT_PERIC0_XIU_P_PERIC0_ACLK							90
+ 
++/* CMU_PERIC1 */
++#define CLK_MOUT_PERIC1_BUS_USER								1
++#define CLK_MOUT_PERIC1_I2C_CAM0_USER								2
++#define CLK_MOUT_PERIC1_I2C_CAM1_USER								3
++#define CLK_MOUT_PERIC1_I2C_CAM2_USER								4
++#define CLK_MOUT_PERIC1_I2C_CAM3_USER								5
++#define CLK_MOUT_PERIC1_SPI_CAM0_USER								6
++#define CLK_MOUT_PERIC1_UART_BT_USER								7
++#define CLK_MOUT_PERIC1_USI06_USI_USER								8
++#define CLK_MOUT_PERIC1_USI07_USI_USER								9
++#define CLK_MOUT_PERIC1_USI08_USI_USER								10
++#define CLK_MOUT_PERIC1_USI09_USI_USER								11
++#define CLK_MOUT_PERIC1_USI10_USI_USER								12
++#define CLK_MOUT_PERIC1_USI11_USI_USER								13
++#define CLK_MOUT_PERIC1_USI16_USI_USER								14
++#define CLK_MOUT_PERIC1_USI17_USI_USER								15
++#define CLK_MOUT_PERIC1_USI_I2C_USER								16
++#define CLK_DOUT_PERIC1_I2C_CAM0								17
++#define CLK_DOUT_PERIC1_I2C_CAM1								18
++#define CLK_DOUT_PERIC1_I2C_CAM2								19
++#define CLK_DOUT_PERIC1_I2C_CAM3								20
++#define CLK_DOUT_PERIC1_SPI_CAM0								21
++#define CLK_DOUT_PERIC1_UART_BT									22
++#define CLK_DOUT_PERIC1_USI06_USI								23
++#define CLK_DOUT_PERIC1_USI07_USI								24
++#define CLK_DOUT_PERIC1_USI08_USI								25
++#define CLK_DOUT_PERIC1_USI09_USI								26
++#define CLK_DOUT_PERIC1_USI10_USI								27
++#define CLK_DOUT_PERIC1_USI11_USI								28
++#define CLK_DOUT_PERIC1_USI16_USI								29
++#define CLK_DOUT_PERIC1_USI17_USI								30
++#define CLK_DOUT_PERIC1_USI_I2C									31
++#define CLK_GOUT_PERIC1_PERIC1_CMU_PERIC1_PCLK							32
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM0_CLK							33
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM1_CLK							34
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM2_CLK							35
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM3_CLK							36
++#define CLK_GOUT_PERIC1_CLK_PERIC1_OSCCLK_CLK							37
++#define CLK_GOUT_PERIC1_CLK_PERIC1_SPI_CAM0_CLK							38
++#define CLK_GOUT_PERIC1_CLK_PERIC1_UART_BT_CLK							39
++#define CLK_GOUT_PERIC1_AXI2APB_PERIC1P0_ACLK							40
++#define CLK_GOUT_PERIC1_AXI2APB_PERIC1P1_ACLK							41
++#define CLK_GOUT_PERIC1_D_TZPC_PERIC1_PCLK							42
++#define CLK_GOUT_PERIC1_GPIO_PERIC1_PCLK							43
++#define CLK_GOUT_PERIC1_I2C_CAM0_IPCLK								44
++#define CLK_GOUT_PERIC1_I2C_CAM0_PCLK								45
++#define CLK_GOUT_PERIC1_I2C_CAM1_IPCLK								46
++#define CLK_GOUT_PERIC1_I2C_CAM1_PCLK								47
++#define CLK_GOUT_PERIC1_I2C_CAM2_IPCLK								48
++#define CLK_GOUT_PERIC1_I2C_CAM2_PCLK								49
++#define CLK_GOUT_PERIC1_I2C_CAM3_IPCLK								50
++#define CLK_GOUT_PERIC1_I2C_CAM3_PCLK								51
++#define CLK_GOUT_PERIC1_I3C_I_PCLK								52
++#define CLK_GOUT_PERIC1_I3C_I_SCLK								53
++#define CLK_GOUT_PERIC1_LHM_AXI_P_PERIC1_I_CLK							54
++#define CLK_GOUT_PERIC1_CLK_PERIC1_BUSP_CLK							55
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I3C_CLK							56
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI06_USI_CLK						57
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI07_USI_CLK						58
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI08_USI_CLK						59
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI09_USI_CLK						60
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI10_USI_CLK						61
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI11_USI_CLK						62
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI16_USI_CLK						63
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI17_USI_CLK						64
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI_I2C_CLK							65
++#define CLK_GOUT_PERIC1_SPI_CAM0_IPCLK								66
++#define CLK_GOUT_PERIC1_SPI_CAM0_PCLK								67
++#define CLK_GOUT_PERIC1_SYSREG_PERIC1_PCLK							68
++#define CLK_GOUT_PERIC1_UART_BT_IPCLK								69
++#define CLK_GOUT_PERIC1_UART_BT_PCLK								70
++#define CLK_GOUT_PERIC1_USI06_I2C_IPCLK								71
++#define CLK_GOUT_PERIC1_USI06_I2C_PCLK								72
++#define CLK_GOUT_PERIC1_USI06_USI_IPCLK								73
++#define CLK_GOUT_PERIC1_USI06_USI_PCLK								74
++#define CLK_GOUT_PERIC1_USI07_I2C_IPCLK								75
++#define CLK_GOUT_PERIC1_USI07_I2C_PCLK								76
++#define CLK_GOUT_PERIC1_USI07_USI_IPCLK								77
++#define CLK_GOUT_PERIC1_USI07_USI_PCLK								78
++#define CLK_GOUT_PERIC1_USI08_I2C_IPCLK								79
++#define CLK_GOUT_PERIC1_USI08_I2C_PCLK								80
++#define CLK_GOUT_PERIC1_USI08_USI_IPCLK								81
++#define CLK_GOUT_PERIC1_USI08_USI_PCLK								82
++#define CLK_GOUT_PERIC1_USI09_I2C_IPCLK								83
++#define CLK_GOUT_PERIC1_USI09_I2C_PCLK								84
++#define CLK_GOUT_PERIC1_USI09_USI_IPCLK								85
++#define CLK_GOUT_PERIC1_USI09_USI_PCLK								86
++#define CLK_GOUT_PERIC1_USI10_I2C_IPCLK								87
++#define CLK_GOUT_PERIC1_USI10_I2C_PCLK								88
++#define CLK_GOUT_PERIC1_USI10_USI_IPCLK								89
++#define CLK_GOUT_PERIC1_USI10_USI_PCLK								90
++#define CLK_GOUT_PERIC1_USI11_I2C_IPCLK								91
++#define CLK_GOUT_PERIC1_USI11_I2C_PCLK								92
++#define CLK_GOUT_PERIC1_USI11_USI_IPCLK								93
++#define CLK_GOUT_PERIC1_USI11_USI_PCLK								94
++#define CLK_GOUT_PERIC1_USI16_I3C_I_PCLK							95
++#define CLK_GOUT_PERIC1_USI16_I3C_I_SCLK							96
++#define CLK_GOUT_PERIC1_USI16_USI_IPCLK								97
++#define CLK_GOUT_PERIC1_USI16_USI_PCLK								98
++#define CLK_GOUT_PERIC1_USI17_I2C_IPCLK								99
++#define CLK_GOUT_PERIC1_USI17_I2C_PCLK								100
++#define CLK_GOUT_PERIC1_USI17_USI_IPCLK								101
++#define CLK_GOUT_PERIC1_USI17_USI_PCLK								102
++#define CLK_GOUT_PERIC1_XIU_P_PERIC1_ACLK							103
++
+ /* CMU_FSYS0A */
+ #define CLK_MOUT_FSYS0A_BUS_USER								1
+ #define CLK_MOUT_FSYS0A_USB31DRD_USER								2
+-- 
+2.47.3
+

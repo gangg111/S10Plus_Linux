@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 02:46:07 +0200
+Subject: [PATCH 143/144] arm64: dts: exynos: exynos9820: Add the SPI bus of
+ the sensor hub
+
+The sensor hub of the Galaxy S10 family answers on the SPI master the
+vendor tree calls spi_17, which is the SPI function of USI16 in PERIC1.
+Add the USI block with its mode register at 0x1048 in the PERIC1 system
+register, the SPI controller at 0x10970000 with interrupt 426, and the
+pins of the bus on gph0-0 to gph0-2.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   |  7 ++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 39 +++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index e4934bdf835..5d26a2755a8 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -750,6 +750,13 @@ gph1: gph1-gpio-bank {
+ 		#interrupt-cells = <2>;
+ 	};
+ 
++	spi17_bus: spi17-bus-pins {
++		samsung,pins = "gph0-2", "gph0-1", "gph0-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++
+ 	hsi2c38_bus: hsi2c38-bus-pins {
+ 		samsung,pins = "gph0-6", "gph0-7";
+ 		samsung,pin-function = <EXYNOS_PIN_FUNC_3>;
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index fcb76c414cb..1d621dde20c 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -529,6 +529,45 @@ serial1: serial@10840000 {
+ 			};
+ 		};
+ 
++		/*
++		 * The full USI block the vendor tree calls usi_16, the one without
++		 * an I2C-only partner: the next block up, 0x10990000, is usi_17 and
++		 * 0x109a0000 its I2C-only partner.  The mode register sits in the
++		 * PERIC1 system register at 0x1048.  Its SPI master is the vendor
++		 * spi_17, one ahead of the USI index as in PERIC0.
++		 */
++		usi16: usi@109700c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x109700c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI16_USI_PCLK>,
++				 <&cmu_peric1 CLK_GOUT_PERIC1_USI16_USI_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_peric1 0x1048>;
++			samsung,clkreq-on;
++			status = "disabled";
++
++			spi_17: spi@10970000 {
++				compatible = "samsung,exynos9820-spi",
++					     "samsung,exynos850-spi";
++				reg = <0x10970000 0x30>;
++				interrupts = <GIC_SPI 426 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI16_USI_PCLK>,
++					 <&cmu_peric1 CLK_GOUT_PERIC1_USI16_USI_IPCLK>;
++				clock-names = "spi", "spi_busclk0";
++				pinctrl-0 = <&spi17_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
+ 		/*
+ 		 * An I2C-only USI block, the one the vendor tree calls usi_17_i2c.
+ 		 * Its mode register sits in the PERIC1 system register at offset

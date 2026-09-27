@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 04:46:33 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the flip cover
+ sensor
+
+The Galaxy S10+ has a Hall sensor on gpa3-6 that detects the magnet of
+a closed flip cover.  The vendor hall driver reports the inverse of the
+line as SW_LID, so the line is active low.  Describe it as a gpio-keys
+switch that can wake the system.
+
+The second sensor on gpa0-2 recognizes the vendor's own covers and
+reports a switch code that exists only in the vendor kernel.  Set up
+its pin as an input and leave it to user space.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 47 +++++++++++++++++++
+ 1 file changed, 47 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 9c28c742cc3..70cf91c2f12 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -389,6 +389,25 @@ panel_in: endpoint {
+ 	};
+ };
+ 
++/ {
++	gpio-hall-effect-sensor {
++		compatible = "gpio-keys";
++		label = "Hall Effect Sensor";
++
++		pinctrl-0 = <&hall_irq &certify_hall_irq>;
++		pinctrl-names = "default";
++
++		event-hall-effect-sensor {
++			label = "Flip Cover";
++			gpios = <&gpa3 6 GPIO_ACTIVE_LOW>;
++			linux,input-type = <EV_SW>;
++			linux,code = <SW_LID>;
++			linux,can-disable;
++			wakeup-source;
++		};
++	};
++};
++
+ &hsi2c10 {
+ 	clock-frequency = <400000>;
+ 	status = "okay";
+@@ -635,6 +654,34 @@ ts_int: ts-int-pins {
+ 	};
+ };
+ 
++/*
++ * The flip cover sensor on gpa3-6.  The vendor hall driver reports SW_LID as
++ * the inverse of the line (CONFIG_HALL_EVENT_REVERSE=y) and logs a high line
++ * as "open", so the line goes low under the magnet of a closed cover and the
++ * switch is active low.
++ *
++ * The second sensor, certify_hall on gpa0-2, recognizes the vendor's own
++ * covers and reports SW_CERTIFYHALL, a switch code that exists only in the
++ * vendor kernel.  Its pin is set up as an input here and left for user space
++ * to read through the GPIO character device, rather than mapped onto an
++ * unrelated mainline switch code.
++ */
++&pinctrl_alive {
++	hall_irq: hall-irq-pins {
++		samsung,pins = "gpa3-6";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++
++	certify_hall_irq: certify-hall-irq-pins {
++		samsung,pins = "gpa0-2";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++};
++
+ /*
+  * The sensor hub and GNSS receiver, a Broadcom BCM47752 the vendor tree
+  * still calls BCM4773, answers on the vendor spi_17.  The groups below carry
+-- 
+2.53.0.windows.1
+

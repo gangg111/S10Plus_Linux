@@ -1,0 +1,7 @@
+# Lata firmware Bluetooth BCM4375B1 dla wbudowanego hci_uart_bcm: sterownik
+# prosi o nia ok. 1,1 s po starcie, jeszcze z initramfs. Bez niej uklad zostaje
+# na firmware z ROM (BCM4362A2 000.017.017 build 0000), a bcm_setup konczy sie
+# przed zapisem parametrow PCM (routing SCO na UART, latka 0117). Zmierzone
+# 25.09.2026 po przebudowie initramfs przez wyzwalacz apk. Nazwa zapasowa
+# BCM.hcd, bo tablica sterownika nie zna BCM4375 (tools/bt/bt-firmware.sh).
+/lib/firmware/brcm/BCM.hcd

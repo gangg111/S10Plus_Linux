@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 06:01:39 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the SPI bus of the audio
+ codec
+
+Add the second full USI block of PERIC0, the one the vendor tree calls
+usi_1, with its SPI master and the pins of that master.  The audio codec
+of the Galaxy S10+ answers on it.
+
+The vendor names this master spi_2 because it counts SPI masters from
+one in PERIC1, so the SPI index runs one ahead of the USI index; the mode
+register of the block is at 0x100c in the PERIC0 system register, next
+to the 0x101c of usi3.  The vendor node gives a 64 byte FIFO, the one of
+the Exynos850 controller the new compatible falls back to.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   |  7 ++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 39 +++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index 3e5316b76be..f78b2a2e88b 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -654,6 +654,13 @@ hsi2c10_bus: hsi2c10-bus-pins {
+ 		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+ 		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
+ 	};
++
++	spi2_bus: spi2-bus-pins {
++		samsung,pins = "gpp0-6", "gpp0-5", "gpp0-4";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
+ };
+ 
+ &pinctrl_peric1 {
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index d4029c61ae9..ec828743d0b 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -372,6 +372,45 @@ serial0: serial@10440000 {
+ 			status = "disabled";
+ 		};
+ 
++		/*
++		 * The second full USI block of PERIC0, vendor usi_1, mode register
++		 * at 0x100c.  Its SPI master is the vendor spi_2: the vendor counts
++		 * SPI masters from one in PERIC1, so the SPI index runs one ahead of
++		 * the USI index.  The 64 byte FIFO of the vendor node is the one of
++		 * the Exynos850 controller.
++		 */
++		usi1: usi@104700c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x104700c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI01_USI_PCLK>,
++				 <&cmu_peric0 CLK_GOUT_PERIC0_USI01_USI_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_peric0 0x100c>;
++			samsung,clkreq-on;
++			status = "disabled";
++
++			spi_2: spi@10470000 {
++				compatible = "samsung,exynos9820-spi",
++					     "samsung,exynos850-spi";
++				reg = <0x10470000 0x30>;
++				interrupts = <GIC_SPI 384 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_peric0 CLK_GOUT_PERIC0_USI01_USI_PCLK>,
++					 <&cmu_peric0 CLK_GOUT_PERIC0_USI01_USI_IPCLK>;
++				clock-names = "spi", "spi_busclk0";
++				pinctrl-0 = <&spi2_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
+ 		/*
+ 		 * A USI block is one piece of hardware that can be a UART, an SPI
+ 		 * master or an I2C master; the mode lives in the PERIC0 system

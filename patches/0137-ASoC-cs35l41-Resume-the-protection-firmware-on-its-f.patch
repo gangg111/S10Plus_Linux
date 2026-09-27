@@ -1,0 +1,64 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 00:02:50 +0200
+Subject: [PATCH] ASoC: cs35l41: Resume the protection firmware on its first
+ start
+
+The speaker protection firmware of the Galaxy S10 amplifiers (CSPL,
+built for the CS35L40) boots with its algorithm paused and reports
+that in the mailbox status.  The resume that turns the algorithm on is
+only sent when the DSP was already running, so on the first stream
+after the firmware is loaded audio passes through the DSP unprotected:
+the temperature model stays at its initial value and the calibration
+is never applied.
+
+Send the resume on the first start as well.  The firmware ignores
+commands for a while after it reports the pause; measured on the
+phone, a resume sent 20 ms after the start is lost and one sent 50 ms
+after it is accepted, so wait twice that before sending it.
+
+With this change the algorithm runs from the first stream: the status
+reads RUNNING, the modelled coil temperature follows the signal level
+and no mailbox errors are logged.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ sound/soc/codecs/cs35l41.c | 18 ++++++++++++++++--
+ 1 file changed, 16 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/codecs/cs35l41.c b/sound/soc/codecs/cs35l41.c
+index b2a076706c7..3739c248ddf 100644
+--- a/sound/soc/codecs/cs35l41.c
++++ b/sound/soc/codecs/cs35l41.c
+@@ -25,6 +25,9 @@
+ 
+ #include "cs35l41.h"
+ 
++/* time firmware booting paused needs before it takes a mailbox command */
++#define CS35L41_DSP_BOOT_DELAY_MS	100
++
+ static const char * const cs35l41_supplies[CS35L41_NUM_SUPPLIES] = {
+ 	"VA",
+ 	"VP",
+@@ -220,8 +223,19 @@ static int cs35l41_dsp_audio_ev(struct snd_soc_dapm_widget *w,
+ 
+ 	switch (event) {
+ 	case SND_SOC_DAPM_POST_PMU:
+-		if (!cs35l41->dsp.cs_dsp.running)
+-			return wm_adsp_event(w, kcontrol, event);
++		/*
++		 * Firmware can boot with its algorithm paused, so a DSP started
++		 * here needs the resume below as much as one that was running.
++		 * Such firmware ignores commands for a while after it reports
++		 * the pause: a resume 20 ms later is lost, one 50 ms later
++		 * takes, so allow it twice that.
++		 */
++		if (!cs35l41->dsp.cs_dsp.running) {
++			ret = wm_adsp_event(w, kcontrol, event);
++			if (ret)
++				return ret;
++			msleep(CS35L41_DSP_BOOT_DELAY_MS);
++		}
+ 
+ 		ret = regmap_read(cs35l41->regmap, CS35L41_DSP_MBOX_2, &fw_status);
+ 		if (ret < 0) {

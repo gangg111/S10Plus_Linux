@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 07:19:19 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Enable the USB
+ port
+
+The port is described as peripheral rather than dual role.  It is wired as
+dual role and the phone changes roles with a USB-C controller sitting on a
+companion chip, which nothing in this series reaches; a dual role port
+without that controller waits for a role that never arrives.  Peripheral is
+the half that works with a plain cable to a computer, and it is the half
+this machine needs to be able to report anything about itself.
+
+Neither the controller nor the PHY has its supplies named.  They come from
+rails of the main PMIC, which sits behind a mailbox this series does not
+speak to, and the regulator core substitutes its own dummy for a supply a
+populated tree does not name.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 48 +++++++++++++++++++
+ 1 file changed, 48 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index e78da54621f..00a421b3009 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -362,6 +362,13 @@ ts_int: ts-int-pins {
+ 	};
+ };
+ 
++/ {
++	reg_usb_dummy: regulator-usb-dummy {
++		compatible = "regulator-fixed";
++		regulator-name = "usb_dummy";
++	};
++};
++
+ &serial0 {
+ 	status = "okay";
+ };
+@@ -370,6 +377,47 @@ &ufs_0 {
+ 	status = "okay";
+ };
+ 
++/*
++ * The port is described as peripheral only.  It is wired as dual role and
++ * the phone changes roles with a USB-C controller sitting on the max77705,
++ * which nothing in this series can reach; a dual role port without that
++ * controller waits for a role that never arrives.  Peripheral is the half
++ * that works with a plain cable to a PC, and it is the half this series
++ * needs to be able to report anything about itself.
++ *
++ * The supplies are named against a stand-in.  They really come from rails
++ * of the main PMIC, which sits behind the ACPM mailbox and which nothing
++ * here can reach, and the driver would be happy with the dummy the
++ * regulator core hands out for a supply nobody names.  The binding is not:
++ * it lists both as required, so they are named, and named honestly as what
++ * they are rather than as rails this series pretends to drive.
++ */
++&usbdrd {
++	status = "okay";
++	vdd10-supply = <&reg_usb_dummy>;
++	vdd33-supply = <&reg_usb_dummy>;
++};
++
++/*
++ * The port is wired to the only connector this phone has, so it has to work
++ * both ways: as a device, which is how the machine is reached from a computer,
++ * and as a host, so that a keyboard can be plugged into the phone.
++ *
++ * There is no Type-C driver here to sense which way the cable goes, so the
++ * role is switched by hand through the role switch dwc3 registers, and the
++ * default is spelled out: a board that came up as a host would drop the
++ * connection to the computer and leave no way back in.
++ */
++&usbdrd_dwc3 {
++	dr_mode = "otg";
++	usb-role-switch;
++	role-switch-default-mode = "peripheral";
++};
++
++&usbdrd_phy {
++	status = "okay";
++};
++
+ /* This USI instance is wired as the touchscreen I2C master on this board. */
+ &usi3 {
+ 	samsung,mode = <USI_V2_I2C>;

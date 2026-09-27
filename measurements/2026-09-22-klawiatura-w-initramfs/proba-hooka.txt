@@ -1,0 +1,23 @@
+== co powstalo na korzeniu:
+  /etc
+  /etc/systemd
+  /etc/systemd/system
+  /etc/systemd/system/czcionka-konsoli.service
+  /etc/systemd/system/klawiatura.service
+  /etc/systemd/system/multi-user.target.wants
+  /etc/systemd/system/multi-user.target.wants/czcionka-konsoli.service
+  /etc/systemd/system/multi-user.target.wants/klawiatura.service
+  /usr
+  /usr/local
+  /usr/local/bin
+  /usr/local/bin/klawiatura
+  /usr/share
+  /usr/share/consolefonts
+  /usr/share/consolefonts/ter32x64.psf
+== prawa binarki:
+  755 root:root /sysroot/usr/local/bin/klawiatura
+== dowiazania wpiecia:
+  klawiatura.service -> ../klawiatura.service
+  czcionka-konsoli.service -> ../czcionka-konsoli.service
+== drugi przebieg: czy nadpisze recznie wgrana wersje:
+  tresc po drugim przebiegu: MOJA-WERSJA

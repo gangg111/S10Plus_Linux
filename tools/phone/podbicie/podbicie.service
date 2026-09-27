@@ -1,0 +1,12 @@
+[Unit]
+Description=Podbicie interfejsu na czas interakcji (uclamp, jak PowerHAL w Androidzie)
+After=systemd-udevd.service
+
+[Service]
+ExecStart=/usr/local/sbin/podbicie -u 10000 -m 1024 -s 0 -t 1500 -r kwin_wayland,plasmashell,plasma-keyboard -R 512
+Restart=always
+RestartSec=2
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,151 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 07:54:02 +0200
+Subject: [PATCH] dt-bindings: clock: exynos9820: Add CMU_AUD
+
+CMU_AUD clocks the audio block: the ABOX, its UAIF serial ports, the
+codec master clock and the digital microphone interface. Its only input
+from outside the block is the CPU clock CMU_TOP divides down for it; the
+two audio PLLs sit inside the block and run from the board oscillator.
+
+Add the compatible, its two input clocks and the identifiers of the
+block's clocks. The identifiers are appended after the existing blocks,
+so none of the numbers already in use moves.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../clock/samsung,exynos9820-clock.yaml       | 19 +++++
+ .../dt-bindings/clock/samsung,exynos9820.h    | 83 +++++++++++++++++++
+ 2 files changed, 102 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml b/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
+index 0fae5bdac24..3bf39580e07 100644
+--- a/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
++++ b/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
+@@ -30,6 +30,7 @@ properties:
+   compatible:
+     enum:
+       - samsung,exynos9820-cmu-apm
++      - samsung,exynos9820-cmu-aud
+       - samsung,exynos9820-cmu-cmgp
+       - samsung,exynos9820-cmu-dpu
+       - samsung,exynos9820-cmu-fsys0a
+@@ -85,6 +86,24 @@ allOf:
+             - const: oscclk
+             - const: bus
+ 
++  - if:
++      properties:
++        compatible:
++          contains:
++            const: samsung,exynos9820-cmu-aud
++
++    then:
++      properties:
++        clocks:
++          items:
++            - description: External reference clock (26 MHz)
++            - description: CMU_AUD CPU clock (from CMU_TOP)
++
++        clock-names:
++          items:
++            - const: oscclk
++            - const: cpu
++
+   - if:
+       properties:
+         compatible:
+diff --git a/include/dt-bindings/clock/samsung,exynos9820.h b/include/dt-bindings/clock/samsung,exynos9820.h
+index c63d8d3e705..e019606e35f 100644
+--- a/include/dt-bindings/clock/samsung,exynos9820.h
++++ b/include/dt-bindings/clock/samsung,exynos9820.h
+@@ -485,6 +485,89 @@
+ #define CLK_GOUT_DPU_WRAPPER_FOR_S5I6280_HSI_DCPHY_COMBO_TOP_PCLK				64
+ #define CLK_GOUT_DPU_XIU_P_DPU_ACLK								65
+ 
++/* CMU_AUD */
++#define CLK_FOUT_PLL_AUD0									1
++#define CLK_FOUT_PLL_AUD1									2
++#define CLK_CLKIO_AUD_DSIF									3
++#define CLK_CLKIO_AUD_UAIF0									4
++#define CLK_CLKIO_AUD_UAIF1									5
++#define CLK_CLKIO_AUD_UAIF2									6
++#define CLK_CLKIO_AUD_UAIF3									7
++#define CLK_MOUT_AUD_CPU_USER									8
++#define CLK_MOUT_AUD_CPU									9
++#define CLK_MOUT_AUD_DSIF									10
++#define CLK_MOUT_AUD_UAIF0									11
++#define CLK_MOUT_AUD_UAIF1									12
++#define CLK_MOUT_AUD_UAIF2									13
++#define CLK_MOUT_AUD_UAIF3									14
++#define CLK_DOUT_AUD_AUDIF									15
++#define CLK_DOUT_AUD_BUS									16
++#define CLK_DOUT_AUD_BUSP									17
++#define CLK_DOUT_AUD_CNT									18
++#define CLK_DOUT_AUD_CPU_ACLK									19
++#define CLK_DOUT_AUD_CPU_ATCLK									20
++#define CLK_DOUT_AUD_CPU_PCLKDBG								21
++#define CLK_DOUT_AUD_DMIC									22
++#define CLK_DOUT_AUD_DSIF									23
++#define CLK_DOUT_AUD_MCLK									24
++#define CLK_DOUT_AUD_PLL									25
++#define CLK_DOUT_AUD_UAIF0									26
++#define CLK_DOUT_AUD_UAIF1									27
++#define CLK_DOUT_AUD_UAIF2									28
++#define CLK_DOUT_AUD_UAIF3									29
++#define CLK_GOUT_AUD_AUD_CMU_AUD_PCLK								30
++#define CLK_GOUT_AUD_DFTMUX_AUD_AUD_CODEC_MCLK							31
++#define CLK_GOUT_AUD_DMIC_CLK									32
++#define CLK_GOUT_AUD_CLK_AUD_OSCCLK_CLK								33
++#define CLK_GOUT_AUD_ABOX_ACLK									34
++#define CLK_GOUT_AUD_ABOX_ACLK_IRQ								35
++#define CLK_GOUT_AUD_ABOX_BCLK_CNT								36
++#define CLK_GOUT_AUD_ABOX_BCLK_DSIF								37
++#define CLK_GOUT_AUD_ABOX_BCLK_UAIF0								38
++#define CLK_GOUT_AUD_ABOX_BCLK_UAIF1								39
++#define CLK_GOUT_AUD_ABOX_BCLK_UAIF2								40
++#define CLK_GOUT_AUD_ABOX_BCLK_UAIF3								41
++#define CLK_GOUT_AUD_ABOX_CCLK_ASB								42
++#define CLK_GOUT_AUD_ABOX_CCLK_CA32								43
++#define CLK_GOUT_AUD_ABOX_CCLK_DAP								44
++#define CLK_GOUT_AUD_AD_APB_SMMU_AUD_PCLKM							45
++#define CLK_GOUT_AUD_AD_APB_SMMU_AUD_PCLKS							46
++#define CLK_GOUT_AUD_AD_APB_SMMU_AUD_S_PCLKM							47
++#define CLK_GOUT_AUD_AD_APB_SMMU_AUD_S_PCLKS							48
++#define CLK_GOUT_AUD_AXI2APB_AUD_ACLK								49
++#define CLK_GOUT_AUD_AXI_US_32TO128_ACLK							50
++#define CLK_GOUT_AUD_BTM_AUD_I_ACLK								51
++#define CLK_GOUT_AUD_BTM_AUD_I_PCLK								52
++#define CLK_GOUT_AUD_GPIO_AUD_PCLK								53
++#define CLK_GOUT_AUD_LHM_AXI_P_AUD_I_CLK							54
++#define CLK_GOUT_AUD_LHS_ATB_T0_AUD_I_CLK							55
++#define CLK_GOUT_AUD_LHS_ATB_T1_AUD_I_CLK							56
++#define CLK_GOUT_AUD_LHS_AXI_D_AUD_I_CLK							57
++#define CLK_GOUT_AUD_PERI_AXI_ASB_ACLKM								58
++#define CLK_GOUT_AUD_PERI_AXI_ASB_ACLKS								59
++#define CLK_GOUT_AUD_PERI_AXI_ASB_PCLK								60
++#define CLK_GOUT_AUD_PPMU_AUD_ACLK								61
++#define CLK_GOUT_AUD_PPMU_AUD_PCLK								62
++#define CLK_GOUT_AUD_CLK_AUD_BUSP_CLK								63
++#define CLK_GOUT_AUD_CLK_AUD_BUS_CLK								64
++#define CLK_GOUT_AUD_CLK_AUD_CNT_CLK								65
++#define CLK_GOUT_AUD_CLK_AUD_CPU_ACLK_CLK							66
++#define CLK_GOUT_AUD_CLK_AUD_CPU_ATCLK_CLK							67
++#define CLK_GOUT_AUD_CLK_AUD_CPU_CLK								68
++#define CLK_GOUT_AUD_CLK_AUD_CPU_PCLKDBG_CLK							69
++#define CLK_GOUT_AUD_CLK_AUD_DSIF_CLK								70
++#define CLK_GOUT_AUD_CLK_AUD_UAIF0_CLK								71
++#define CLK_GOUT_AUD_CLK_AUD_UAIF1_CLK								72
++#define CLK_GOUT_AUD_CLK_AUD_UAIF2_CLK								73
++#define CLK_GOUT_AUD_CLK_AUD_UAIF3_CLK								74
++#define CLK_GOUT_AUD_SMMU_AUD_CLK								75
++#define CLK_GOUT_AUD_SYSREG_AUD_PCLK								76
++#define CLK_GOUT_AUD_TREX_AUD_CLK								77
++#define CLK_GOUT_AUD_VGEN_LITE_AUD_CLK								78
++#define CLK_GOUT_AUD_WDT_AUD_PCLK								79
++#define CLK_GOUT_AUD_WRAP2_CONV_AUD_I_CLK							80
++#define CLK_GOUT_AUD_XIU_P_AUD_ACLK								81
++
+ /* CMU_CMU */
+ #define CLK_FOUT_APLL_SHARED0									1
+ #define CLK_FOUT_APLL_SHARED1									2

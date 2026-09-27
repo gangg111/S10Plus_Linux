@@ -1,0 +1,131 @@
+From f2d4dd0d0c55e6e5857f476e7944612eb8c18c1f Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 17:27:59 +0200
+Subject: [PATCH 28/40] board: samsung: exynos-mobile: take the boot mode from
+ the misc partition
+
+The word in the power management unit never reaches this loader on this
+phone, which is measured rather than assumed.  The kernel writes
+0x1234567d for "reboot bootloader" into the register the vendor tree
+calls SEC_DEBUG_PANIC_INFORM; the first stage reads it before handing
+over, knows the value as one of its own and goes to its download mode,
+so the cable comes up as 04e8:685d and not as fastboot.  Every other
+name that tree carries, download, upload, charging and recovery, belongs
+to the same stage, so there is none left to borrow for this one.
+
+The block Android keeps on the misc partition survives it untouched: the
+whole megabyte of that partition reads as zeros on this phone.  So the
+request comes from there as well, in the shape Android has used for it
+for years, and "bootonce-bootloader" written by a running system brings
+the next boot up on the cable with nobody near the phone.
+
+The field is cleared before fastboot starts, as the name of the command
+says it should be; a block left asking would send every later reset to
+the same place.
+
+The register is still read, and stays read: the driver behind it is
+generic, the tree describes it, and a phone whose first stage does not
+eat the word would be served by it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/exynos-mobile.c | 59 +++++++++++++++++++++
+ configs/exynos9820-beyond2lte_defconfig     |  1 +
+ 2 files changed, 60 insertions(+)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index 3e6b0dd5..6ef42137 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -8,6 +8,7 @@
+ #include <timestamp.h>
+ #include <asm/armv8/mmu.h>
+ #include <asm/io.h>
++#include <bcb.h>
+ #include <blk.h>
+ #include <charset.h>
+ #include <bootflow.h>
+@@ -642,6 +643,63 @@ static void exynos_reboot_mode(void)
+ 		env_set("bootcmd", "run fastbootcmd; bootmenu");
+ }
+ 
++/*
++ * Where the last reset asked to go, the second place to look: the block
++ * Android keeps on the misc partition.
++ *
++ * The word in the power management unit does not reach this loader on this
++ * phone, which is measured rather than assumed.  The kernel writes 0x1234567d
++ * for "reboot bootloader" into the register the vendor tree calls
++ * SEC_DEBUG_PANIC_INFORM; the first stage reads that register before it hands
++ * over, knows the value as one of its own and goes to its download mode, and
++ * the cable then shows 04e8:685d instead of fastboot.  Every other name that
++ * tree carries, download, upload, charging and recovery, belongs to the same
++ * stage, so there is none left to borrow.
++ *
++ * The block on the misc partition it does not touch: the whole megabyte of it
++ * reads as zeros on this phone.  So the request comes from there instead, in
++ * the shape Android has used for it for years, and one word from a running
++ * system is enough to bring the next boot up on the cable.
++ */
++static void exynos_boot_control_block(void)
++{
++	char partition[] = "misc";
++	char command[32];
++	int ret;
++
++	ret = bcb_find_partition_and_load("scsi", 0, partition);
++	if (ret) {
++		log_debug("%s: no block to read (%d)\n",
++			  __func__, ret);
++		return;
++	}
++
++	ret = bcb_get(BCB_FIELD_COMMAND, command, sizeof(command));
++	if (ret) {
++		log_debug("%s: the block has no command (%d)\n",
++			  __func__, ret);
++		return;
++	}
++
++	if (!command[0])
++		return;
++
++	log_info("The misc partition asks for: %s\n", command);
++
++	if (strcmp(command, "bootonce-bootloader"))
++		return;
++
++	/*
++	 * Once, as the name of the command says: the field goes back to empty
++	 * before the cable is up, or every later reset would come here too.
++	 */
++	if (bcb_clear(BCB_FIELD_COMMAND) || bcb_store())
++		log_warning("%s: the block still asks for fastboot\n",
++			    __func__);
++
++	env_set("bootcmd", "run fastbootcmd; bootmenu");
++}
++
+ int board_late_init(void)
+ {
+ 	exynos_mark(EXYNOS_MARK_CONSOLE);
+@@ -672,6 +730,7 @@ int board_late_init(void)
+ 	 * on the other end.
+ 	 */
+ 	exynos_reboot_mode();
++	exynos_boot_control_block();
+ 
+ 	return 0;
+ }
+diff --git a/configs/exynos9820-beyond2lte_defconfig b/configs/exynos9820-beyond2lte_defconfig
+index dd9e7f58..497aa127 100644
+--- a/configs/exynos9820-beyond2lte_defconfig
++++ b/configs/exynos9820-beyond2lte_defconfig
+@@ -81,3 +81,4 @@ CONFIG_FASTBOOT_FLASH_BLOCK_DEVICE_ID=0
+ CONFIG_USB_GADGET_OS_DESCRIPTORS=y
+ CONFIG_DM_REBOOT_MODE=y
+ CONFIG_DM_REBOOT_MODE_SYSCON=y
++CONFIG_CMD_BCB=y
+-- 
+2.47.3
+

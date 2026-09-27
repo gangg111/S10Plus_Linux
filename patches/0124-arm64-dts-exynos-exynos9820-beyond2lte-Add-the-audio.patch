@@ -1,0 +1,156 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 06:01:53 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the audio
+ codec
+
+Describe the CS47L93 audio hub on the SPI master of usi1 and the two
+PMIC rails it runs from: LDO17M at 1.8 V for AVDD, DBVDD1 and CPVDD1,
+always on as in the vendor tree, and LDO18M at 1.2 V for DCVDD and
+CPVDD2, which the codec driver switches.  The codec is the only consumer
+of LDO18M the vendor tree names.
+
+The reset line is active high, as in the vendor tree: the driver holds
+it with raw values, so this keeps the chip in reset from the moment the
+line is requested until the rails are up.  It gets no pin group, since
+requesting it as an output sets the level before the direction.  The
+interrupt is gpa2-2, level low.
+
+The chip select is a GPIO: with the select of the controller the read of
+the device ID returned 0xffff, because the controller drops the select
+after every transfer and a register read of this codec is two transfers
+that need it held across both.
+
+The bus starts at 5 MHz rather than the 25 MHz of the vendor tree until
+the rate of the SPI clock has been checked on the phone.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 86 ++++++++++++++++++-
+ 1 file changed, 82 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index b1976026dbd..7240dff0f47 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -239,10 +239,10 @@ el2_earlymem@9fd800000 {
+  * hangs off a SPEEDY link of the power management firmware, so the node sits
+  * under that firmware and every register access travels as an ACPM command.
+  *
+- * Only the two rails the touchscreen needs are described.  The rest of the
+- * chip carries the rails the CPU, the memory and the modem run from, and they
+- * are left without constraints on purpose, so that nothing in the kernel can
+- * be asked to change them.
++ * Only the rails the touchscreen and the audio codec need are described.
++ * The rest of the chip carries the rails the CPU, the memory and the modem
++ * run from, and they are left without constraints on purpose, so that
++ * nothing in the kernel can be asked to change them.
+  */
+ &acpm_ipc {
+ 	pmic-1 {
+@@ -253,6 +253,21 @@ pmic-1 {
+ 		wakeup-source;
+ 
+ 		regulators {
++			ldo17m: LDO17M {
++				regulator-name = "vdd_pmic_codec_1p8";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++				regulator-always-on;
++				regulator-boot-on;
++			};
++
++			ldo18m: LDO18M {
++				regulator-name = "vdd_codec_1p2";
++				regulator-min-microvolt = <1200000>;
++				regulator-max-microvolt = <1200000>;
++				regulator-enable-ramp-delay = <5000>;
++			};
++
+ 			ldo19m: LDO19M {
+ 				regulator-name = "tsp_io";
+ 				regulator-min-microvolt = <1800000>;
+@@ -546,6 +561,14 @@ ts_int: ts-int-pins {
+ 	};
+ };
+ 
++&pinctrl_alive {
++	codec_irq: codec-irq-pins {
++		samsung,pins = "gpa2-2";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++	};
++};
++
+ &pinctrl_alive {
+ 	main_pmic_irq: main-pmic-irq-pins {
+ 		samsung,pins = "gpa0-1";
+@@ -650,6 +673,55 @@ bluetooth {
+ 	};
+ };
+ 
++/*
++ * The audio hub, a CS47L93, is the only device on this bus.  AVDD, DBVDD1
++ * and CPVDD1 come from LDO17M (1.8 V), DCVDD and CPVDD2 from LDO18M
++ * (1.2 V), the only consumer of that rail in the vendor tree.
++ *
++ * The chip select is a GPIO.  The controller drops its own select after
++ * every transfer, and a register read of this codec is two transfers, the
++ * address and then the data, that need the select held across both.
++ */
++&spi_2 {
++	pinctrl-0 = <&spi2_bus>;
++	pinctrl-names = "default";
++	cs-gpios = <&gpp0 7 GPIO_ACTIVE_LOW>;
++	status = "okay";
++
++	audio-codec@0 {
++		compatible = "cirrus,cs47l93";
++		reg = <0>;
++		spi-max-frequency = <5000000>;
++
++		interrupts-extended = <&gpa2 2 IRQ_TYPE_LEVEL_LOW>;
++		interrupt-controller;
++		#interrupt-cells = <2>;
++		gpio-controller;
++		#gpio-cells = <2>;
++
++		/*
++		 * The driver drives this line with raw values, low holding the
++		 * chip in reset; active high keeps it in reset from the request
++		 * until the rails are up, as in the vendor tree.  No pin group:
++		 * requesting the line as an output sets its level first, where
++		 * switching the pin to output from a group would not.
++		 */
++		reset-gpios = <&gpg1 0 GPIO_ACTIVE_HIGH>;
++		pinctrl-0 = <&codec_irq>;
++		pinctrl-names = "default";
++
++		AVDD-supply = <&ldo17m>;
++		DBVDD1-supply = <&ldo17m>;
++		CPVDD1-supply = <&ldo17m>;
++		CPVDD2-supply = <&ldo18m>;
++		DCVDD-supply = <&ldo18m>;
++
++		controller-data {
++			samsung,spi-feedback-delay = <1>;
++		};
++	};
++};
++
+ &ufs_0 {
+ 	status = "okay";
+ };
+@@ -695,6 +767,12 @@ &usbdrd_phy {
+ 	status = "okay";
+ };
+ 
++/* This USI instance is wired as the SPI master the audio codec answers on. */
++&usi1 {
++	samsung,mode = <USI_V2_SPI>;
++	status = "okay";
++};
++
+ /*
+  * This I2C-only USI instance carries the bus of the speaker amplifiers.
+  * Picking the mode here is also what releases the block from reset.

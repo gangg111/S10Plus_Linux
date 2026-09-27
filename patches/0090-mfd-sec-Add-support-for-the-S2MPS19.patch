@@ -1,0 +1,745 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 21:54:50 +0200
+Subject: [PATCH] mfd: sec: Add support for the S2MPS19
+
+The main PMIC of the Exynos9820 line, and the reason the touchscreen of a
+Galaxy S10 has no power under mainline: both of its rails come from LDOs
+of this chip.
+
+Nothing has to be added below this driver.  The chip is reached with the
+very same ACPM command this driver already sends to the PMICs of Tensor:
+the vendor packs channel into bits 15:12, bank into 11:8 and register into
+7:0 of the first word and the function code into the second, which is
+field for field what exynos-acpm-pmic.c builds, and its function codes are
+in the same order (acpm_mfd.h:19-60, acpm_mfd.c:19-61).  So this is a
+register map, an interrupt layout and two platform numbers.
+
+Both numbers come from the vendor device tree of the phone, whose node for
+this chip carries acpm-ipc-channel = <2> and acpm-speedy-channel = <0>.
+They happen to be the ones the main PMIC of Tensor uses.
+
+Three things differ from the S2MPG1x and shape the code:
+
+ - There are seven interrupt registers, not six, and their bits are taken
+   from the vendor table rather than from the order of the names, because
+   INT3 skips bit 4 (s2mps19_irq.c:59-118).
+
+ - There is no meter bank.  The power meter of this chip lives in the PMIC
+   bank behind the ADC registers at 0xbf, so the meter regmap becomes
+   optional, as the RTC one already was.
+
+ - Neither bank is cached.  The APM firmware drives the buck rails on its
+   own while the kernel runs, so a cached voltage would go stale with
+   nothing writing to it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/mfd/Kconfig                 |   2 +-
+ drivers/mfd/sec-acpm.c              | 119 +++++++++-
+ drivers/mfd/sec-common.c            |  11 +-
+ drivers/mfd/sec-irq.c               |  90 +++++++
+ include/linux/mfd/samsung/core.h    |   1 +
+ include/linux/mfd/samsung/s2mps19.h | 349 ++++++++++++++++++++++++++++
+ 6 files changed, 566 insertions(+), 6 deletions(-)
+ create mode 100644 include/linux/mfd/samsung/s2mps19.h
+
+diff --git a/drivers/mfd/Kconfig b/drivers/mfd/Kconfig
+index 763ce6a3478..65941c3774e 100644
+--- a/drivers/mfd/Kconfig
++++ b/drivers/mfd/Kconfig
+@@ -1423,7 +1423,7 @@ config MFD_SEC_CORE
+ 	select REGMAP_IRQ
+ 
+ config MFD_SEC_ACPM
+-	tristate "Samsung Electronics S2MPG1x PMICs"
++	tristate "Samsung Electronics S2MPG1x and S2MPS19 PMICs"
+ 	depends on EXYNOS_ACPM_PROTOCOL
+ 	depends on OF
+ 	select MFD_SEC_CORE
+diff --git a/drivers/mfd/sec-acpm.c b/drivers/mfd/sec-acpm.c
+index d11fbf5b94b..3c3e74471aa 100644
+--- a/drivers/mfd/sec-acpm.c
++++ b/drivers/mfd/sec-acpm.c
+@@ -14,6 +14,7 @@
+ #include <linux/mfd/samsung/rtc.h>
+ #include <linux/mfd/samsung/s2mpg10.h>
+ #include <linux/mfd/samsung/s2mpg11.h>
++#include <linux/mfd/samsung/s2mps19.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+@@ -365,6 +366,99 @@ static const struct regmap_config s2mpg11_regmap_config_meter = {
+ 	.cache_type = REGCACHE_FLAT,
+ };
+ 
++static const struct regmap_range s2mps19_common_registers[] = {
++	regmap_reg_range(0x00, 0x02), /* CHIPID, INT, INT_MASK */
++};
++
++static const struct regmap_range s2mps19_common_ro_registers[] = {
++	regmap_reg_range(0x00, 0x01), /* CHIPID, INT */
++};
++
++static const struct regmap_range s2mps19_common_precious_registers[] = {
++	regmap_reg_range(0x01, 0x01), /* INT */
++};
++
++static const struct regmap_access_table s2mps19_common_wr_table = {
++	.yes_ranges = s2mps19_common_registers,
++	.n_yes_ranges = ARRAY_SIZE(s2mps19_common_registers),
++	.no_ranges = s2mps19_common_ro_registers,
++	.n_no_ranges = ARRAY_SIZE(s2mps19_common_ro_registers),
++};
++
++static const struct regmap_access_table s2mps19_common_rd_table = {
++	.yes_ranges = s2mps19_common_registers,
++	.n_yes_ranges = ARRAY_SIZE(s2mps19_common_registers),
++};
++
++static const struct regmap_access_table s2mps19_common_precious_table = {
++	.yes_ranges = s2mps19_common_precious_registers,
++	.n_yes_ranges = ARRAY_SIZE(s2mps19_common_precious_registers),
++};
++
++/*
++ * Neither bank is cached.  The APM firmware drives the buck rails of this
++ * chip on its own while the kernel runs, so a cached voltage would go stale
++ * without anything writing to it, and the interrupt registers clear on read.
++ */
++static const struct regmap_config s2mps19_regmap_config_common = {
++	.name = "common",
++	.reg_bits = ACPM_ADDR_BITS,
++	.val_bits = 8,
++	.max_register = S2MPS19_COMMON_INT_MASK,
++	.wr_table = &s2mps19_common_wr_table,
++	.rd_table = &s2mps19_common_rd_table,
++	.precious_table = &s2mps19_common_precious_table,
++	.cache_type = REGCACHE_NONE,
++};
++
++static const struct regmap_range s2mps19_pmic_registers[] = {
++	regmap_reg_range(0x00, 0x16), /* INTx, INTxM, STATUSx, PWRONSRC, CTRLx */
++	regmap_reg_range(0x1d, 0x3e), /* Bucks, buck boost, ramp rates */
++	regmap_reg_range(0x46, 0x62), /* LDO1M .. LDO29M */
++	regmap_reg_range(0xa4, 0xa5), /* PWREN_SEL */
++	regmap_reg_range(0xa9, 0xad), /* Over current warning */
++	regmap_reg_range(0xb1, 0xbb), /* Over current protection */
++	regmap_reg_range(0xbf, 0xc2), /* ADC */
++};
++
++static const struct regmap_range s2mps19_pmic_ro_registers[] = {
++	regmap_reg_range(0x00, 0x06), /* INTx */
++	regmap_reg_range(0x0e, 0x11), /* STATUSx PWRONSRC OFFSRC */
++	regmap_reg_range(0xc2, 0xc2), /* ADC data */
++};
++
++static const struct regmap_range s2mps19_pmic_precious_registers[] = {
++	regmap_reg_range(0x00, 0x06), /* INTx */
++};
++
++static const struct regmap_access_table s2mps19_pmic_wr_table = {
++	.yes_ranges = s2mps19_pmic_registers,
++	.n_yes_ranges = ARRAY_SIZE(s2mps19_pmic_registers),
++	.no_ranges = s2mps19_pmic_ro_registers,
++	.n_no_ranges = ARRAY_SIZE(s2mps19_pmic_ro_registers),
++};
++
++static const struct regmap_access_table s2mps19_pmic_rd_table = {
++	.yes_ranges = s2mps19_pmic_registers,
++	.n_yes_ranges = ARRAY_SIZE(s2mps19_pmic_registers),
++};
++
++static const struct regmap_access_table s2mps19_pmic_precious_table = {
++	.yes_ranges = s2mps19_pmic_precious_registers,
++	.n_yes_ranges = ARRAY_SIZE(s2mps19_pmic_precious_registers),
++};
++
++static const struct regmap_config s2mps19_regmap_config_pmic = {
++	.name = "pmic",
++	.reg_bits = ACPM_ADDR_BITS,
++	.val_bits = 8,
++	.max_register = S2MPS19_PMIC_ADC_DATA,
++	.wr_table = &s2mps19_pmic_wr_table,
++	.rd_table = &s2mps19_pmic_rd_table,
++	.precious_table = &s2mps19_pmic_precious_table,
++	.cache_type = REGCACHE_NONE,
++};
++
+ struct sec_pmic_acpm_shared_bus_context {
+ 	struct acpm_handle *acpm;
+ 	unsigned int acpm_chan_id;
+@@ -520,10 +614,13 @@ static int sec_pmic_acpm_probe(struct platform_device *pdev)
+ 			return PTR_ERR(regmap);
+ 	}
+ 
+-	regmap = sec_pmic_acpm_regmap_init(dev, shared_ctx, SEC_PMIC_ACPM_ACCESSTYPE_METER,
+-					   pdata->regmap_cfg_meter, true);
+-	if (IS_ERR(regmap))
+-		return PTR_ERR(regmap);
++	if (pdata->regmap_cfg_meter) {
++		regmap = sec_pmic_acpm_regmap_init(dev, shared_ctx,
++						   SEC_PMIC_ACPM_ACCESSTYPE_METER,
++						   pdata->regmap_cfg_meter, true);
++		if (IS_ERR(regmap))
++			return PTR_ERR(regmap);
++	}
+ 
+ 	ret = sec_pmic_probe(dev, pdata->device_type, irq, regmap_pmic, NULL);
+ 	if (ret)
+@@ -559,9 +656,23 @@ static const struct sec_pmic_acpm_platform_data s2mpg11_data = {
+ 	.regmap_cfg_meter = &s2mpg11_regmap_config_meter,
+ };
+ 
++/*
++ * Both numbers come from the vendor device tree of the Galaxy S10, where the
++ * node of this chip carries acpm-ipc-channel = <2> and acpm-speedy-channel
++ * = <0>.  They happen to match the main PMIC of Tensor.
++ */
++static const struct sec_pmic_acpm_platform_data s2mps19_data = {
++	.device_type = S2MPS19X,
++	.acpm_chan_id = 2,
++	.speedy_channel = 0,
++	.regmap_cfg_common = &s2mps19_regmap_config_common,
++	.regmap_cfg_pmic = &s2mps19_regmap_config_pmic,
++};
++
+ static const struct of_device_id sec_pmic_acpm_of_match[] = {
+ 	{ .compatible = "samsung,s2mpg10-pmic", .data = &s2mpg10_data, },
+ 	{ .compatible = "samsung,s2mpg11-pmic", .data = &s2mpg11_data, },
++	{ .compatible = "samsung,s2mps19-pmic", .data = &s2mps19_data, },
+ 	{ },
+ };
+ MODULE_DEVICE_TABLE(of, sec_pmic_acpm_of_match);
+diff --git a/drivers/mfd/sec-common.c b/drivers/mfd/sec-common.c
+index fe92bc4a3dd..995b96e3367 100644
+--- a/drivers/mfd/sec-common.c
++++ b/drivers/mfd/sec-common.c
+@@ -97,6 +97,10 @@ static const struct mfd_cell s2mpu02_devs[] = {
+ 	MFD_CELL_NAME("s2mpu02-regulator"),
+ };
+ 
++static const struct mfd_cell s2mps19_devs[] = {
++	MFD_CELL_NAME("s2mps19-regulator"),
++};
++
+ static const struct resource s2mpu05_rtc_resources[] = {
+ 	DEFINE_RES_IRQ_NAMED(S2MPU05_IRQ_RTCA0, "alarm"),
+ };
+@@ -125,7 +129,8 @@ static void sec_pmic_dump_rev(struct sec_pmic_dev *sec_pmic)
+ 	switch (sec_pmic->device_type) {
+ 	case S2MPG10:
+ 	case S2MPG11:
+-		/* For s2mpg1x, the revision is in a different regmap */
++	case S2MPS19X:
++		/* For s2mpg1x and s2mps19, the revision is in a different regmap */
+ 		return;
+ 	case S2MU005:
+ 		reg = S2MU005_REG_ID;
+@@ -263,6 +268,10 @@ int sec_pmic_probe(struct device *dev, int device_type, unsigned int irq,
+ 		sec_devs = s2mps15_devs;
+ 		num_sec_devs = ARRAY_SIZE(s2mps15_devs);
+ 		break;
++	case S2MPS19X:
++		sec_devs = s2mps19_devs;
++		num_sec_devs = ARRAY_SIZE(s2mps19_devs);
++		break;
+ 	case S2MPU02:
+ 		sec_devs = s2mpu02_devs;
+ 		num_sec_devs = ARRAY_SIZE(s2mpu02_devs);
+diff --git a/drivers/mfd/sec-irq.c b/drivers/mfd/sec-irq.c
+index 42862807be1..d7548bd74f9 100644
+--- a/drivers/mfd/sec-irq.c
++++ b/drivers/mfd/sec-irq.c
+@@ -14,6 +14,7 @@
+ #include <linux/mfd/samsung/s2mpg11.h>
+ #include <linux/mfd/samsung/s2mps11.h>
+ #include <linux/mfd/samsung/s2mps14.h>
++#include <linux/mfd/samsung/s2mps19.h>
+ #include <linux/mfd/samsung/s2mpu02.h>
+ #include <linux/mfd/samsung/s2mpu05.h>
+ #include <linux/mfd/samsung/s2mu005.h>
+@@ -182,6 +183,70 @@ static const struct regmap_irq s2mps14_irqs[] = {
+ 	REGMAP_IRQ_REG(S2MPS14_IRQ_TSD, 2, S2MPS14_IRQ_TSD_MASK),
+ };
+ 
++static const struct regmap_irq s2mps19_irqs[] = {
++	REGMAP_IRQ_REG(S2MPS19_COMMON_IRQ_PMIC, 0, S2MPS19_COMMON_INT_SRC_PMIC),
++};
++
++static const struct regmap_irq s2mps19_pmic_irqs[] = {
++	REGMAP_IRQ_REG(S2MPS19_IRQ_PWRONF, 0, S2MPS19_IRQ_PWRONF_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_PWRONR, 0, S2MPS19_IRQ_PWRONR_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_JIGONBF, 0, S2MPS19_IRQ_JIGONBF_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_JIGONBR, 0, S2MPS19_IRQ_JIGONBR_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_ACOKBF, 0, S2MPS19_IRQ_ACOKBF_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_ACOKBR, 0, S2MPS19_IRQ_ACOKBR_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_PWRON1S, 0, S2MPS19_IRQ_PWRON1S_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_MRB, 0, S2MPS19_IRQ_MRB_MASK),
++
++	REGMAP_IRQ_REG(S2MPS19_IRQ_RTC60S, 1, S2MPS19_IRQ_RTC60S_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_RTCA1, 1, S2MPS19_IRQ_RTCA1_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_RTCA0, 1, S2MPS19_IRQ_RTCA0_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_SMPL, 1, S2MPS19_IRQ_SMPL_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_RTC1S, 1, S2MPS19_IRQ_RTC1S_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_WTSR, 1, S2MPS19_IRQ_WTSR_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_ADCDONE, 1, S2MPS19_IRQ_ADCDONE_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_WRSTB, 1, S2MPS19_IRQ_WRSTB_MASK),
++
++	REGMAP_IRQ_REG(S2MPS19_IRQ_120C, 2, S2MPS19_IRQ_INT120C_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_140C, 2, S2MPS19_IRQ_INT140C_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_TSD, 2, S2MPS19_IRQ_TSD_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OVP, 2, S2MPS19_IRQ_OVP_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_TIMEOUT2, 2, S2MPS19_IRQ_TIMEOUT2_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_TIMEOUT3, 2, S2MPS19_IRQ_TIMEOUT3_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_SUB_SMPL, 2, S2MPS19_IRQ_SUB_SMPL_MASK),
++
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B1M, 3, S2MPS19_IRQ_OCP_B1M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B2M, 3, S2MPS19_IRQ_OCP_B2M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B3M, 3, S2MPS19_IRQ_OCP_B3M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B4M, 3, S2MPS19_IRQ_OCP_B4M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B5M, 3, S2MPS19_IRQ_OCP_B5M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B6M, 3, S2MPS19_IRQ_OCP_B6M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B7M, 3, S2MPS19_IRQ_OCP_B7M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B8M, 3, S2MPS19_IRQ_OCP_B8M_MASK),
++
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B9M, 4, S2MPS19_IRQ_OCP_B9M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B10M, 4, S2MPS19_IRQ_OCP_B10M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B11M, 4, S2MPS19_IRQ_OCP_B11M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_B12M, 4, S2MPS19_IRQ_OCP_B12M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OCP_BB, 4, S2MPS19_IRQ_OCP_BB_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_UV_BB, 4, S2MPS19_IRQ_UV_BB_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_BB_NTR_DET, 4, S2MPS19_IRQ_BB_NTR_DET_MASK),
++
++	REGMAP_IRQ_REG(S2MPS19_IRQ_SC_LDO2M, 5, S2MPS19_IRQ_SC_LDO2M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_SC_LDO13M, 5, S2MPS19_IRQ_SC_LDO13M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_SC_LDO14M, 5, S2MPS19_IRQ_SC_LDO14M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_SC_LDO15M, 5, S2MPS19_IRQ_SC_LDO15M_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_SC_LDO28M, 5, S2MPS19_IRQ_SC_LDO28M_MASK),
++
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC0, 6, S2MPS19_IRQ_OC0_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC1, 6, S2MPS19_IRQ_OC1_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC2, 6, S2MPS19_IRQ_OC2_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC3, 6, S2MPS19_IRQ_OC3_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC4, 6, S2MPS19_IRQ_OC4_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC5, 6, S2MPS19_IRQ_OC5_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC6, 6, S2MPS19_IRQ_OC6_MASK),
++	REGMAP_IRQ_REG(S2MPS19_IRQ_OC7, 6, S2MPS19_IRQ_OC7_MASK),
++};
++
+ static const struct regmap_irq s2mpu02_irqs[] = {
+ 	REGMAP_IRQ_REG(S2MPU02_IRQ_PWRONF, 0, S2MPS11_IRQ_PWRONF_MASK),
+ 	REGMAP_IRQ_REG(S2MPU02_IRQ_PWRONR, 0, S2MPS11_IRQ_PWRONR_MASK),
+@@ -377,6 +442,25 @@ static const struct regmap_irq_chip s2mps15_irq_chip = {
+ 	S2MPS1X_IRQ_CHIP_COMMON_DATA,
+ };
+ 
++static const struct regmap_irq_chip s2mps19_irq_chip = {
++	.name = "s2mps19",
++	.status_base = S2MPS19_COMMON_INT,
++	.mask_base = S2MPS19_COMMON_INT_MASK,
++	.num_regs = 1,
++	.irqs = s2mps19_irqs,
++	.num_irqs = ARRAY_SIZE(s2mps19_irqs),
++};
++
++static const struct regmap_irq_chip s2mps19_irq_chip_pmic = {
++	.name = "s2mps19-pmic",
++	.domain_suffix = "pmic",
++	.status_base = S2MPS19_PMIC_INT1,
++	.mask_base = S2MPS19_PMIC_INT1M,
++	.num_regs = 7,
++	.irqs = s2mps19_pmic_irqs,
++	.num_irqs = ARRAY_SIZE(s2mps19_pmic_irqs),
++};
++
+ static const struct regmap_irq_chip s2mpu02_irq_chip = {
+ 	.name = "s2mpu02",
+ 	.irqs = s2mpu02_irqs,
+@@ -457,6 +541,11 @@ static struct regmap_irq_chip_data *sec_irq_init_s2mpg1x(struct sec_pmic_dev *se
+ 		chained_irq_chip = &s2mpg11_irq_chip_pmic;
+ 		chained_pirq = S2MPG11_COMMON_IRQ_PMIC;
+ 		break;
++	case S2MPS19X:
++		irq_chip = &s2mps19_irq_chip;
++		chained_irq_chip = &s2mps19_irq_chip_pmic;
++		chained_pirq = S2MPS19_COMMON_IRQ_PMIC;
++		break;
+ 	default:
+ 		return dev_err_ptr_probe(sec_pmic->dev, -EINVAL, "Unsupported device type %d\n",
+ 					 sec_pmic->device_type);
+@@ -493,6 +582,7 @@ struct regmap_irq_chip_data *sec_irq_init(struct sec_pmic_dev *sec_pmic)
+ 		break;
+ 	case S2MPG10:
+ 	case S2MPG11:
++	case S2MPS19X:
+ 		return sec_irq_init_s2mpg1x(sec_pmic);
+ 	case S2MPS11X:
+ 		sec_irq_chip = &s2mps11_irq_chip;
+diff --git a/include/linux/mfd/samsung/core.h b/include/linux/mfd/samsung/core.h
+index 6191f409de9..193a7a67e29 100644
+--- a/include/linux/mfd/samsung/core.h
++++ b/include/linux/mfd/samsung/core.h
+@@ -45,6 +45,7 @@ enum sec_device_type {
+ 	S2MPS13X,
+ 	S2MPS14X,
+ 	S2MPS15X,
++	S2MPS19X,
+ 	S2MPU02,
+ 	S2MPU05,
+ 	S2MU005,
+diff --git a/include/linux/mfd/samsung/s2mps19.h b/include/linux/mfd/samsung/s2mps19.h
+new file mode 100644
+index 00000000000..1a1242b79a0
+--- /dev/null
++++ b/include/linux/mfd/samsung/s2mps19.h
+@@ -0,0 +1,349 @@
++/* SPDX-License-Identifier: GPL-2.0+ */
++/*
++ * Copyright 2018 Samsung Electronics Co., Ltd.
++ */
++
++#ifndef __LINUX_MFD_S2MPS19_H
++#define __LINUX_MFD_S2MPS19_H
++
++/* Common registers (type 0x000) */
++enum s2mps19_common_reg {
++	S2MPS19_COMMON_CHIPID,
++	S2MPS19_COMMON_INT,
++	S2MPS19_COMMON_INT_MASK,
++};
++
++/* For S2MPS19_COMMON_INT and S2MPS19_COMMON_INT_MASK */
++#define S2MPS19_COMMON_INT_SRC		GENMASK(7, 0)
++#define S2MPS19_COMMON_INT_SRC_PMIC	BIT(0)
++
++/* PMIC registers (type 0x100) */
++enum s2mps19_pmic_reg {
++	S2MPS19_PMIC_INT1,
++	S2MPS19_PMIC_INT2,
++	S2MPS19_PMIC_INT3,
++	S2MPS19_PMIC_INT4,
++	S2MPS19_PMIC_INT5,
++	S2MPS19_PMIC_INT6,
++	S2MPS19_PMIC_INT7,
++	S2MPS19_PMIC_INT1M,
++	S2MPS19_PMIC_INT2M,
++	S2MPS19_PMIC_INT3M,
++	S2MPS19_PMIC_INT4M,
++	S2MPS19_PMIC_INT5M,
++	S2MPS19_PMIC_INT6M,
++	S2MPS19_PMIC_INT7M,
++	S2MPS19_PMIC_STATUS1,
++	S2MPS19_PMIC_STATUS2,
++	S2MPS19_PMIC_PWRONSRC,
++	S2MPS19_PMIC_OFFSRC,
++	S2MPS19_PMIC_BUCHG,
++	S2MPS19_PMIC_RTCBUF,
++	S2MPS19_PMIC_CTRL1,
++	S2MPS19_PMIC_CTRL2,
++	S2MPS19_PMIC_CTRL3,
++	S2MPS19_PMIC_B1M_CTRL = 0x1d,
++	S2MPS19_PMIC_B1M_OUT1,
++	S2MPS19_PMIC_B1M_OUT2,
++	S2MPS19_PMIC_B2M_CTRL,
++	S2MPS19_PMIC_B2M_OUT1,
++	S2MPS19_PMIC_B2M_OUT2,
++	S2MPS19_PMIC_B3M_CTRL,
++	S2MPS19_PMIC_B3M_OUT1,
++	S2MPS19_PMIC_B3M_OUT2,
++	S2MPS19_PMIC_B4M_CTRL,
++	S2MPS19_PMIC_B4M_OUT1,
++	S2MPS19_PMIC_B4M_OUT2,
++	S2MPS19_PMIC_B5M_CTRL,
++	S2MPS19_PMIC_B5M_OUT1,
++	S2MPS19_PMIC_B5M_OUT2,
++	S2MPS19_PMIC_B6M_CTRL,
++	S2MPS19_PMIC_B6M_OUT,
++	S2MPS19_PMIC_B7M_CTRL,
++	S2MPS19_PMIC_B7M_OUT,
++	S2MPS19_PMIC_B8M_CTRL,
++	S2MPS19_PMIC_B8M_OUT,
++	S2MPS19_PMIC_B9M_CTRL,
++	S2MPS19_PMIC_B9M_OUT,
++	S2MPS19_PMIC_B10M_CTRL,
++	S2MPS19_PMIC_B10M_OUT1,
++	S2MPS19_PMIC_B10M_OUT2,
++	S2MPS19_PMIC_B11M_CTRL,
++	S2MPS19_PMIC_B11M_OUT,
++	S2MPS19_PMIC_B12M_CTRL,
++	S2MPS19_PMIC_B12M_OUT,
++	S2MPS19_PMIC_BBM_CTRL,
++	S2MPS19_PMIC_BBM_OUT,
++	S2MPS19_PMIC_BUCKRAMP,
++	S2MPS19_PMIC_BUCKRAMP2,
++	S2MPS19_PMIC_L1CTRL = 0x46,
++	S2MPS19_PMIC_L2CTRL,
++	S2MPS19_PMIC_L3CTRL,
++	S2MPS19_PMIC_L4CTRL,
++	S2MPS19_PMIC_L5CTRL,
++	S2MPS19_PMIC_L6CTRL,
++	S2MPS19_PMIC_L7CTRL,
++	S2MPS19_PMIC_L8CTRL,
++	S2MPS19_PMIC_L9CTRL,
++	S2MPS19_PMIC_L10CTRL,
++	S2MPS19_PMIC_L11CTRL,
++	S2MPS19_PMIC_L12CTRL,
++	S2MPS19_PMIC_L13CTRL,
++	S2MPS19_PMIC_L14CTRL,
++	S2MPS19_PMIC_L15CTRL,
++	S2MPS19_PMIC_L16CTRL,
++	S2MPS19_PMIC_L17CTRL,
++	S2MPS19_PMIC_L18CTRL,
++	S2MPS19_PMIC_L19CTRL,
++	S2MPS19_PMIC_L20CTRL,
++	S2MPS19_PMIC_L21CTRL,
++	S2MPS19_PMIC_L22CTRL,
++	S2MPS19_PMIC_L23CTRL,
++	S2MPS19_PMIC_L24CTRL,
++	S2MPS19_PMIC_L25CTRL,
++	S2MPS19_PMIC_L26CTRL,
++	S2MPS19_PMIC_L27CTRL,
++	S2MPS19_PMIC_L28CTRL,
++	S2MPS19_PMIC_L29CTRL,
++	S2MPS19_PMIC_PWREN_SEL1 = 0xa4,
++	S2MPS19_PMIC_PWREN_SEL2,
++	S2MPS19_PMIC_OCP_WARN1 = 0xa9,
++	S2MPS19_PMIC_OCP_WARN2,
++	S2MPS19_PMIC_OCP_WARN1_X,
++	S2MPS19_PMIC_OCP_WARN1_Y,
++	S2MPS19_PMIC_OCP_WARN1_Z,
++	S2MPS19_PMIC_BUCK_OI_EN1 = 0xb1,
++	S2MPS19_PMIC_BUCK_OI_EN2,
++	S2MPS19_PMIC_BUCK_OI_PD_EN1,
++	S2MPS19_PMIC_BUCK_OI_PD_EN2,
++	S2MPS19_PMIC_BUCK_OI_CTRL1,
++	S2MPS19_PMIC_BUCK_OI_CTRL2,
++	S2MPS19_PMIC_BUCK_OI_CTRL3,
++	S2MPS19_PMIC_BUCK_OI_CTRL4,
++	S2MPS19_PMIC_BUCK_OI_CTRL5,
++	S2MPS19_PMIC_BUCK_OI_CTRL6,
++	S2MPS19_PMIC_BUCK_OI_CTRL7,
++	S2MPS19_PMIC_ADC_CTRL1 = 0xbf,
++	S2MPS19_PMIC_ADC_CTRL2,
++	S2MPS19_PMIC_ADC_CTRL3,
++	S2MPS19_PMIC_ADC_DATA,
++};
++
++/* For S2MPS19_PMIC_INT1 and S2MPS19_PMIC_INT1M */
++#define S2MPS19_IRQ_PWRONF_MASK		BIT(0)
++#define S2MPS19_IRQ_PWRONR_MASK		BIT(1)
++#define S2MPS19_IRQ_JIGONBF_MASK	BIT(2)
++#define S2MPS19_IRQ_JIGONBR_MASK	BIT(3)
++#define S2MPS19_IRQ_ACOKBF_MASK		BIT(4)
++#define S2MPS19_IRQ_ACOKBR_MASK		BIT(5)
++#define S2MPS19_IRQ_PWRON1S_MASK	BIT(6)
++#define S2MPS19_IRQ_MRB_MASK		BIT(7)
++
++/* For S2MPS19_PMIC_INT2 and S2MPS19_PMIC_INT2M */
++#define S2MPS19_IRQ_RTC60S_MASK		BIT(0)
++#define S2MPS19_IRQ_RTCA1_MASK		BIT(1)
++#define S2MPS19_IRQ_RTCA0_MASK		BIT(2)
++#define S2MPS19_IRQ_SMPL_MASK		BIT(3)
++#define S2MPS19_IRQ_RTC1S_MASK		BIT(4)
++#define S2MPS19_IRQ_WTSR_MASK		BIT(5)
++#define S2MPS19_IRQ_ADCDONE_MASK	BIT(6)
++#define S2MPS19_IRQ_WRSTB_MASK		BIT(7)
++
++/* For S2MPS19_PMIC_INT3 and S2MPS19_PMIC_INT3M */
++#define S2MPS19_IRQ_INT120C_MASK	BIT(0)
++#define S2MPS19_IRQ_INT140C_MASK	BIT(1)
++#define S2MPS19_IRQ_TSD_MASK		BIT(2)
++#define S2MPS19_IRQ_OVP_MASK		BIT(3)
++#define S2MPS19_IRQ_TIMEOUT2_MASK	BIT(5)
++#define S2MPS19_IRQ_TIMEOUT3_MASK	BIT(6)
++#define S2MPS19_IRQ_SUB_SMPL_MASK	BIT(7)
++
++/* For S2MPS19_PMIC_INT4 and S2MPS19_PMIC_INT4M */
++#define S2MPS19_IRQ_OCP_B1M_MASK	BIT(0)
++#define S2MPS19_IRQ_OCP_B2M_MASK	BIT(1)
++#define S2MPS19_IRQ_OCP_B3M_MASK	BIT(2)
++#define S2MPS19_IRQ_OCP_B4M_MASK	BIT(3)
++#define S2MPS19_IRQ_OCP_B5M_MASK	BIT(4)
++#define S2MPS19_IRQ_OCP_B6M_MASK	BIT(5)
++#define S2MPS19_IRQ_OCP_B7M_MASK	BIT(6)
++#define S2MPS19_IRQ_OCP_B8M_MASK	BIT(7)
++
++/* For S2MPS19_PMIC_INT5 and S2MPS19_PMIC_INT5M */
++#define S2MPS19_IRQ_OCP_B9M_MASK	BIT(0)
++#define S2MPS19_IRQ_OCP_B10M_MASK	BIT(1)
++#define S2MPS19_IRQ_OCP_B11M_MASK	BIT(2)
++#define S2MPS19_IRQ_OCP_B12M_MASK	BIT(3)
++#define S2MPS19_IRQ_OCP_BB_MASK		BIT(4)
++#define S2MPS19_IRQ_UV_BB_MASK		BIT(5)
++#define S2MPS19_IRQ_BB_NTR_DET_MASK	BIT(6)
++
++/* For S2MPS19_PMIC_INT6 and S2MPS19_PMIC_INT6M */
++#define S2MPS19_IRQ_SC_LDO2M_MASK	BIT(0)
++#define S2MPS19_IRQ_SC_LDO13M_MASK	BIT(1)
++#define S2MPS19_IRQ_SC_LDO14M_MASK	BIT(2)
++#define S2MPS19_IRQ_SC_LDO15M_MASK	BIT(3)
++#define S2MPS19_IRQ_SC_LDO28M_MASK	BIT(4)
++
++/* For S2MPS19_PMIC_INT7 and S2MPS19_PMIC_INT7M */
++#define S2MPS19_IRQ_OC0_MASK		BIT(0)
++#define S2MPS19_IRQ_OC1_MASK		BIT(1)
++#define S2MPS19_IRQ_OC2_MASK		BIT(2)
++#define S2MPS19_IRQ_OC3_MASK		BIT(3)
++#define S2MPS19_IRQ_OC4_MASK		BIT(4)
++#define S2MPS19_IRQ_OC5_MASK		BIT(5)
++#define S2MPS19_IRQ_OC6_MASK		BIT(6)
++#define S2MPS19_IRQ_OC7_MASK		BIT(7)
++
++enum s2mps19_common_irq {
++	S2MPS19_COMMON_IRQ_PMIC,
++};
++
++enum s2mps19_irq {
++	S2MPS19_IRQ_PWRONF,
++	S2MPS19_IRQ_PWRONR,
++	S2MPS19_IRQ_JIGONBF,
++	S2MPS19_IRQ_JIGONBR,
++	S2MPS19_IRQ_ACOKBF,
++	S2MPS19_IRQ_ACOKBR,
++	S2MPS19_IRQ_PWRON1S,
++	S2MPS19_IRQ_MRB,
++
++	S2MPS19_IRQ_RTC60S,
++	S2MPS19_IRQ_RTCA1,
++	S2MPS19_IRQ_RTCA0,
++	S2MPS19_IRQ_SMPL,
++	S2MPS19_IRQ_RTC1S,
++	S2MPS19_IRQ_WTSR,
++	S2MPS19_IRQ_ADCDONE,
++	S2MPS19_IRQ_WRSTB,
++
++	S2MPS19_IRQ_120C,
++	S2MPS19_IRQ_140C,
++	S2MPS19_IRQ_TSD,
++	S2MPS19_IRQ_OVP,
++	S2MPS19_IRQ_TIMEOUT2,
++	S2MPS19_IRQ_TIMEOUT3,
++	S2MPS19_IRQ_SUB_SMPL,
++
++	S2MPS19_IRQ_OCP_B1M,
++	S2MPS19_IRQ_OCP_B2M,
++	S2MPS19_IRQ_OCP_B3M,
++	S2MPS19_IRQ_OCP_B4M,
++	S2MPS19_IRQ_OCP_B5M,
++	S2MPS19_IRQ_OCP_B6M,
++	S2MPS19_IRQ_OCP_B7M,
++	S2MPS19_IRQ_OCP_B8M,
++
++	S2MPS19_IRQ_OCP_B9M,
++	S2MPS19_IRQ_OCP_B10M,
++	S2MPS19_IRQ_OCP_B11M,
++	S2MPS19_IRQ_OCP_B12M,
++	S2MPS19_IRQ_OCP_BB,
++	S2MPS19_IRQ_UV_BB,
++	S2MPS19_IRQ_BB_NTR_DET,
++
++	S2MPS19_IRQ_SC_LDO2M,
++	S2MPS19_IRQ_SC_LDO13M,
++	S2MPS19_IRQ_SC_LDO14M,
++	S2MPS19_IRQ_SC_LDO15M,
++	S2MPS19_IRQ_SC_LDO28M,
++
++	S2MPS19_IRQ_OC0,
++	S2MPS19_IRQ_OC1,
++	S2MPS19_IRQ_OC2,
++	S2MPS19_IRQ_OC3,
++	S2MPS19_IRQ_OC4,
++	S2MPS19_IRQ_OC5,
++	S2MPS19_IRQ_OC6,
++	S2MPS19_IRQ_OC7,
++
++	S2MPS19_IRQ_NR,
++};
++
++enum s2mps19_regulators {
++	S2MPS19_LDO1,
++	S2MPS19_LDO2,
++	S2MPS19_LDO3,
++	S2MPS19_LDO4,
++	S2MPS19_LDO5,
++	S2MPS19_LDO6,
++	S2MPS19_LDO7,
++	S2MPS19_LDO8,
++	S2MPS19_LDO9,
++	S2MPS19_LDO10,
++	S2MPS19_LDO11,
++	S2MPS19_LDO12,
++	S2MPS19_LDO13,
++	S2MPS19_LDO14,
++	S2MPS19_LDO15,
++	S2MPS19_LDO16,
++	S2MPS19_LDO17,
++	S2MPS19_LDO18,
++	S2MPS19_LDO19,
++	S2MPS19_LDO20,
++	S2MPS19_LDO21,
++	S2MPS19_LDO22,
++	S2MPS19_LDO23,
++	S2MPS19_LDO24,
++	S2MPS19_LDO25,
++	S2MPS19_LDO26,
++	S2MPS19_LDO27,
++	S2MPS19_LDO28,
++	S2MPS19_LDO29,
++	S2MPS19_BUCK1,
++	S2MPS19_BUCK2,
++	S2MPS19_BUCK3,
++	S2MPS19_BUCK4,
++	S2MPS19_BUCK5,
++	S2MPS19_BUCK6,
++	S2MPS19_BUCK7,
++	S2MPS19_BUCK8,
++	S2MPS19_BUCK9,
++	S2MPS19_BUCK10,
++	S2MPS19_BUCK11,
++	S2MPS19_BUCK12,
++	S2MPS19_BB,
++
++	S2MPS19_REGULATOR_MAX,
++};
++
++/*
++ * Five linear ranges, picked per rail by the tables in the regulator driver.
++ * Range 4 (400 mV, 12.5 mV steps) is one the hardware has and this board's
++ * rails do not use, so no descriptor names it.
++ */
++#define S2MPS19_LDO_MIN1		700000
++#define S2MPS19_LDO_STEP1		25000
++#define S2MPS19_LDO_MIN2		1800000
++#define S2MPS19_LDO_STEP2		25000
++#define S2MPS19_LDO_MIN3		700000
++#define S2MPS19_LDO_STEP3		12500
++#define S2MPS19_LDO_MIN5		300000
++#define S2MPS19_LDO_STEP5		25000
++
++#define S2MPS19_BUCK_MIN1		300000
++#define S2MPS19_BUCK_STEP1		6250
++#define S2MPS19_BUCK_MIN2		600000
++#define S2MPS19_BUCK_STEP2		12500
++
++#define S2MPS19_BB_MIN			2600000
++#define S2MPS19_BB_STEP			12500
++
++#define S2MPS19_LDO_VSEL_MASK		0x3f
++#define S2MPS19_BUCK_VSEL_MASK		0xff
++#define S2MPS19_BB_VSEL_MASK		0xff
++
++#define S2MPS19_LDO_N_VOLTAGES		(S2MPS19_LDO_VSEL_MASK + 1)
++#define S2MPS19_BUCK_N_VOLTAGES		(S2MPS19_BUCK_VSEL_MASK + 1)
++#define S2MPS19_BB_N_VOLTAGES		(S2MPS19_BB_VSEL_MASK + 1)
++
++#define S2MPS19_ENABLE_SHIFT		6
++#define S2MPS19_ENABLE_MASK		(0x03 << S2MPS19_ENABLE_SHIFT)
++#define S2MPS19_ENABLE_SUSPEND		(0x01 << S2MPS19_ENABLE_SHIFT)
++
++/* Microseconds the rail needs before its output is good */
++#define S2MPS19_ENABLE_TIME_LDO		128
++#define S2MPS19_ENABLE_TIME_BUCK	130
++#define S2MPS19_ENABLE_TIME_BB		160
++
++#endif /* __LINUX_MFD_S2MPS19_H */

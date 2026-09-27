@@ -1,7 +1,7 @@
-From 1c9c00c3ad81f5f5921583d95ff44194895c057f Mon Sep 17 00:00:00 2001
+From 619d97c9b392d45330d4fcf0dd92ee25b941ca6a Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Fri, 18 Sep 2026 23:14:45 +0200
-Subject: [PATCH 2/8] clk: exynos: add the PLL_0817X, PLL_0818X and PLL_1018X
+Subject: [PATCH 02/40] clk: exynos: add the PLL_0817X, PLL_0818X and PLL_1018X
  types
 
 Exynos9820 drives its shared PLLs with three IP revisions this driver does

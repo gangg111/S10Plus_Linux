@@ -1,0 +1,401 @@
+From c73aa7c7414b5fb5ed2836d40f9a57adee28abcc Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 20/40] board: samsung: exynos-mobile: fastboot over the cable
+
+With storage and USB both working, the boot loader can take an image over
+the cable and write it, which is the whole loop this port needs: build,
+flash, boot, without the vendor's tool and without taking the phone apart.
+
+The buffer sits below four gigabytes.  That is not decoration: this SoC
+drives USB through a controller that addresses 32 bits, and asking the
+allocator for memory hands back the top of the highest bank, which on a
+phone with eight gigabytes is far above what the controller can reach.  The
+transfer then succeeds and writes nothing where it was meant to.
+
+The interface GUID the gadget reports is made unique to this device rather
+than shared with every other U-Boot, so a host does not bind a driver it
+has already associated with a different board.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/exynos-mobile.c   | 193 +++++++++++++++++-
+ board/samsung/exynos-mobile/exynos-mobile.env |   9 +-
+ configs/exynos-mobile_defconfig               |   1 +
+ configs/exynos9820-beyond2lte_defconfig       |  19 +-
+ drivers/usb/gadget/f_fastboot.c               |   2 +-
+ 5 files changed, 212 insertions(+), 12 deletions(-)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index 9000b228..a2703391 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -5,11 +5,13 @@
+  * Copyright (c) 2025 Kaustabh Chakraborty <kauschluss@disroot.org>
+  */
+ 
++#include <timestamp.h>
+ #include <asm/armv8/mmu.h>
+ #include <asm/io.h>
+ #include <blk.h>
+ #include <charset.h>
+ #include <bootflow.h>
++#include <clk.h>
+ #include <cpu_func.h>
+ #include <ctype.h>
+ #include <dm.h>
+@@ -19,6 +21,7 @@
+ #include <env.h>
+ #include <errno.h>
+ #include <init.h>
++#include <linux/err.h>
+ #include <linux/sizes.h>
+ #include <lmb.h>
+ #include <part.h>
+@@ -300,18 +303,41 @@ static int exynos_fastboot_setup(void)
+ 	phys_addr_t addr;
+ 	int offset, i, j;
+ 
+-	/* Allocate and define buffer address for fastboot interface. */
+-	if (lmb_alloc(CONFIG_FASTBOOT_BUF_SIZE, &addr)) {
++	/*
++	 * Allocate and define buffer address for fastboot interface.
++	 *
++	 * The ceiling is not decoration: this SoC drives USB through a
++	 * controller that addresses 32 bits, which is the same reason
++	 * board_get_usable_ram_top() stops at 4 GiB.  Asking for any memory
++	 * at all hands back the top of the highest bank, which on a phone
++	 * with 8 GiB sits above that line, and every transfer then has an
++	 * address the controller cannot reach.
++	 */
++	addr = SZ_4G;
++	if (lmb_alloc_mem(LMB_MEM_ALLOC_MAX, SZ_2M, &addr,
++			  CONFIG_FASTBOOT_BUF_SIZE, LMB_NONE)) {
+ 		log_err("%s: failed to allocate fastboot buffer\n", __func__);
+ 		return -ENOMEM;
+ 	}
+ 	env_set_hex("fastboot_addr_r", addr);
++	log_info("%s: fastboot buffer at %pa\n", __func__, &addr);
+ 
+ 	/*
+-	 * Flashing over fastboot goes to eMMC, so a phone that has none gets
+-	 * fastboot without it rather than no boot at all.
++	 * Flashing goes to whatever the configuration names.  A phone with
++	 * UFS rather than eMMC has its storage behind the SCSI interface,
++	 * so the block backend is the one that reaches it; boards with a
++	 * card keep the eMMC backend.  Either way a phone whose device is
++	 * not there gets fastboot without flashing rather than no boot at
++	 * all.
+ 	 */
++#if CONFIG_IS_ENABLED(FASTBOOT_FLASH_BLOCK)
++	blk_dev = blk_get_dev(CONFIG_FASTBOOT_FLASH_BLOCK_INTERFACE_NAME,
++			      CONFIG_FASTBOOT_FLASH_BLOCK_DEVICE_ID);
++#elif CONFIG_IS_ENABLED(FASTBOOT_FLASH_MMC)
+ 	blk_dev = blk_get_dev("mmc", CONFIG_FASTBOOT_FLASH_MMC_DEV);
++#else
++	blk_dev = NULL;
++#endif
+ 	if (!blk_dev) {
+ 		log_warning("%s: no mmc device, fastboot cannot flash\n",
+ 			    __func__);
+@@ -507,6 +533,24 @@ int board_early_init_f(void)
+ 	return 0;
+ }
+ 
++/*
++ * Keep this loader, and with it its heap, under the four gigabyte line.
++ *
++ * The storage controller of this phone reaches no further: the vendor driver
++ * gives it a thirty two bit addressing mask.  Left to itself U-Boot settles at
++ * the top of the highest memory bank, which on this phone is well above that
++ * line, and then the controller cannot fetch a transfer descriptor from the
++ * memory the loader allocated it.  The link comes up, because that needs no
++ * memory at all, and every transfer that follows runs out of time.
++ *
++ * The third bank of this phone ends exactly on the line, so there is real
++ * memory immediately below it and nothing is wasted by stopping here.
++ */
++phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
++{
++	return SZ_4G;
++}
++
+ int dram_init(void)
+ {
+ 	unsigned int i;
+@@ -552,6 +596,26 @@ int board_late_init(void)
+ {
+ 	exynos_mark(EXYNOS_MARK_CONSOLE);
+ 
++	/*
++	 * Put the panel first in the list of output devices.
++	 *
++	 * The EFI layer learns how wide and how tall the console is by asking
++	 * the video console for it, and it only asks when the name of the
++	 * output device begins with that console (lib/efi_loader/efi_console.c,
++	 * query_vidconsole).  With the console multiplexer the list begins with
++	 * the serial port instead, so the question is never asked; what follows
++	 * is a question put to a terminal on a port with nothing attached to
++	 * it, no answer, and a console left at the assumed eighty by
++	 * twenty five.
++	 *
++	 * A loader drawing eighty columns on a panel that holds forty five
++	 * then writes the right hand third of every line, its error messages
++	 * among them, past the edge of the screen, where it cannot be read.
++	 * On a board whose only output is the panel that is the difference
++	 * between a message and silence.
++	 */
++	env_set("stdout", "vidconsole,serial");
++
+ 	return 0;
+ }
+ 
+@@ -746,6 +810,31 @@ static void exynos_menu_middle(const char *prefix, int n, int cols,
+ 	exynos_menu_var(prefix, n, buf);
+ }
+ 
++/**
++ * exynos_menu_bytes() - how many bytes the first @chars characters take
++ *
++ * The field is cut to the width of the frame, but the cut has to fall on a
++ * character boundary, or a value in a language with accents would be chopped
++ * in the middle of one and the rest of the line would be nonsense.
++ */
++static int exynos_menu_bytes(const char *s, int chars)
++{
++	int n = 0;
++
++	while (*s && chars) {
++		int step = 1;
++
++		while ((s[step] & 0xc0) == 0x80)
++			step++;
++
++		s += step;
++		n += step;
++		chars--;
++	}
++
++	return n;
++}
++
+ static void exynos_menu_field(const char *prefix, int n, int cols,
+ 			      const char *label, const char *value,
+ 			      const char *colour)
+@@ -758,7 +847,8 @@ static void exynos_menu_field(const char *prefix, int n, int cols,
+ 		len = room;
+ 
+ 	snprintf(buf, sizeof(buf), "\033[33m| %-6s \033[%sm%.*s%*s\033[0;33m|\033[0m",
+-		 label, colour, (int)strlen(value), value, room - len, "");
++		 label, colour, exynos_menu_bytes(value, len), value,
++		 room - len, "");
+ 	exynos_menu_var(prefix, n, buf);
+ }
+ 
+@@ -795,10 +885,84 @@ static void exynos_storage_probe(void)
+ 		 "%s  %llu MB", ifname, ((u64)blk->lba * blk->blksz) >> 20);
+ }
+ 
++/**
++ * exynos_menu_rate() - write a clock rate out in a form fit to read
++ *
++ * A rate that is really an error code is shown as the code, because that is
++ * the interesting case here: a clock registered before its parent is bound
++ * without one, and every rate taken from it afterwards is an error dressed
++ * up as a frequency.
++ */
++/* Past this the number is not a frequency, whatever it claims. */
++#define EXYNOS_RATE_CEILING	10000000000UL	/* 10 GHz */
++
++static void exynos_menu_rate(char *buf, size_t len, ulong rate)
++{
++	/*
++	 * A rate that is really an error code does not always look like one.
++	 * The value this port kept meeting, 0x7ffffffffffffff7, is -ENODEV
++	 * after a divider halved it, which puts it far outside the narrow band
++	 * IS_ERR_VALUE looks at.  So anything past what this chip could
++	 * plausibly run at counts as no rate at all, and is shown as the raw
++	 * number, cut to the thirty two bits the serial driver keeps of it.
++	 */
++	if (IS_ERR_VALUE(rate) || !rate || rate > EXYNOS_RATE_CEILING)
++		snprintf(buf, len, "err %08x", (u32)rate);
++	else if (rate >= 1000000)
++		snprintf(buf, len, "%lu.%02lu MHz", rate / 1000000,
++			 (rate % 1000000) / 10000);
++	else if (rate >= 1000)
++		snprintf(buf, len, "%lu kHz", rate / 1000);
++	else
++		snprintf(buf, len, "%lu Hz", rate);
++}
++
++/* The rate of a clock this driver registered, found by the name it carries. */
++static ulong exynos_clk_rate(const char *name)
++{
++	struct udevice *dev;
++	struct clk *clk;
++	int ret;
++
++	ret = uclass_get_device_by_name(UCLASS_CLK, name, &dev);
++	if (ret)
++		return ret;
++
++	clk = dev_get_uclass_priv(dev);
++	if (!clk)
++		return -ENODEV;
++
++	return clk_get_rate(clk);
++}
++
++/*
++ * The rate the console works its divider out from, read the same way the port
++ * reads it, so that what is shown is what the port was handed and not a second
++ * guess at it.
++ */
++static ulong exynos_console_rate(void)
++{
++	struct udevice *dev;
++	struct clk clk;
++	int ret;
++
++	ret = uclass_first_device_err(UCLASS_SERIAL, &dev);
++	if (ret)
++		return ret;
++
++	ret = clk_get_by_index(dev, 1, &clk);
++	if (ret)
++		return ret;
++
++	return clk_get_rate(&clk);
++}
++
+ static void exynos_menu_hardware(const struct exynos_menu_text *txt, int cols)
+ {
+ 	struct udevice *con;
+ 	char buf[64];
++	char ufs[24];
++	char con_rate[24];
+ 	u64 total = 0;
+ 	u32 banks = 0;
+ 	int i;
+@@ -836,6 +1000,13 @@ static void exynos_menu_hardware(const struct exynos_menu_text *txt, int cols)
+ 	else
+ 		exynos_menu_field("bootmenu_hdr", 7, cols, "UFS", txt->no_link,
+ 				  "1;31");
++
++	exynos_menu_rate(ufs, sizeof(ufs),
++			 exynos_clk_rate("dout_cmu_fsys1_ufs_embd"));
++	exynos_menu_field("bootmenu_hdr", 8, cols, "UniPro", ufs, "1;33");
++
++	exynos_menu_rate(con_rate, sizeof(con_rate), exynos_console_rate());
++	exynos_menu_field("bootmenu_hdr", 9, cols, "UART", con_rate, "1;33");
+ }
+ 
+ /**
+@@ -860,7 +1031,7 @@ static void exynos_menu_build(bool lang_list)
+ 	exynos_menu_middle("bootmenu_hdr", 2, cols, buf, "33");
+ 	exynos_menu_rule("bootmenu_hdr", 3, cols);
+ 	exynos_menu_hardware(txt, cols);
+-	exynos_menu_rule("bootmenu_hdr", 8, cols);
++	exynos_menu_rule("bootmenu_hdr", 10, cols);
+ 
+ 	if (lang_list) {
+ 		for (i = 0; i < EXYNOS_LANG_COUNT; i++) {
+@@ -888,7 +1059,15 @@ static void exynos_menu_build(bool lang_list)
+ 
+ 	exynos_menu_rule("bootmenu_ftr", 0, cols);
+ 	exynos_menu_middle("bootmenu_ftr", 1, cols, txt->keys, "33");
+-	exynos_menu_rule("bootmenu_ftr", 2, cols);
++	/*
++	 * When this was built, so that a screen can say which loader it
++	 * belongs to.  Without it two builds look the same on the panel
++	 * and a report about one can be read as a report about the other,
++	 * which has already cost a round of guessing.
++	 */
++	exynos_menu_middle("bootmenu_ftr", 2, cols,
++			   U_BOOT_DATE " " U_BOOT_TIME, "33");
++	exynos_menu_rule("bootmenu_ftr", 3, cols);
+ }
+ 
+ static int do_bmenu(struct cmd_tbl *cmdtp, int flag, int argc,
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.env b/board/samsung/exynos-mobile/exynos-mobile.env
+index 1da33815..9c17e213 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.env
++++ b/board/samsung/exynos-mobile/exynos-mobile.env
+@@ -9,12 +9,15 @@ preboot=run blkmapcmd
+ 
+ bootdelay=0
+ bootmenu_delay=-1
+-bootcmd=bootefi bootmgr; pause; bootmenu
++efiboot=bootefi bootmgr
++bootcmd=bootefi bootmgr; echo "<-- EFI boot returned, menu in 5 s"; sleep 5; bootmenu
+ 
+ fastbootcmd=echo "Fastboot Mode";
+-	fastboot -l $fastboot_addr_r usb 0
++	fastboot -l $fastboot_addr_r usb 0;
++	echo "fastboot returned, menu in 5 s";
++	sleep 5
+ 
+-bootmenu_0=Continue Boot=boot
++bootmenu_0=Continue Boot=run efiboot
+ bootmenu_1=Enter Fastboot Mode=run fastbootcmd
+ bootmenu_2=UEFI Maintenance Menu=eficonfig
+ bootmenu_3=Reboot=reset
+diff --git a/configs/exynos-mobile_defconfig b/configs/exynos-mobile_defconfig
+index 45ab998b..a27edec6 100644
+--- a/configs/exynos-mobile_defconfig
++++ b/configs/exynos-mobile_defconfig
+@@ -75,3 +75,4 @@ CONFIG_VIDEO=y
+ CONFIG_VIDEO_SIMPLE=y
+ CONFIG_FS_EXT4=y
+ CONFIG_FS_FAT=y
++CONFIG_USB_GADGET_OS_DESCRIPTORS=y
+diff --git a/configs/exynos9820-beyond2lte_defconfig b/configs/exynos9820-beyond2lte_defconfig
+index 3c67beb1..334a48f8 100644
+--- a/configs/exynos9820-beyond2lte_defconfig
++++ b/configs/exynos9820-beyond2lte_defconfig
+@@ -51,7 +51,6 @@ CONFIG_SYSRESET_SYSCON=y
+ CONFIG_UFS=y
+ CONFIG_UFS_EXYNOS=y
+ CONFIG_VIDEO=y
+-CONFIG_NO_FB_CLEAR=y
+ CONFIG_VIDEO_SIMPLE=y
+ CONFIG_FS_EXT4=y
+ CONFIG_FS_FAT=y
+@@ -62,3 +61,21 @@ CONFIG_LOGLEVEL=7
+ CONFIG_VIDEO_FONT_32X64=y
+ # CONFIG_VIDEO_FONT_16X32 is not set
+ CONFIG_VIDEO_FONT_POLISH=y
++CONFIG_CMD_FASTBOOT=y
++CONFIG_USB_FUNCTION_FASTBOOT=y
++CONFIG_FASTBOOT_BUF_ADDR=0xc0000000
++CONFIG_FASTBOOT_BUF_SIZE=0x08000000
++CONFIG_PHY_EXYNOS_USBDRD=y
++CONFIG_USB=y
++CONFIG_DM_USB_GADGET=y
++CONFIG_USB_DWC3=y
++CONFIG_USB_DWC3_GENERIC=y
++CONFIG_USB_GADGET=y
++CONFIG_USB_GADGET_MANUFACTURER="Samsung"
++CONFIG_USB_GADGET_VENDOR_NUM=0x04e8
++CONFIG_USB_GADGET_PRODUCT_NUM=0x6602
++CONFIG_FASTBOOT_FLASH=y
++CONFIG_FASTBOOT_FLASH_BLOCK=y
++CONFIG_FASTBOOT_FLASH_BLOCK_INTERFACE_NAME="scsi"
++CONFIG_FASTBOOT_FLASH_BLOCK_DEVICE_ID=0
++CONFIG_USB_GADGET_OS_DESCRIPTORS=y
+diff --git a/drivers/usb/gadget/f_fastboot.c b/drivers/usb/gadget/f_fastboot.c
+index 8df0e3f3..af22ab99 100644
+--- a/drivers/usb/gadget/f_fastboot.c
++++ b/drivers/usb/gadget/f_fastboot.c
+@@ -47,7 +47,7 @@ struct f_fastboot {
+ };
+ 
+ static char fb_ext_prop_name[] = "DeviceInterfaceGUID";
+-static char fb_ext_prop_data[] = "{4866319A-F4D6-4374-93B9-DC2DEB361BA9}";
++static char fb_ext_prop_data[] = "{F72FE0D4-CBCB-407D-8814-9ED673D0DD6B}";
+ 
+ static struct usb_os_desc_ext_prop fb_ext_prop = {
+ 	.type = 1,		/* NUL-terminated Unicode String (REG_SZ) */
+-- 
+2.47.3
+

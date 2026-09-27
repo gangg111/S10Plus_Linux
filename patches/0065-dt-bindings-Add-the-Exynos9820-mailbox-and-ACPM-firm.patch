@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 07:10:00 +0200
+Subject: [PATCH] dt-bindings: Add the Exynos9820 mailbox and ACPM firmware
+
+The mailbox and the firmware that answers on it are the only way to the
+main power management chip of this SoC, and both drivers in this series
+already speak to them.  Describe the two compatibles they bind to.
+
+The hardware is the one gs101 already has, only with different register
+offsets, which is what the compatible tells the driver apart by.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../devicetree/bindings/firmware/google,gs101-acpm-ipc.yaml   | 4 +++-
+ .../devicetree/bindings/mailbox/google,gs101-mbox.yaml        | 4 +++-
+ 2 files changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/firmware/google,gs101-acpm-ipc.yaml b/Documentation/devicetree/bindings/firmware/google,gs101-acpm-ipc.yaml
+index e68f9c3ca5e..c0854b3cd69 100644
+--- a/Documentation/devicetree/bindings/firmware/google,gs101-acpm-ipc.yaml
++++ b/Documentation/devicetree/bindings/firmware/google,gs101-acpm-ipc.yaml
+@@ -22,7 +22,9 @@ description: |
+ 
+ properties:
+   compatible:
+-    const: google,gs101-acpm-ipc
++    enum:
++      - google,gs101-acpm-ipc
++      - samsung,exynos9820-acpm-ipc
+ 
+   "#clock-cells":
+     const: 1
+diff --git a/Documentation/devicetree/bindings/mailbox/google,gs101-mbox.yaml b/Documentation/devicetree/bindings/mailbox/google,gs101-mbox.yaml
+index e249db4c1fb..fb46be543f1 100644
+--- a/Documentation/devicetree/bindings/mailbox/google,gs101-mbox.yaml
++++ b/Documentation/devicetree/bindings/mailbox/google,gs101-mbox.yaml
+@@ -20,7 +20,9 @@ description:
+ 
+ properties:
+   compatible:
+-    const: google,gs101-mbox
++    enum:
++      - google,gs101-mbox
++      - samsung,exynos9820-mbox
+ 
+   reg:
+     maxItems: 1

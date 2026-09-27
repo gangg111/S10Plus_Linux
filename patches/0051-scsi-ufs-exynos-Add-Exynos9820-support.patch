@@ -1,0 +1,299 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 01:40:10 +0200
+Subject: [PATCH] scsi: ufs: exynos: Add Exynos9820 support
+
+The host of this SoC is taken through the same points as the others, but
+it writes what it needs by hand rather than letting the shared code
+derive it, so the block that would derive it is skipped and the link
+attributes are set from the hooks, with the values of the vendor kernel
+for this SoC.
+
+Three things are its own.  The automatic clock gating is handed to the
+register the vendor drives and then turned off, which needs a definition
+that was not here before.  The calibration the PHY runs once the link is
+up has to sit between a pair of writes that go over the link, so it is
+bracketed from the hook that runs just before it.  And Write Line Unique
+is wanted on this host, where the shared code has just turned it off.
+
+The region descriptors of the protector are not this driver's to write
+here.  Measured on the phone: the security register at the bottom of
+that block reads and writes without complaint, while the first write to
+a region descriptor comes back as an asynchronous SError, which is how a
+write the bus refuses is reported.  The window the vendor describes is a
+bare 0x100 and the descriptors sit above it at 0x200, so that window is
+an exact description of the part which is ours, and the vendor driver
+goes through firmware for the rest.  The option already present for
+hosts whose protector is reached that way says so.
+
+The timers a power mode change asks for are the same values another SoC
+of this family already sets, so that function loses its SoC specific
+name and is used by both rather than copied.
+
+Which of the two shareability bits is read and which is write has not
+been established on this SoC: the two are only ever cleared together, so
+they are named together.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/ufs/host/ufs-exynos.c | 205 +++++++++++++++++++++++++++++++++-
+ 1 file changed, 202 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/ufs/host/ufs-exynos.c b/drivers/ufs/host/ufs-exynos.c
+index 12fd8bbb230..07a8a8d5232 100644
+--- a/drivers/ufs/host/ufs-exynos.c
++++ b/drivers/ufs/host/ufs-exynos.c
+@@ -80,6 +80,10 @@
+ #define HCI_IOP_ACG_DISABLE	0x100
+ #define HCI_IOP_ACG_DISABLE_EN	BIT(0)
+ 
++/* The register the automatic clock gating is handed over to on Exynos9820 */
++#define HCI_UFS_ACG_DISABLE	0xFC
++#define HCI_UFS_ACG_DISABLE_EN	BIT(0)
++
+ /* Device fatal error */
+ #define DFES_ERR_EN		BIT(31)
+ #define DFES_DEF_L2_ERRS	(UIC_DATA_LINK_LAYER_ERROR_RX_BUF_OF |\
+@@ -105,6 +109,12 @@
+ #define UFS_GS101_RD_SHARABLE		BIT(0)
+ #define UFS_GS101_SHARABLE		(UFS_GS101_WR_SHARABLE | \
+ 					 UFS_GS101_RD_SHARABLE)
++/*
++ * Which of the pair is read and which is write has not been established on
++ * Exynos9820: the two are only ever cleared together, so they are named
++ * together as well.
++ */
++#define UFS_EXYNOS9820_SHARABLE		(BIT(23) | BIT(22))
+ #define UFS_SHAREABILITY_OFFSET		0x710
+ 
+ /* Multi-host registers */
+@@ -486,8 +496,13 @@ static int exynosautov920_ufs_post_link(struct exynos_ufs *ufs)
+ 	return 0;
+ }
+ 
+-static int exynosautov920_ufs_pre_pwr_change(struct exynos_ufs *ufs,
+-					     struct ufs_pa_layer_attr *pwr)
++/*
++ * The timers a power mode change asks for, both as attributes of the link and
++ * straight into the UniPro window.  More than one SoC of this family wants
++ * exactly these values, so they are set from one place.
++ */
++static int exynos_ufs_set_pwr_mode_timers(struct exynos_ufs *ufs,
++					  struct ufs_pa_layer_attr *pwr)
+ {
+ 	struct ufs_hba *hba = ufs->hba;
+ 
+@@ -2163,6 +2178,170 @@ static void exynos_ufs_remove(struct platform_device *pdev)
+ 	ufshcd_pltfrm_remove(pdev);
+ }
+ 
++/*
++ * The vendor rounds this attribute up until one more than it divides by four,
++ * unless the hardware has already reported a value of its own, in which case
++ * only a value that is too small is corrected.
++ */
++static void exynos9820_ufs_set_adapt_length(struct exynos_ufs *ufs, u32 attr)
++{
++	struct ufs_hba *hba = ufs->hba;
++	u32 val;
++
++	if (ufshcd_dme_get(hba, UIC_ARG_MIB(attr), &val))
++		return;
++
++	if (val & 0x80) {
++		if ((val & 0x7f) >= 2)
++			return;
++		val = 0x82;
++	} else {
++		while (((val + 1) % 4) != 0)
++			val++;
++	}
++
++	ufshcd_dme_set(hba, UIC_ARG_MIB(attr), val);
++}
++
++static int exynos9820_ufs_drv_init(struct exynos_ufs *ufs)
++{
++	return exynos_ufs_shareability(ufs);
++}
++
++static int exynos9820_ufs_post_hce_enable(struct exynos_ufs *ufs)
++{
++	u32 reg;
++
++	/*
++	 * Hand the automatic clock gating to the register the vendor drives,
++	 * and then turn the gating off, which is what it does before it brings
++	 * the link up.  It does both straight after the reset of the host; the
++	 * first point here that is past both that reset and the one performed
++	 * by the enable bit is this hook.
++	 */
++	reg = hci_readl(ufs, HCI_IOP_ACG_DISABLE);
++	hci_writel(ufs, reg & ~HCI_IOP_ACG_DISABLE_EN, HCI_IOP_ACG_DISABLE);
++
++	reg = hci_readl(ufs, HCI_UFS_ACG_DISABLE);
++	hci_writel(ufs, reg | HCI_UFS_ACG_DISABLE_EN, HCI_UFS_ACG_DISABLE);
++
++	return 0;
++}
++
++static int exynos9820_ufs_pre_link(struct exynos_ufs *ufs)
++{
++	struct ufs_hba *hba = ufs->hba;
++	u32 tx_line_reset_period, rx_line_reset_period;
++	u32 clk_period;
++	int i;
++
++	/*
++	 * Every period the link is told about comes from the rate of its
++	 * clock.  The vendor rounds the plain one to nearest, and takes the
++	 * two line reset periods from a tenth of the rate, which is also what
++	 * keeps the multiplication inside thirty two bits.
++	 */
++	clk_period = DIV_ROUND_CLOSEST(NSEC_PER_SEC, ufs->mclk_rate);
++	rx_line_reset_period = DIV_ROUND_CLOSEST(RX_LINE_RESET_TIME / 100 *
++						 (ufs->mclk_rate / 10), 1000);
++	tx_line_reset_period = DIV_ROUND_CLOSEST(TX_LINE_RESET_TIME / 100 *
++						 (ufs->mclk_rate / 10), 1000);
++
++	unipro_writel(ufs, get_mclk_period_unipro_18(ufs), COMP_CLK_PERIOD);
++
++	ufshcd_dme_set(hba, UIC_ARG_MIB(0x200), 0x40);
++
++	for_each_ufs_rx_lane(ufs, i)
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_RX_CLK_PRD, i),
++			       clk_period);
++
++	for_each_ufs_tx_lane(ufs, i) {
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_TX_CLK_PRD, i),
++			       clk_period);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_TX_CLK_PRD_EN, i),
++			       0x02);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_TX_LINERESET_PVALUE2, i),
++			       (tx_line_reset_period >> 16) & 0xff);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_TX_LINERESET_PVALUE1, i),
++			       (tx_line_reset_period >> 8) & 0xff);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_TX_LINERESET_PVALUE0, i),
++			       tx_line_reset_period & 0xff);
++	}
++
++	for_each_ufs_rx_lane(ufs, i) {
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_RX_CLK_PRD_EN, i), 0x0);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_RX_LINERESET_VALUE2, i),
++			       (rx_line_reset_period >> 16) & 0xff);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_RX_LINERESET_VALUE1, i),
++			       (rx_line_reset_period >> 8) & 0xff);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(VND_RX_LINERESET_VALUE0, i),
++			       rx_line_reset_period & 0xff);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x2f, i), 0x79);
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x84, i), 0x01);
++	}
++
++	for_each_ufs_tx_lane(ufs, i)
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x04, i), 0x01);
++
++	for_each_ufs_rx_lane(ufs, i)
++		ufshcd_dme_set(hba, UIC_ARG_MIB_SEL(0x25, i), 0xf6);
++
++	ufshcd_dme_set(hba, UIC_ARG_MIB(0x200), 0x0);
++
++	ufshcd_dme_set(hba, UIC_ARG_MIB(PA_LOCAL_TX_LCC_ENABLE), 0x0);
++	ufshcd_dme_set(hba, UIC_ARG_MIB(N_DEVICEID), 0x0);
++	ufshcd_dme_set(hba, UIC_ARG_MIB(N_DEVICEID_VALID), 0x1);
++	ufshcd_dme_set(hba, UIC_ARG_MIB(T_PEERDEVICEID), 0x1);
++	ufshcd_dme_set(hba, UIC_ARG_MIB(T_CONNECTIONSTATE), CPORT_CONNECTED);
++
++	return 0;
++}
++
++static int exynos9820_ufs_pre_phy_cal(struct exynos_ufs *ufs)
++{
++	struct ufs_hba *hba = ufs->hba;
++
++	/* Of the two the vendor corrects, only the second has a name here. */
++	exynos9820_ufs_set_adapt_length(ufs, 0x15d2);
++	exynos9820_ufs_set_adapt_length(ufs, PA_PEERRXHSG4ADAPTINITIAL);
++
++	exynos_ufs_enable_dbg_mode(hba);
++	ufshcd_dme_set(hba, UIC_ARG_MIB(PA_SAVECONFIGTIME), 0x3e8);
++	exynos_ufs_disable_dbg_mode(hba);
++
++	/*
++	 * The calibration the PHY is about to run belongs between this write
++	 * and the one that undoes it, which is why it is made from here.  The
++	 * attribute is the vendor's own and has no name in the shared header.
++	 */
++	ufshcd_dme_set(hba, UIC_ARG_MIB(0xa006), 0x80000000);
++
++	return 0;
++}
++
++static int exynos9820_ufs_post_link(struct exynos_ufs *ufs)
++{
++	struct ufs_hba *hba = ufs->hba;
++
++	ufshcd_dme_set(hba, UIC_ARG_MIB(0xa006), 0x0);
++
++	/*
++	 * Write Line Unique, which this host needs and which the shared code
++	 * has just turned off on its way past.
++	 */
++	hci_writel(ufs, WLU_EN | WLU_BURST_LEN(3), HCI_AXIDMA_RWDATA_BURST_LEN);
++
++	return 0;
++}
++
++static struct exynos_ufs_uic_attr exynos9820_uic_attr = {
++	/*
++	 * The calibration of this SoC writes what it needs by hand, so none of
++	 * the attributes the shared code would derive are named here and the
++	 * block that would write them is skipped.
++	 */
++};
++
+ static struct exynos_ufs_uic_attr exynos7_uic_attr = {
+ 	.tx_trailingclks		= 0x10,
+ 	.tx_dif_p_nsec			= 3000000,	/* unit: ns */
+@@ -2310,6 +2489,24 @@ static const struct exynos_ufs_drv_data gs101_ufs_drvs = {
+ 	.suspend		= gs101_ufs_suspend,
+ };
+ 
++static const struct exynos_ufs_drv_data exynos9820_ufs_drvs = {
++	.uic_attr		= &exynos9820_uic_attr,
++	.quirks			= UFSHCD_QUIRK_PRDT_BYTE_GRAN |
++				  UFSHCD_QUIRK_BROKEN_OCS_FATAL_ERROR |
++				  UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING,
++	.opts			= EXYNOS_UFS_OPT_HAS_APB_CLK_CTRL |
++				  EXYNOS_UFS_OPT_SKIP_CONFIG_PHY_ATTR |
++				  EXYNOS_UFS_OPT_UFSPR_SECURE |
++				  EXYNOS_UFS_OPT_TIMER_TICK_SELECT,
++	.iocc_mask		= UFS_EXYNOS9820_SHARABLE,
++	.drv_init		= exynos9820_ufs_drv_init,
++	.post_hce_enable	= exynos9820_ufs_post_hce_enable,
++	.pre_link		= exynos9820_ufs_pre_link,
++	.pre_phy_cal		= exynos9820_ufs_pre_phy_cal,
++	.post_link		= exynos9820_ufs_post_link,
++	.pre_pwr_change		= exynos_ufs_set_pwr_mode_timers,
++};
++
+ static const struct exynos_ufs_drv_data exynosautov920_ufs_drvs = {
+ 	.uic_attr               = &exynos7_uic_attr,
+ 	.quirks                 = UFSHCD_QUIRK_SKIP_DEF_UNIPRO_TIMEOUT_SETTING,
+@@ -2322,7 +2519,7 @@ static const struct exynos_ufs_drv_data exynosautov920_ufs_drvs = {
+ 	.post_hce_enable        = exynosauto_ufs_post_hce_enable,
+ 	.pre_link               = exynosautov920_ufs_pre_link,
+ 	.post_link              = exynosautov920_ufs_post_link,
+-	.pre_pwr_change         = exynosautov920_ufs_pre_pwr_change,
++	.pre_pwr_change         = exynos_ufs_set_pwr_mode_timers,
+ };
+ 
+ static const struct of_device_id exynos_ufs_of_match[] = {
+@@ -2330,6 +2527,8 @@ static const struct of_device_id exynos_ufs_of_match[] = {
+ 	  .data	      = &gs101_ufs_drvs },
+ 	{ .compatible = "samsung,exynos7-ufs",
+ 	  .data	      = &exynos_ufs_drvs },
++	{ .compatible = "samsung,exynos9820-ufs",
++	  .data	      = &exynos9820_ufs_drvs },
+ 	{ .compatible = "samsung,exynosautov9-ufs",
+ 	  .data	      = &exynosauto_ufs_drvs },
+ 	{ .compatible = "samsung,exynosautov9-ufs-vh",

@@ -1,0 +1,331 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 23 Sep 2026 18:32:45 +0200
+Subject: [PATCH] Input: s6sy761 - add the low power mode with a double tap to
+ wake
+
+A phone turns its display off many times a day, and while it is off the
+touch controller should neither report every finger on the glass nor be
+switched off completely, because a double tap has to wake the phone again.
+
+The firmware of these controllers carries a gesture library for exactly
+that.  In the low power mode, APPLICATION_MODE 0x1, the controller stops
+reporting coordinates and recognises the gestures enabled in the library
+on its own; a double tap then arrives as one gesture event.  The driver
+already names that mode, but never writes it.
+
+Enter it through a sysfs attribute, the same way the vendor driver does:
+enable the double tap in the library, switch the mode and read it back,
+since the controller does not always take the first write, and drop the
+events queued before the switch.  The gesture is reported as KEY_WAKEUP.
+The library is looked for once at probe, and the attribute refuses to do
+anything on a firmware without one.
+
+Measured on a Galaxy S10+ with the sequence done by hand over i2c-dev
+before this was written: in the low power mode five seconds of dragging a
+finger over the panel raised no interrupt at all, a single tap none, and a
+double tap exactly one, against hundreds a second in the normal mode.
+
+The attribute is there because nothing else says that the display went
+off on a device that has no DRM panel driver: the input core can inhibit a
+device, but events of an inhibited device are dropped, the wakeup key
+among them, and drm_panel_follower needs a panel to follow.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/input/touchscreen/s6sy761.c | 210 ++++++++++++++++++++++++++++
+ 1 file changed, 210 insertions(+)
+
+diff --git a/drivers/input/touchscreen/s6sy761.c b/drivers/input/touchscreen/s6sy761.c
+index 55ff56c88ef..204e0331c6a 100644
+--- a/drivers/input/touchscreen/s6sy761.c
++++ b/drivers/input/touchscreen/s6sy761.c
+@@ -29,6 +29,19 @@
+ #define S6SY761_CLEAR_EVENT_STACK	0x62
+ #define S6SY761_APPLICATION_MODE	0xe4
+ 
++/*
++ * Gesture library of the vendor firmware.  Parameters are written as an
++ * offset and a payload to WRITE_PARAM, and take effect once NOTIFY_PACKET
++ * follows; GET_INFO answers with the model the library was built for, and
++ * does not answer at all on a firmware that carries no library.
++ */
++#define S6SY761_SPONGE_GET_INFO		0x90
++#define S6SY761_SPONGE_WRITE_PARAM	0x91
++#define S6SY761_SPONGE_NOTIFY_PACKET	0x93
++#define S6SY761_SPONGE_INFO_SIZE	10
++#define S6SY761_SPONGE_OFFSET_MODE	0x0000
++#define S6SY761_SPONGE_DOUBLE_TAP	BIT(5)
++
+ /* events */
+ #define S6SY761_EVENT_INFO		0x02
+ #define S6SY761_EVENT_VENDOR_INFO	0x07
+@@ -61,6 +74,12 @@
+ /* event id */
+ #define S6SY761_EVENT_ID_COORDINATE	0x00
+ #define S6SY761_EVENT_ID_STATUS		0x01
++#define S6SY761_EVENT_ID_GESTURE	0x02
++
++/* gesture event: the type sits where a coordinate event keeps the TID */
++#define S6SY761_MASK_GESTURE_TYPE	0x3c /* byte 0 */
++#define S6SY761_GESTURE_DOUBLE_TAP	0x01
++#define S6SY761_GESTURE_ID_WAKEUP	0x01 /* byte 1 */
+ 
+ /* event register masks */
+ #define S6SY761_MASK_TOUCH_STATE	0xc0 /* byte 0 */
+@@ -95,6 +114,7 @@
+ #define S6SY761_DEVID_SIZE		3
+ #define S6SY761_PANEL_ID_SIZE		11
+ #define S6SY761_TS_STATUS_SIZE		5
++#define S6SY761_MODE_RETRIES		5
+ #define S6SY761_MAX_FINGERS		10
+ 
+ #define S6SY761_DEV_NAME	"s6sy761"
+@@ -132,6 +152,11 @@ struct s6sy761_data {
+ 
+ 	u16 devid;
+ 	u8 tx_channel;
++
++	/* serialises the switch between the normal and the low power mode */
++	struct mutex mode_lock;
++	bool sponge;
++	bool lowpower;
+ };
+ 
+ /*
+@@ -214,6 +239,26 @@ static void s6sy761_handle_coordinates(struct s6sy761_data *sdata, u8 *event)
+ 	}
+ }
+ 
++/*
++ * In the low power mode the controller stops reporting coordinates and
++ * recognises a double tap on its own, which then arrives as one gesture
++ * event.  It is reported as KEY_WAKEUP, the same key the vendor driver uses
++ * for it, so whatever turned the screen off can turn it back on.
++ */
++static void s6sy761_handle_gesture(struct s6sy761_data *sdata, u8 *event)
++{
++	u8 type = (event[0] & S6SY761_MASK_GESTURE_TYPE) >> 2;
++
++	if (type != S6SY761_GESTURE_DOUBLE_TAP ||
++	    event[1] != S6SY761_GESTURE_ID_WAKEUP)
++		return;
++
++	input_report_key(sdata->input, KEY_WAKEUP, 1);
++	input_sync(sdata->input);
++	input_report_key(sdata->input, KEY_WAKEUP, 0);
++	input_sync(sdata->input);
++}
++
+ static void s6sy761_handle_events(struct s6sy761_data *sdata, u8 n_events)
+ {
+ 	bool frame = false;
+@@ -236,6 +281,11 @@ static void s6sy761_handle_events(struct s6sy761_data *sdata, u8 n_events)
+ 		case S6SY761_EVENT_ID_STATUS:
+ 			break;
+ 
++		case S6SY761_EVENT_ID_GESTURE:
++			if (sdata->sponge)
++				s6sy761_handle_gesture(sdata, event);
++			break;
++
+ 		default:
+ 			break;
+ 		}
+@@ -309,8 +359,141 @@ static ssize_t s6sy761_sysfs_devid(struct device *dev,
+ 
+ static DEVICE_ATTR(devid, 0444, s6sy761_sysfs_devid, NULL);
+ 
++static int s6sy761_sponge_write(struct s6sy761_data *sdata, u16 offset,
++				u8 value)
++{
++	u8 buf[3] = { offset & 0xff, offset >> 8, value };
++	int ret;
++
++	ret = i2c_smbus_write_i2c_block_data(sdata->client,
++					     S6SY761_SPONGE_WRITE_PARAM,
++					     sizeof(buf), buf);
++	if (ret)
++		return ret;
++
++	/* Without this the parameter sits in a buffer and is never used. */
++	return i2c_smbus_write_byte(sdata->client,
++				    S6SY761_SPONGE_NOTIFY_PACKET);
++}
++
++/*
++ * The controller takes a moment to change modes and sometimes does not take
++ * the first write, so the mode is read back and the write repeated, as the
++ * vendor driver does.
++ */
++static int s6sy761_set_mode(struct s6sy761_data *sdata, u8 mode)
++{
++	int ret, i;
++
++	for (i = 0; i < S6SY761_MODE_RETRIES; i++) {
++		ret = i2c_smbus_write_byte_data(sdata->client,
++						S6SY761_APPLICATION_MODE, mode);
++		if (ret)
++			return ret;
++
++		msleep(50);
++
++		ret = i2c_smbus_read_byte_data(sdata->client,
++					       S6SY761_APPLICATION_MODE);
++		if (ret < 0)
++			return ret;
++		if (ret == mode)
++			return 0;
++	}
++
++	return -EIO;
++}
++
++static void s6sy761_release_all(struct s6sy761_data *sdata)
++{
++	int i;
++
++	for (i = 0; i < sdata->tx_channel; i++) {
++		input_mt_slot(sdata->input, i);
++		input_mt_report_slot_inactive(sdata->input);
++	}
++	input_mt_sync_frame(sdata->input);
++	input_sync(sdata->input);
++}
++
++static int s6sy761_enter_lowpower(struct s6sy761_data *sdata)
++{
++	int ret;
++
++	ret = s6sy761_sponge_write(sdata, S6SY761_SPONGE_OFFSET_MODE,
++				   S6SY761_SPONGE_DOUBLE_TAP);
++	if (ret)
++		return ret;
++
++	ret = s6sy761_set_mode(sdata, S6SY761_APP_LOW_POWER);
++	if (ret)
++		return ret;
++
++	/*
++	 * Whatever was queued before the switch belongs to the normal mode
++	 * and would otherwise come out as the first event after it.
++	 */
++	ret = i2c_smbus_write_byte(sdata->client, S6SY761_CLEAR_EVENT_STACK);
++	if (ret)
++		return ret;
++
++	/* A finger on the glass at the switch would never be released. */
++	s6sy761_release_all(sdata);
++
++	return 0;
++}
++
++/*
++ * Writing 1 puts the controller in its low power mode, in which it stops
++ * reporting touches and only reports a double tap, as KEY_WAKEUP; writing 0
++ * brings the normal mode back.  It is meant for whatever turns the display
++ * off, which on a phone is the one moment the panel must not answer every
++ * touch but still has to be woken with a finger.
++ */
++static ssize_t lowpower_show(struct device *dev,
++			     struct device_attribute *attr, char *buf)
++{
++	struct s6sy761_data *sdata = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%d\n", sdata->lowpower);
++}
++
++static ssize_t lowpower_store(struct device *dev,
++			      struct device_attribute *attr,
++			      const char *buf, size_t count)
++{
++	struct s6sy761_data *sdata = dev_get_drvdata(dev);
++	bool enable;
++	int ret;
++
++	ret = kstrtobool(buf, &enable);
++	if (ret)
++		return ret;
++
++	if (!sdata->sponge)
++		return -EOPNOTSUPP;
++
++	mutex_lock(&sdata->mode_lock);
++	if (enable != sdata->lowpower) {
++		disable_irq(sdata->client->irq);
++		if (enable)
++			ret = s6sy761_enter_lowpower(sdata);
++		else
++			ret = s6sy761_set_mode(sdata, S6SY761_APP_NORMAL);
++		if (!ret)
++			sdata->lowpower = enable;
++		enable_irq(sdata->client->irq);
++	}
++	mutex_unlock(&sdata->mode_lock);
++
++	return ret ?: count;
++}
++
++static DEVICE_ATTR_RW(lowpower);
++
+ static struct attribute *s6sy761_sysfs_attrs[] = {
+ 	&dev_attr_devid.attr,
++	&dev_attr_lowpower.attr,
+ 	NULL
+ };
+ ATTRIBUTE_GROUPS(s6sy761_sysfs);
+@@ -431,6 +614,22 @@ static int s6sy761_hw_init(struct s6sy761_data *sdata,
+ 	return 0;
+ }
+ 
++/*
++ * The low power mode with gestures needs the gesture library in the
++ * firmware; a firmware without one leaves GET_INFO unanswered or empty.
++ */
++static bool s6sy761_has_sponge(struct s6sy761_data *sdata)
++{
++	u8 info[S6SY761_SPONGE_INFO_SIZE];
++	int ret;
++
++	ret = i2c_smbus_read_i2c_block_data(sdata->client,
++					    S6SY761_SPONGE_GET_INFO,
++					    sizeof(info), info);
++
++	return ret == sizeof(info) && info[0];
++}
++
+ static void s6sy761_power_off(void *data)
+ {
+ 	struct s6sy761_data *sdata = data;
+@@ -462,6 +661,10 @@ static int s6sy761_probe(struct i2c_client *client)
+ 	if (!sdata->chip)
+ 		return -ENODEV;
+ 
++	err = devm_mutex_init(&client->dev, &sdata->mode_lock);
++	if (err)
++		return err;
++
+ 	sdata->regulators[S6SY761_REGULATOR_VDD].supply = "vdd";
+ 	sdata->regulators[S6SY761_REGULATOR_AVDD].supply = "avdd";
+ 	err = devm_regulator_bulk_get(&client->dev,
+@@ -495,6 +698,10 @@ static int s6sy761_probe(struct i2c_client *client)
+ 	input_set_abs_params(sdata->input, ABS_MT_TOUCH_MINOR, 0, 255, 0, 0);
+ 	input_set_abs_params(sdata->input, ABS_MT_PRESSURE, 0, 255, 0, 0);
+ 
++	sdata->sponge = s6sy761_has_sponge(sdata);
++	if (sdata->sponge)
++		input_set_capability(sdata->input, EV_KEY, KEY_WAKEUP);
++
+ 	touchscreen_parse_properties(sdata->input, true, &sdata->prop);
+ 
+ 	if (!input_abs_get_max(sdata->input, ABS_MT_POSITION_X) ||
+@@ -561,6 +768,9 @@ static int s6sy761_resume(struct device *dev)
+ 
+ 	enable_irq(sdata->client->irq);
+ 
++	/* The power cycle leaves the controller in its normal mode. */
++	sdata->lowpower = false;
++
+ 	return s6sy761_power_on(sdata);
+ }
+ 

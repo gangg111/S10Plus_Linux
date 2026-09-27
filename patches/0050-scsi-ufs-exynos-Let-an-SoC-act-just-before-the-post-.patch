@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 00:30:37 +0200
+Subject: [PATCH] scsi: ufs: exynos: Let an SoC act just before the post link
+ calibration
+
+The PHY is calibrated once the link is up, and that call is made by the
+shared code before the SoC gets its turn.  An SoC whose calibration has
+to be bracketed by writes that go over the link itself cannot do it from
+either hook it has: the one before the link is too early, the one after
+runs when the calibration is already done.
+
+Add a hook that runs immediately before it.  Nothing sets it yet, so no
+SoC changes behaviour.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/ufs/host/ufs-exynos.c | 3 +++
+ drivers/ufs/host/ufs-exynos.h | 6 ++++++
+ 2 files changed, 9 insertions(+)
+
+diff --git a/drivers/ufs/host/ufs-exynos.c b/drivers/ufs/host/ufs-exynos.c
+index e9bd59648a9..12fd8bbb230 100644
+--- a/drivers/ufs/host/ufs-exynos.c
++++ b/drivers/ufs/host/ufs-exynos.c
+@@ -1247,6 +1247,9 @@ static int exynos_ufs_post_link(struct ufs_hba *hba)
+ 		}
+ 	}
+ 
++	if (ufs->drv_data->pre_phy_cal)
++		ufs->drv_data->pre_phy_cal(ufs);
++
+ 	phy_calibrate(generic_phy);
+ 
+ 	if (ufs->drv_data->post_link)
+diff --git a/drivers/ufs/host/ufs-exynos.h b/drivers/ufs/host/ufs-exynos.h
+index abe7e472759..30d7882e85e 100644
+--- a/drivers/ufs/host/ufs-exynos.h
++++ b/drivers/ufs/host/ufs-exynos.h
+@@ -185,6 +185,12 @@ struct exynos_ufs_drv_data {
+ 	/* SoC's specific operations */
+ 	int (*drv_init)(struct exynos_ufs *ufs);
+ 	int (*pre_link)(struct exynos_ufs *ufs);
++	/*
++	 * Runs once the link is up and just before the PHY is calibrated for
++	 * it, which is the only place from which that calibration can be
++	 * bracketed by writes that go over the link itself.
++	 */
++	int (*pre_phy_cal)(struct exynos_ufs *ufs);
+ 	int (*post_link)(struct exynos_ufs *ufs);
+ 	int (*pre_pwr_change)(struct exynos_ufs *ufs,
+ 				struct ufs_pa_layer_attr *pwr);

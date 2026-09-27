@@ -1,0 +1,32 @@
+Zrzut paska: 1440x896, gestosc 20,57 px/mm
+
+KOLORY (wzorzec: Theme.qml co do bajtu)
+  element                                      zmierzone    wzorzec     
+  tlo paska (bg)                               #000000      #000000      ok
+  klawisz zwykly (keyBg)                       #1c1c1e      #1c1c1e      ok
+  klawisz z akcja (keyBgAlt)                   #131315      #131315      ok
+  klawisz wcisniety (keyBgDown)                #0a84ff      #0a84ff      ok
+  obwodka dymka (accent)                       #0a84ff      #0a84ff      ok
+  tlo dymka (keyBgActive)                      #2c2c2e      #2c2c2e      ok
+  szerokosc dymka na jeden wariant [px]        185          185          ok
+  napis na klawiszu (text)                     #f2f2f7      #f2f2f7      ok
+  kropka wariantu (textDim)                    #8e8e93      #8e8e93      ok
+
+WYMIARY (wzorzec: milimetry z Theme.qml przez gestosc)
+  element                                      zmierzone    wzorzec     
+  wysokosc rzedu pelnego [px]                  185          185          ok
+  wysokosc rzedu cyfr (rh 0,78) [px]           144          144          ok
+  odstep miedzy klawiszami [px]                12           12           ok
+  lewa krawedz pierwszego klawisza [px]        44           44           ok
+  bok kropki wariantu [px]                     7            7            ok
+  odsuniecie kropki od prawej [px]             18           18           ok
+  odsuniecie kropki od gory [px]               18           18           ok
+
+KSZTALT I PISMO (wzorzec: render klawiatury Qt)
+  element                                      zmierzone    wzorzec     
+  naroznik klawisza: wciecia kolejnych wierszy 22,19,17,15,13,12,11 22,19,17,15,14,12,11 ok
+  glif litery q: szerokosc na wysokosc [px]    32x58        32x57        ok
+  napis funkcyjny ?123 [px]                    93x35        94x34        ok
+  wysokosc wskaznika CAPS [px]                 24           23           ok
+
+ZGODNE: kolory co do bajtu, wymiary co do piksela, naroznik i pismo jak w renderze Qt

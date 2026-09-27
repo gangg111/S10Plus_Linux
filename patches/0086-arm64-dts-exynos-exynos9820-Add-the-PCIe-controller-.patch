@@ -1,0 +1,108 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 10:10:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the PCIe controller the
+ Wi-Fi chip sits on
+
+Describe the first of the two PCIe controllers of this SoC: five windows,
+one interrupt, the five clocks of the FSYS1 block that belong to it, the
+two system register words that pick its lane, and the two pins that carry
+the clock request and the endpoint reset.
+
+The second controller is left out.  Nothing is attached to it on the board
+this series targets, and the vendor tree keeps it disabled there too.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   | 18 +++++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 48 +++++++++++++++++++
+ 2 files changed, 66 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index bf90643b55f..477ba04a823 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -535,6 +535,24 @@ gpf3: gpf3-gpio-bank {
+ 		#interrupt-cells = <2>;
+ 	};
+ 
++	/* the clock request line of the PCIe endpoint */
++	pcie0_clkreq_pins: pcie0-clkreq-pins {
++		samsung,pins = "gpf2-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV4>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_UP>;
++	};
++
++	/* the reset line of the PCIe endpoint */
++	pcie0_perst_pins: pcie0-perst-pins {
++		samsung,pins = "gpf2-2";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV4>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
++
+ 	/*
+ 	 * The two pins of the embedded storage: the reset line of the device
+ 	 * and the reference clock going out to it.  Both take their second
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 95d5fba7009..6b13a7e097e 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -606,6 +606,54 @@ ufs_0_phy: phy@13d64000 {
+ 			samsung,pmu-syscon = <&pmu_system_controller 0x724>;
+ 		};
+ 
++		/*
++		 * The first of the two PCIe controllers of this SoC, and the only
++		 * one wired on this board: the combined Wi-Fi and Bluetooth chip
++		 * answers on it, one lane at Gen1.  The second controller is left
++		 * out, because nothing is attached to it here.
++		 *
++		 * Five windows, of which the DesignWare core claims three by name
++		 * and the driver maps the two halves of the PHY itself.  The
++		 * addresses are the ones the vendor tree gives.
++		 */
++		pcie0: pcie@13ed0000 {
++			compatible = "samsung,exynos9820-pcie";
++			reg = <0x13ed0000 0x1000>,
++			      <0x13f00000 0x1000>,
++			      <0x14ffe000 0x2000>,
++			      <0x13ee0000 0x11000>;
++			reg-names = "elbi", "dbi", "config", "phy";
++			interrupts = <GIC_SPI 253 IRQ_TYPE_LEVEL_HIGH>;
++
++			device_type = "pci";
++			#address-cells = <3>;
++			#size-cells = <2>;
++			ranges = <0x82000000 0 0x14000000 0x14000000 0 0x00ff0000>;
++			bus-range = <0x00 0xff>;
++			num-lanes = <1>;
++			max-link-speed = <1>;
++
++			#interrupt-cells = <1>;
++			interrupt-map-mask = <0 0 0 0>;
++			interrupt-map = <0 0 0 0 &gic GIC_SPI 253
++					 IRQ_TYPE_LEVEL_HIGH>;
++
++			clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_DBI_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_MSTR_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_SLV_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_GEN2_PHY_REFCLK_IN>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_PCIE_IA_GEN2_I_CLK>;
++
++			samsung,pmu-syscon = <&pmu_system_controller>;
++			samsung,fsys-sysreg = <&sysreg_fsys1>;
++
++			pinctrl-0 = <&pcie0_clkreq_pins>, <&pcie0_perst_pins>;
++			pinctrl-names = "default";
++			reset-gpios = <&gpf2 2 GPIO_ACTIVE_HIGH>;
++
++			status = "disabled";
++		};
++
+ 		/*
+ 		 * The VTS and AUD pin controllers sit inside power domains that can
+ 		 * be off, so they carry no interrupt and the driver leaves their

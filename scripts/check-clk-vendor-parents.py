@@ -53,6 +53,15 @@ WYJATKI = {
         "wyboru w tablicach, wiec nie jest rejestrowany",
     "gout_peris_ad_axi_p_peris_aclkm":
         "HW-33: to samo wejscie co gout_peris_gic_clk",
+    "dout_aud_cpu_aclk":
+        "HW-33: producent podpina to pod MUX_HCHGEN_CLK_AUD_CPU, mux bez pola "
+        "wyboru, jak MUX_CLK_PERIS_GIC",
+    "dout_aud_cpu_atclk":
+        "HW-33: to samo wejscie co dout_aud_cpu_aclk",
+    "dout_aud_cpu_pclkdbg":
+        "HW-33: to samo wejscie co dout_aud_cpu_aclk",
+    "gout_aud_abox_cclk_ca32":
+        "HW-33: to samo wejscie co dout_aud_cpu_aclk",
 }
 
 # Nazwy blokow, ktore obie strony wtracaja w roznych miejscach.

@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 23:40:00 +0200
+Subject: [PATCH] input: s6sy761: Warn about the axes the driver sets
+
+The warning fires on every probe.  It looks at ABS_X and ABS_Y, which this
+driver never sets: it sets the multitouch axes, and the single touch ones
+come into being a few lines below, when input_mt_init_slots() is told the
+device is a direct one and derives them.
+
+Measured on a Galaxy S10+: probe says the axes have not been set, and once
+it is over both of them read 0 to 4096, as do the multitouch axes they were
+derived from.
+
+Look at the axes this driver sets, which is what the warning means anyway.
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/input/touchscreen/s6sy761.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/input/touchscreen/s6sy761.c b/drivers/input/touchscreen/s6sy761.c
+index e684026976a..4d78c7cb3ab 100644
+--- a/drivers/input/touchscreen/s6sy761.c
++++ b/drivers/input/touchscreen/s6sy761.c
+@@ -489,8 +489,8 @@ static int s6sy761_probe(struct i2c_client *client)
+ 
+ 	touchscreen_parse_properties(sdata->input, true, &sdata->prop);
+ 
+-	if (!input_abs_get_max(sdata->input, ABS_X) ||
+-	    !input_abs_get_max(sdata->input, ABS_Y)) {
++	if (!input_abs_get_max(sdata->input, ABS_MT_POSITION_X) ||
++	    !input_abs_get_max(sdata->input, ABS_MT_POSITION_Y)) {
+ 		dev_warn(&client->dev, "the axis have not been set\n");
+ 	}
+ 

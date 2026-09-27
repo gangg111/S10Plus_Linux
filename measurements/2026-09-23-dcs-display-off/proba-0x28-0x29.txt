@@ -1,0 +1,23 @@
+ekran zapalony po 144 s
+13:03:29 wysylam 0x28
+rc28=0
+13:03:34 wysylam 0x29
+rc29=0
+dpms=On
+[ 3952.289678] s10_dcs: intsrc po wysylce 11000000 (b28 ustawiony)
+[ 3952.289700] s10_dcs: wyslano 0x28, bledy intsrc=00000000 cmd_status=00000000
+[ 3953.291954] s10_dcs: na zadanie: DSIM version=02030000 link1=04000000 link3=00000000 sfr_ctrl=00000002 cmd_config=00000000 te_ctrl0=00000056 te_ctrl1=22a32776
+[ 3953.291982] s10_dcs: na zadanie: DSIM clk_ctrl=06131f03 escmode=01400000 config=04887cff mipi_status=00000000 dphy_status=0000010f
+[ 3953.291995] s10_dcs: na zadanie: DSIM intsrc=11000000 intmsk=8e7b4447 fifoctrl=00005507 cmd_status=00000000
+[ 3953.292008] s10_dcs: na zadanie: DECON global=00000133 shadow_req=00000000 trig=00001001 trig_aktywny=00001001 te_cnt=9d939d93
+[ 3957.294178] s10_dcs: na zadanie: DSIM version=02030000 link1=06000998 link3=00000000 sfr_ctrl=00000002 cmd_config=00000000 te_ctrl0=00000056 te_ctrl1=22a32776
+[ 3957.294206] s10_dcs: na zadanie: DSIM clk_ctrl=06131f03 escmode=01400000 config=04887cff mipi_status=20000000 dphy_status=0007fc00
+[ 3957.294220] s10_dcs: na zadanie: DSIM intsrc=11000000 intmsk=8e7b4447 fifoctrl=00001507 cmd_status=00000000
+[ 3957.294231] s10_dcs: na zadanie: DECON global=00000113 shadow_req=00000000 trig=00001001 trig_aktywny=00001001 te_cnt=9e839e83
+[ 3957.297577] s10_dcs: intsrc po wysylce 11000000 (b28 ustawiony)
+[ 3957.297597] s10_dcs: wyslano 0x29, bledy intsrc=00000000 cmd_status=00000000
+[ 3958.298817] s10_dcs: na zadanie: DSIM version=02030000 link1=04000000 link3=00000000 sfr_ctrl=00000002 cmd_config=00000000 te_ctrl0=00000056 te_ctrl1=22a32776
+[ 3958.298845] s10_dcs: na zadanie: DSIM clk_ctrl=06131f03 escmode=01400000 config=04887cff mipi_status=00000000 dphy_status=0000010f
+[ 3958.298858] s10_dcs: na zadanie: DSIM intsrc=11000000 intmsk=8e7b4447 fifoctrl=00005507 cmd_status=00000000
+[ 3958.298870] s10_dcs: na zadanie: DECON global=00000133 shadow_req=00000000 trig=00001001 trig_aktywny=00001001 te_cnt=9ebf9ebf
+

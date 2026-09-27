@@ -1,0 +1,136 @@
+From 1bf245585cb1e6f538f90c2d976ba22d54954ed6 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 00:55:44 +0200
+Subject: [PATCH 35/40] dts: exynos: take the TMU and the thermal zones from
+ the kernel tree
+
+Kernel patch 0108 describes the two blocks of the thermal management unit
+of the Exynos9820 and the five thermal zones the firmware on the APM
+reports for them, each with a critical trip at 100 C.  This tree carries
+a copy of that SoC file, and the copy has to stay a copy.  Nothing in this
+boot loader reads the sensors, so the nodes only have to be there.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ dts/upstream/src/arm64/exynos/exynos9820.dtsi | 98 +++++++++++++++++++
+ 1 file changed, 98 insertions(+)
+
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820.dtsi b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+index 87d95413..2f2a0145 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820.dtsi
++++ b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+@@ -271,6 +271,31 @@
+ 				     <GIC_SPI 477 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		/*
++		 * The first of the two blocks of the thermal management unit, with
++		 * the probes of the three CPU clusters.  The firmware on the APM
++		 * owns them and answers for the zones over ACPM; the bootloader has
++		 * armed the hardware trip of the block at 115 C.
++		 */
++		tmu_top: thermal-sensor@10090000 {
++			compatible = "samsung,exynos9820-tmu-top";
++			reg = <0x10090000 0x800>;
++			interrupts = <GIC_SPI 478 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_peris CLK_GOUT_PERIS_TMU_TOP_PCLK>;
++			#thermal-sensor-cells = <1>;
++			samsung,acpm-ipc = <&acpm_ipc>;
++		};
++
++		/* The second block, with the probes of the GPU and the ISP. */
++		tmu_sub: thermal-sensor@100a0000 {
++			compatible = "samsung,exynos9820-tmu-sub";
++			reg = <0x100a0000 0x800>;
++			interrupts = <GIC_SPI 479 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_peris CLK_GOUT_PERIS_TMU_SUB_PCLK>;
++			#thermal-sensor-cells = <1>;
++			samsung,acpm-ipc = <&acpm_ipc>;
++		};
++
+ 		gic: interrupt-controller@10101000 {
+ 			compatible = "arm,gic-400";
+ 			#interrupt-cells = <3>;
+@@ -1113,6 +1138,79 @@
+ 		};
+ 	};
+ 
++	/*
++	 * Nothing can be throttled yet: without cpufreq or cpuidle there is no
++	 * cooling device.  What is left is a critical trip 15 C below the
++	 * hardware trip of the TMU, so the kernel powers the phone off in order
++	 * before the TMU removes the power.
++	 */
++	thermal-zones {
++		big-thermal {
++			polling-delay = <1000>;
++			thermal-sensors = <&tmu_top 0>;
++
++			trips {
++				big-critical {
++					temperature = <100000>;
++					hysteresis = <0>;
++					type = "critical";
++				};
++			};
++		};
++
++		gpu-thermal {
++			polling-delay = <1000>;
++			thermal-sensors = <&tmu_sub 3>;
++
++			trips {
++				gpu-critical {
++					temperature = <100000>;
++					hysteresis = <0>;
++					type = "critical";
++				};
++			};
++		};
++
++		isp-thermal {
++			polling-delay = <1000>;
++			thermal-sensors = <&tmu_sub 4>;
++
++			trips {
++				isp-critical {
++					temperature = <100000>;
++					hysteresis = <0>;
++					type = "critical";
++				};
++			};
++		};
++
++		little-thermal {
++			polling-delay = <1000>;
++			thermal-sensors = <&tmu_top 2>;
++
++			trips {
++				little-critical {
++					temperature = <100000>;
++					hysteresis = <0>;
++					type = "critical";
++				};
++			};
++		};
++
++		mid-thermal {
++			polling-delay = <1000>;
++			thermal-sensors = <&tmu_top 1>;
++
++			trips {
++				mid-critical {
++					temperature = <100000>;
++					hysteresis = <0>;
++					type = "critical";
++				};
++			};
++		};
++	};
++
+ 	timer {
+ 		compatible = "arm,armv8-timer";
+ 
+-- 
+2.47.3
+

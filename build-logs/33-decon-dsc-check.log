@@ -1,1 +1,1 @@
-FAIL brak sources/linux/drivers/gpu/drm/exynos/exynos9820_drm_decon.c
+C:/msys64/mingw64/bin/python3.exe: can't open file 'C:/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/scripts/check-decon-dsc.py': [Errno 2] No such file or directory

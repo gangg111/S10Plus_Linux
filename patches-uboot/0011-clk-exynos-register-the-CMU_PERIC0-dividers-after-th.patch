@@ -1,0 +1,71 @@
+From 45df92ae35a7de0a2898abccfeed811c41d8523f Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 11/40] clk: exynos: register the CMU_PERIC0 dividers after
+ their gates
+
+In CMU_TOP a CLKCMU path runs mux, then gate, then divider, so every
+dout_cmu_* divider has to be registered after the table of gates.  The
+dividers of APM, PERIS, DPU, UFS and USB already are, each in its own table
+below the gates; the two of PERIC0 were left in the table above them.
+
+clk_register() looks its parent up by name at the moment of registration,
+and when it does not find one it does not stop: it logs and binds the clock
+to a NULL parent.  From then on the rate is computed from an error code,
+silently. Both PERIC0 dividers were in that state, which makes every rate
+in that block, the console among them, a number with no meaning.
+
+This is the same shape of bug that cost the storage link a whole round of
+debugging, where a divider returned DIV_ROUND_UP(-ENODEV, 2) and the driver
+took it for the UniPro clock.
+
+Not yet tried on hardware: these clocks feed the console, and an earlier
+attempt at this fix ended in a boot loop.  The cause was found afterwards
+and is closed: serial_s5p.c computed a divider from the corrected rate and
+wrote a borrow into the register.  It now leaves the divider alone instead.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/clk/exynos/clk-exynos9820.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/clk/exynos/clk-exynos9820.c b/drivers/clk/exynos/clk-exynos9820.c
+index c8025298..eea044e5 100644
+--- a/drivers/clk/exynos/clk-exynos9820.c
++++ b/drivers/clk/exynos/clk-exynos9820.c
+@@ -206,10 +206,6 @@ static const struct samsung_div_clock top_div_clks[] = {
+ 	    "fout_pll_shared3", CLK_CON_DIV_PLL_SHARED3_DIV2, 0, 1),
+ 	DIV(CLK_DOUT_PLL_SHARED4_DIV2, "dout_pll_shared4_div2",
+ 	    "fout_pll_shared4", CLK_CON_DIV_PLL_SHARED4_DIV2, 0, 1),
+-	DIV(CLK_DOUT_CMU_PERIC0_BUS, "dout_cmu_peric0_bus",
+-	    "gout_cmu_peric0_bus", CLK_CON_DIV_CLKCMU_PERIC0_BUS, 0, 4),
+-	DIV(CLK_DOUT_CMU_PERIC0_IP, "dout_cmu_peric0_ip",
+-	    "gout_cmu_peric0_ip", CLK_CON_DIV_CLKCMU_PERIC0_IP, 0, 4),
+ };
+ 
+ static const struct samsung_gate_clock top_gate_clks[] = {
+@@ -303,6 +299,13 @@ static const struct samsung_div_clock top_div_apm_clks[] = {
+ 	    CLK_CON_DIV_CLKCMU_APM_BUS, 0, 2),
+ };
+ 
++static const struct samsung_div_clock top_div_peric0_clks[] = {
++	DIV(CLK_DOUT_CMU_PERIC0_BUS, "dout_cmu_peric0_bus",
++	    "gout_cmu_peric0_bus", CLK_CON_DIV_CLKCMU_PERIC0_BUS, 0, 4),
++	DIV(CLK_DOUT_CMU_PERIC0_IP, "dout_cmu_peric0_ip",
++	    "gout_cmu_peric0_ip", CLK_CON_DIV_CLKCMU_PERIC0_IP, 0, 4),
++};
++
+ static const struct samsung_div_clock top_div_peris_clks[] = {
+ 	DIV(CLK_DOUT_CMU_PERIS_BUS, "dout_cmu_peris_bus", "gout_cmu_peris_bus",
+ 	    CLK_CON_DIV_CLKCMU_PERIS_BUS, 0, 4),
+@@ -331,6 +334,7 @@ static const struct samsung_clk_group top_cmu_clks[] = {
+ 	{ S_CLK_FFACTOR, top_ffactor_usb_clks,
+ 	  ARRAY_SIZE(top_ffactor_usb_clks) },
+ 	{ S_CLK_DIV, top_div_apm_clks, ARRAY_SIZE(top_div_apm_clks) },
++	{ S_CLK_DIV, top_div_peric0_clks, ARRAY_SIZE(top_div_peric0_clks) },
+ 	{ S_CLK_DIV, top_div_peris_clks, ARRAY_SIZE(top_div_peris_clks) },
+ 	{ S_CLK_DIV, top_div_dpu_clks, ARRAY_SIZE(top_div_dpu_clks) },
+ 	{ S_CLK_MUX, top_mux_dpu_clks, ARRAY_SIZE(top_mux_dpu_clks) },
+-- 
+2.47.3
+

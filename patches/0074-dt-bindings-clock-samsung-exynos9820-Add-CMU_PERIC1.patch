@@ -1,0 +1,173 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 07:30:00 +0200
+Subject: [PATCH] dt-bindings: clock: samsung,exynos9820: Add CMU_PERIC1
+
+CMU_PERIC1 is the clock controller of the second peripheral block.  The
+serial port the Bluetooth controller answers on sits behind it, and so do
+the camera I2C buses and eight more USI blocks.
+
+The identifiers are the ones the vendor clock tables name, transcribed the
+same way as the blocks already described here.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../clock/samsung,exynos9820-clock.yaml       |  21 ++++
+ .../dt-bindings/clock/samsung,exynos9820.h    | 105 ++++++++++++++++++
+ 2 files changed, 126 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml b/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
+index dabb24e301f..0fae5bdac24 100644
+--- a/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
++++ b/Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
+@@ -35,6 +35,7 @@ properties:
+       - samsung,exynos9820-cmu-fsys0a
+       - samsung,exynos9820-cmu-fsys1
+       - samsung,exynos9820-cmu-peric0
++      - samsung,exynos9820-cmu-peric1
+       - samsung,exynos9820-cmu-peris
+       - samsung,exynos9820-cmu-top
+ 
+@@ -170,6 +171,26 @@ allOf:
+             - const: bus
+             - const: ip
+ 
++  - if:
++      properties:
++        compatible:
++          contains:
++            const: samsung,exynos9820-cmu-peric1
++
++    then:
++      properties:
++        clocks:
++          items:
++            - description: External reference clock (26 MHz)
++            - description: CMU_PERIC1 BUS clock (from CMU_TOP)
++            - description: CMU_PERIC1 IP clock (from CMU_TOP)
++
++        clock-names:
++          items:
++            - const: oscclk
++            - const: bus
++            - const: ip
++
+   - if:
+       properties:
+         compatible:
+diff --git a/include/dt-bindings/clock/samsung,exynos9820.h b/include/dt-bindings/clock/samsung,exynos9820.h
+index 22a578cd798..c63d8d3e705 100644
+--- a/include/dt-bindings/clock/samsung,exynos9820.h
++++ b/include/dt-bindings/clock/samsung,exynos9820.h
+@@ -130,6 +130,111 @@
+ #define CLK_GOUT_PERIC0_USI15_USI_PCLK								89
+ #define CLK_GOUT_PERIC0_XIU_P_PERIC0_ACLK							90
+ 
++/* CMU_PERIC1 */
++#define CLK_MOUT_PERIC1_BUS_USER								1
++#define CLK_MOUT_PERIC1_I2C_CAM0_USER								2
++#define CLK_MOUT_PERIC1_I2C_CAM1_USER								3
++#define CLK_MOUT_PERIC1_I2C_CAM2_USER								4
++#define CLK_MOUT_PERIC1_I2C_CAM3_USER								5
++#define CLK_MOUT_PERIC1_SPI_CAM0_USER								6
++#define CLK_MOUT_PERIC1_UART_BT_USER								7
++#define CLK_MOUT_PERIC1_USI06_USI_USER								8
++#define CLK_MOUT_PERIC1_USI07_USI_USER								9
++#define CLK_MOUT_PERIC1_USI08_USI_USER								10
++#define CLK_MOUT_PERIC1_USI09_USI_USER								11
++#define CLK_MOUT_PERIC1_USI10_USI_USER								12
++#define CLK_MOUT_PERIC1_USI11_USI_USER								13
++#define CLK_MOUT_PERIC1_USI16_USI_USER								14
++#define CLK_MOUT_PERIC1_USI17_USI_USER								15
++#define CLK_MOUT_PERIC1_USI_I2C_USER								16
++#define CLK_DOUT_PERIC1_I2C_CAM0								17
++#define CLK_DOUT_PERIC1_I2C_CAM1								18
++#define CLK_DOUT_PERIC1_I2C_CAM2								19
++#define CLK_DOUT_PERIC1_I2C_CAM3								20
++#define CLK_DOUT_PERIC1_SPI_CAM0								21
++#define CLK_DOUT_PERIC1_UART_BT									22
++#define CLK_DOUT_PERIC1_USI06_USI								23
++#define CLK_DOUT_PERIC1_USI07_USI								24
++#define CLK_DOUT_PERIC1_USI08_USI								25
++#define CLK_DOUT_PERIC1_USI09_USI								26
++#define CLK_DOUT_PERIC1_USI10_USI								27
++#define CLK_DOUT_PERIC1_USI11_USI								28
++#define CLK_DOUT_PERIC1_USI16_USI								29
++#define CLK_DOUT_PERIC1_USI17_USI								30
++#define CLK_DOUT_PERIC1_USI_I2C									31
++#define CLK_GOUT_PERIC1_PERIC1_CMU_PERIC1_PCLK							32
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM0_CLK							33
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM1_CLK							34
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM2_CLK							35
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I2C_CAM3_CLK							36
++#define CLK_GOUT_PERIC1_CLK_PERIC1_OSCCLK_CLK							37
++#define CLK_GOUT_PERIC1_CLK_PERIC1_SPI_CAM0_CLK							38
++#define CLK_GOUT_PERIC1_CLK_PERIC1_UART_BT_CLK							39
++#define CLK_GOUT_PERIC1_AXI2APB_PERIC1P0_ACLK							40
++#define CLK_GOUT_PERIC1_AXI2APB_PERIC1P1_ACLK							41
++#define CLK_GOUT_PERIC1_D_TZPC_PERIC1_PCLK							42
++#define CLK_GOUT_PERIC1_GPIO_PERIC1_PCLK							43
++#define CLK_GOUT_PERIC1_I2C_CAM0_IPCLK								44
++#define CLK_GOUT_PERIC1_I2C_CAM0_PCLK								45
++#define CLK_GOUT_PERIC1_I2C_CAM1_IPCLK								46
++#define CLK_GOUT_PERIC1_I2C_CAM1_PCLK								47
++#define CLK_GOUT_PERIC1_I2C_CAM2_IPCLK								48
++#define CLK_GOUT_PERIC1_I2C_CAM2_PCLK								49
++#define CLK_GOUT_PERIC1_I2C_CAM3_IPCLK								50
++#define CLK_GOUT_PERIC1_I2C_CAM3_PCLK								51
++#define CLK_GOUT_PERIC1_I3C_I_PCLK								52
++#define CLK_GOUT_PERIC1_I3C_I_SCLK								53
++#define CLK_GOUT_PERIC1_LHM_AXI_P_PERIC1_I_CLK							54
++#define CLK_GOUT_PERIC1_CLK_PERIC1_BUSP_CLK							55
++#define CLK_GOUT_PERIC1_CLK_PERIC1_I3C_CLK							56
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI06_USI_CLK						57
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI07_USI_CLK						58
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI08_USI_CLK						59
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI09_USI_CLK						60
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI10_USI_CLK						61
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI11_USI_CLK						62
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI16_USI_CLK						63
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI17_USI_CLK						64
++#define CLK_GOUT_PERIC1_CLK_PERIC1_USI_I2C_CLK							65
++#define CLK_GOUT_PERIC1_SPI_CAM0_IPCLK								66
++#define CLK_GOUT_PERIC1_SPI_CAM0_PCLK								67
++#define CLK_GOUT_PERIC1_SYSREG_PERIC1_PCLK							68
++#define CLK_GOUT_PERIC1_UART_BT_IPCLK								69
++#define CLK_GOUT_PERIC1_UART_BT_PCLK								70
++#define CLK_GOUT_PERIC1_USI06_I2C_IPCLK								71
++#define CLK_GOUT_PERIC1_USI06_I2C_PCLK								72
++#define CLK_GOUT_PERIC1_USI06_USI_IPCLK								73
++#define CLK_GOUT_PERIC1_USI06_USI_PCLK								74
++#define CLK_GOUT_PERIC1_USI07_I2C_IPCLK								75
++#define CLK_GOUT_PERIC1_USI07_I2C_PCLK								76
++#define CLK_GOUT_PERIC1_USI07_USI_IPCLK								77
++#define CLK_GOUT_PERIC1_USI07_USI_PCLK								78
++#define CLK_GOUT_PERIC1_USI08_I2C_IPCLK								79
++#define CLK_GOUT_PERIC1_USI08_I2C_PCLK								80
++#define CLK_GOUT_PERIC1_USI08_USI_IPCLK								81
++#define CLK_GOUT_PERIC1_USI08_USI_PCLK								82
++#define CLK_GOUT_PERIC1_USI09_I2C_IPCLK								83
++#define CLK_GOUT_PERIC1_USI09_I2C_PCLK								84
++#define CLK_GOUT_PERIC1_USI09_USI_IPCLK								85
++#define CLK_GOUT_PERIC1_USI09_USI_PCLK								86
++#define CLK_GOUT_PERIC1_USI10_I2C_IPCLK								87
++#define CLK_GOUT_PERIC1_USI10_I2C_PCLK								88
++#define CLK_GOUT_PERIC1_USI10_USI_IPCLK								89
++#define CLK_GOUT_PERIC1_USI10_USI_PCLK								90
++#define CLK_GOUT_PERIC1_USI11_I2C_IPCLK								91
++#define CLK_GOUT_PERIC1_USI11_I2C_PCLK								92
++#define CLK_GOUT_PERIC1_USI11_USI_IPCLK								93
++#define CLK_GOUT_PERIC1_USI11_USI_PCLK								94
++#define CLK_GOUT_PERIC1_USI16_I3C_I_PCLK							95
++#define CLK_GOUT_PERIC1_USI16_I3C_I_SCLK							96
++#define CLK_GOUT_PERIC1_USI16_USI_IPCLK								97
++#define CLK_GOUT_PERIC1_USI16_USI_PCLK								98
++#define CLK_GOUT_PERIC1_USI17_I2C_IPCLK								99
++#define CLK_GOUT_PERIC1_USI17_I2C_PCLK								100
++#define CLK_GOUT_PERIC1_USI17_USI_IPCLK								101
++#define CLK_GOUT_PERIC1_USI17_USI_PCLK								102
++#define CLK_GOUT_PERIC1_XIU_P_PERIC1_ACLK							103
++
+ /* CMU_FSYS0A */
+ #define CLK_MOUT_FSYS0A_BUS_USER								1
+ #define CLK_MOUT_FSYS0A_USB31DRD_USER								2

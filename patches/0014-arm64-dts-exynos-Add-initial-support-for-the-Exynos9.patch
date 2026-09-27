@@ -27,8 +27,8 @@ Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---
  MAINTAINERS                                   |  10 +
  .../boot/dts/exynos/exynos9820-pinctrl.dtsi   | 651 ++++++++++++++++++
- arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 467 +++++++++++++
- 3 files changed, 1128 insertions(+)
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 477 +++++++++++++
+ 3 files changed, 1138 insertions(+)
  create mode 100644 arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
  create mode 100644 arch/arm64/boot/dts/exynos/exynos9820.dtsi
 
@@ -712,10 +712,10 @@ index 00000000000..52757a29a55
 +};
 diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
 new file mode 100644
-index 00000000000..c269ae97a21
+index 00000000000..4b84e006452
 --- /dev/null
 +++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
-@@ -0,0 +1,467 @@
+@@ -0,0 +1,477 @@
 +// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 +/*
 + * Samsung Exynos9820 SoC device tree source
@@ -741,6 +741,7 @@ index 00000000000..c269ae97a21
 + */
 +
 +#include <dt-bindings/clock/samsung,exynos9820.h>
++#include <dt-bindings/gpio/gpio.h>
 +#include <dt-bindings/interrupt-controller/arm-gic.h>
 +
 +/ {
@@ -764,6 +765,7 @@ index 00000000000..c269ae97a21
 +		pinctrl5 = &pinctrl_peric0;
 +		pinctrl6 = &pinctrl_peric1;
 +		pinctrl7 = &pinctrl_vts;
++		serial0 = &serial0;
 +	};
 +
 +	/*
@@ -1041,6 +1043,14 @@ index 00000000000..c269ae97a21
 +				 <&cmu_peric0 CLK_GOUT_PERIC0_USI03_USI_IPCLK>;
 +			clock-names = "pclk", "ipclk";
 +			samsung,sysreg = <&sysreg_peric0 0x101c>;
++			/*
++			 * Without this the block keeps its automatic clock stop, and
++			 * a master that has no clock cannot drive the line it is
++			 * supposed to clock.  Measured on the phone: with the property
++			 * the bus raises interrupts and the controller reports the
++			 * result of a transfer; without it the block is silent.
++			 */
++			samsung,clkreq-on;
 +			status = "disabled";
 +
 +			hsi2c10: i2c@104b0000 {

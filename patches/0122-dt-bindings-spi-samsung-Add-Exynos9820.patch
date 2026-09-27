@@ -1,0 +1,26 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 05:53:41 +0200
+Subject: [PATCH] dt-bindings: spi: samsung: Add Exynos9820
+
+The SPI masters in the USI blocks of the Exynos9820 have the register
+layout and the 64 byte FIFO of the Exynos850 ones, so the new compatible
+falls back to samsung,exynos850-spi, as the Exynos8895 one does.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/spi/samsung,spi.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/spi/samsung,spi.yaml b/Documentation/devicetree/bindings/spi/samsung,spi.yaml
+index 1ce8b2770a4..35f6474c6d1 100644
+--- a/Documentation/devicetree/bindings/spi/samsung,spi.yaml
++++ b/Documentation/devicetree/bindings/spi/samsung,spi.yaml
+@@ -28,6 +28,7 @@ properties:
+       - items:
+           - enum:
+               - samsung,exynos8895-spi
++              - samsung,exynos9820-spi
+               - samsung,exynosautov920-spi
+           - const: samsung,exynos850-spi
+       - const: samsung,exynos7-spi

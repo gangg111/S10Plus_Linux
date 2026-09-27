@@ -1,0 +1,54 @@
+Warning: Permanently added '172.16.42.1' (ED25519) to the list of known hosts.
+=== przerwania magistral (czy licznik ruszyl) ===
+  95:          0  GIC-0  113 Level     15d50000.i2c
+  96:          0  GIC-0  114 Level     15d60000.i2c
+  98:          2  GIC-0  420 Level     104b0000.i2c
+
+=== wszystkie zarejestrowane przerwania, skrot ===
+            CPU0       
+  10:          0  GIC-0  498 Level     mct_comp_irq
+  11:          0  GIC-0  502 Level     mct_tick0
+  12:          0  GIC-0  503 Level     
+  13:          0  GIC-0  504 Level     
+  14:          0  GIC-0  505 Level     
+  15:          0  GIC-0  506 Level     
+  16:          0  GIC-0  507 Level     
+  17:          0  GIC-0  508 Level     
+  18:          0  GIC-0  509 Level     
+  21:      11742  GIC-0   27 Level     arch_timer
+  23:          0  GIC-0  412 Level     10430000.pinctrl
+  24:          0  GIC-0  439 Level     10830000.pinctrl
+  25:          0  GIC-0  272 Level     13030000.pinctrl
+  26:          0  GIC-0  283 Level     13c40000.pinctrl
+  94:        438  GIC-0  273 Level     dwc3
+  95:          0  GIC-0  113 Level     15d50000.i2c
+  96:          0  GIC-0  114 Level     15d60000.i2c
+  98:          2  GIC-0  420 Level     104b0000.i2c
+ 100:       6694  GIC-0  281 Level     ufshcd
+ 101:          0  GIC-0  173 Level     arm-pmu
+ 102:          0  GIC-0  174 Level     arm-pmu
+ 103:          0  GIC-0  175 Level     arm-pmu
+ 104:          0  GIC-0  176 Level     arm-pmu
+ 109:          0  gpa0        3 Edge      Volume Up Key
+ 110:          0  gpa0        4 Edge      Volume Down Key
+ 111:          0  gpa0        6 Edge      Wink Key
+ 112:          0  gpa2        4 Edge      Power Key
+IPI0:          0  Rescheduling interrupts
+IPI1:          0  Function call interrupts
+
+=== co jadro mowi o magistralach ===
+[   16.963412] i2c_dev: i2c /dev entries driver
+[   17.180055] exynos5-hsi2c 15d50000.i2c: tx timeout
+[   17.732054] exynos5-hsi2c 15d50000.i2c: tx timeout
+[   17.948052] exynos5-hsi2c 15d60000.i2c: tx timeout
+[   18.308053] exynos5-hsi2c 104b0000.i2c: tx timeout
+[   18.420570] s6sy761 2-0048: probe with driver s6sy761 failed with error -110
+[   41.396298] i2c 1-0036: deferred probe pending: i2c: supplier 1-0066 not ready
+
+=== odroczone sondy ===
+1-0036	i2c: supplier 1-0066 not ready
+
+=== czy cokolwiek zasila sie z baterii ===
+
+=== urzadzenia wejsciowe ===
+N: Name="gpio-keys"

@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 23:11:26 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the SD card host
+
+Add the DesignWare SD/MMC host of FSYS1 at 0x13d00000, interrupt 250,
+clocked from the FSYS1 bus clock and the MMC card clock.  The card
+clock mux comes up on the MMC PLL, which the boot loader leaves in
+bypass at 26 MHz; route it to the 800 MHz user mux from CMU_TOP as the
+vendor does.  The gate in front of the host does not forward rate
+requests, so this rate stays and the host divides the card clock
+itself.  The node stays disabled until a board wires up the slot.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 28 ++++++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index a7d67149a1f..62cee741061 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -729,6 +729,34 @@ pinctrl_fsys1: pinctrl@13c40000 {
+ 			interrupts = <GIC_SPI 251 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		mmc_2: mmc@13d00000 {
++			compatible = "samsung,exynos7870-dw-mshc-smu";
++			reg = <0x13d00000 0x2000>;
++			interrupts = <GIC_SPI 250 IRQ_TYPE_LEVEL_HIGH>;
++			#address-cells = <1>;
++			#size-cells = <0>;
++
++			clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_MMC_CARD_I_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_MMC_CARD_SDCLKIN>;
++			clock-names = "biu", "ciu";
++			/*
++			 * The card clock mux comes up on the MMC PLL, which the boot
++			 * loader leaves in bypass at 26 MHz.  The vendor feeds this host
++			 * 800 MHz instead, from CMU_TOP through the user mux; the gate in
++			 * front of the host does not pass rate requests up, so the rate
++			 * set here stays and the host divides the card clock itself.
++			 */
++			assigned-clocks = <&cmu_fsys1 CLK_MOUT_FSYS1_MMC_CARD>,
++					  <&cmu_fsys1 CLK_DOUT_FSYS1_MMC_CARD>;
++			assigned-clock-parents = <&cmu_fsys1 CLK_MOUT_FSYS1_MMC_CARD_USER>,
++						 <0>;
++			assigned-clock-rates = <0>, <800000000>;
++			clock-frequency = <800000000>;
++			fifo-depth = <64>;
++
++			status = "disabled";
++		};
++
+ 		ufs_0: ufs@13d60000 {
+ 			compatible = "samsung,exynos9820-ufs";
+ 			reg = <0x13d60000 0x200>,
+-- 
+2.53.0.windows.1
+

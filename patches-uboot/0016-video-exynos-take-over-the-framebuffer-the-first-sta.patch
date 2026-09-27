@@ -1,0 +1,276 @@
+From e4fdbd52fe11edb87e9c00d3dab8e02874507d5e Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 16/40] video: exynos: take over the framebuffer the first
+ stage left
+
+The vendor's first stage leaves the panel lit, initialised and showing its
+own image, with a framebuffer somewhere in memory.  Reaching it is the only
+way to put anything on this screen from the boot loader: the panel is
+command mode and nothing this port has can bring one up from cold.
+
+The generic simple framebuffer driver is not enough for a command mode
+panel. Such a panel shows what it has been told to show and nothing else,
+so every change needs a trigger, and the generic driver has no hook to give
+one.  This driver is that hook: it hands the display controller a trigger
+whenever the console has finished writing.
+
+The trigger is limited to one frame per sixteen milliseconds.  The periodic
+sync runs every ten, and without the limit the panel was being asked for a
+hundred frames a second for text that changes once a keystroke.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/video/Kconfig           |  36 +++++++
+ drivers/video/Makefile          |   1 +
+ drivers/video/exynos_decon_fb.c | 172 ++++++++++++++++++++++++++++++++
+ 3 files changed, 209 insertions(+)
+ create mode 100644 drivers/video/exynos_decon_fb.c
+
+diff --git a/drivers/video/Kconfig b/drivers/video/Kconfig
+index 15000e21..cd4d8ec8 100644
+--- a/drivers/video/Kconfig
++++ b/drivers/video/Kconfig
+@@ -51,6 +51,28 @@ config VIDEO_FONT_SUN12X22
+ 	  Provides character bitmap data in header file.
+ 	  When selecting multiple fonts, you may want to enable CMD_SELECT_FONT too.
+ 
++config VIDEO_FONT_POLISH
++	bool "Polish letters in place of the box-drawing characters"
++	help
++	  Code page 437, which the console indexes the font by, has none of the
++	  letters Polish needs apart from o-acute, so each of the other sixteen
++	  is drawn as a question mark. With this, the console looks for them
++	  where the box-drawing characters normally sit, at 0xb0 to 0xbf.
++
++	  Only useful with a font built to carry them there, and only worth it
++	  on a board that draws its frames with ASCII rather than with those
++	  characters.
++
++config VIDEO_FONT_32X64
++	bool "32 x 64 font size"
++	help
++	  Font for video console driver, 32 x 64 pixels.
++	  Each pixel of the 16 x 32 font doubled in both directions, which is
++	  what a phone panel needs: at over 500 pixels per inch even the 16 x 32
++	  font draws a character under a millimetre wide, which is at the edge
++	  of being readable at all and past the edge of being photographable.
++	  Costs 64KB of image.
++
+ config VIDEO_FONT_16X32
+ 	bool "16 x 32 font size"
+ 	help
+@@ -998,6 +1020,20 @@ config VIDEO_SIMPLE
+ 	  Enables a simple generic display driver which utilizes the
+ 	  simple-framebuffer devicetree bindings.
+ 
++config VIDEO_EXYNOS_DECON_FB
++	bool "Framebuffer left running on Exynos phones"
++	imply VIDEO_DAMAGE
++	help
++	  Takes over the framebuffer that the primary boot loader of a Samsung
++	  phone leaves running, from the description it puts in the device
++	  tree, without programming any of the display pipeline.
++
++	  The panel of these phones only takes a new frame when the display
++	  controller is told to send one, and nothing is telling it that by the
++	  time U-Boot runs. This hands it that trigger on every sync, which is
++	  what it does more than the generic simple-framebuffer driver, and
++	  without which anything written to the screen stays invisible.
++
+ 	  This driver assumes that the display hardware has been initialized
+ 	  before u-boot starts, and u-boot will simply render to the pre-
+ 	  allocated frame buffer surface.
+diff --git a/drivers/video/Makefile b/drivers/video/Makefile
+index 082b8967..d2b92b22 100644
+--- a/drivers/video/Makefile
++++ b/drivers/video/Makefile
+@@ -87,6 +87,7 @@ obj-$(CONFIG_VIDEO_OMAP3) += omap3_dss.o
+ obj-$(CONFIG_VIDEO_DSI_HOST_SANDBOX) += sandbox_dsi_host.o
+ obj-$(CONFIG_VIDEO_SANDBOX_SDL) += sandbox_sdl.o
+ obj-$(CONFIG_VIDEO_SIMPLE) += simplefb.o
++obj-$(CONFIG_VIDEO_EXYNOS_DECON_FB) += exynos_decon_fb.o
+ obj-$(CONFIG_VIDEO_VESA) += vesa.o
+ obj-$(CONFIG_VIDEO_SEPS525) += seps525.o
+ obj-$(CONFIG_VIDEO_ZYNQMP_DPSUB) += zynqmp/
+diff --git a/drivers/video/exynos_decon_fb.c b/drivers/video/exynos_decon_fb.c
+new file mode 100644
+index 00000000..f69e4f38
+--- /dev/null
++++ b/drivers/video/exynos_decon_fb.c
+@@ -0,0 +1,172 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (c) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The screen these phones come up with, and the one thing that has to happen
++ * for anything written to it to be seen.
++ *
++ * Whatever ran before leaves a picture on the panel and the framebuffer behind
++ * it in memory, and describes both in the device tree the same way it
++ * describes them to Linux. Reading that description is all the setting up
++ * there is here: none of the display pipeline is programmed, and none of it
++ * has to be, because it is already running.
++ *
++ * The panel is a command mode one, though. It holds the last frame it was
++ * given and takes a new one only when the display controller is told to send
++ * it, and nothing is telling it that by the time a boot loader runs. So
++ * whatever is written to the framebuffer stays invisible and the screen keeps
++ * the picture it came up with. Handing the controller its trigger on every
++ * sync is what this driver is for, and it is why the generic
++ * simple-framebuffer driver is not enough on this family: that one is for a
++ * panel which refreshes itself.
++ *
++ * The register is this SoC's DECON_HW_SW_TRIG_CONTROL and the value is the one
++ * uniLoader hands the sibling phone of this family,
++ * board/samsung/board-beyond1lte.c of that project.
++ */
++
++#include <dm.h>
++#include <log.h>
++#include <video.h>
++#include <asm/io.h>
++#include <time.h>
++#include <asm/system.h>
++#include <dm/ofnode.h>
++#include <linux/kernel.h>
++#include <linux/sizes.h>
++#include <linux/string.h>
++
++#define EXYNOS_DECON_HW_SW_TRIG_CONTROL		0x70
++#define EXYNOS_DECON_SW_TRIG_ON			0x1281
++
++/*
++ * The panel cannot take frames faster than it draws them, and the video uclass
++ * calls the sync hook on every write to the screen as well as from a cyclic
++ * every CONFIG_VIDEO_SYNC_CYCLIC_MS. Asking for more frames than the link
++ * carries only makes everything wait, which is felt as a menu that answers a
++ * keypress late.
++ */
++#define EXYNOS_DECON_MIN_FRAME_MS	16	/* about 60 per second */
++
++struct exynos_decon_fb_priv {
++	void __iomem *decon;
++	ulong last_trigger;
++};
++
++static int exynos_decon_fb_sync(struct udevice *dev)
++{
++	struct exynos_decon_fb_priv *priv = dev_get_priv(dev);
++
++	if (!priv->decon)
++		return 0;
++
++	if (priv->last_trigger &&
++	    get_timer(priv->last_trigger) < EXYNOS_DECON_MIN_FRAME_MS)
++		return 0;
++
++	writel(EXYNOS_DECON_SW_TRIG_ON,
++	       priv->decon + EXYNOS_DECON_HW_SW_TRIG_CONTROL);
++	priv->last_trigger = get_timer(0);
++
++	return 0;
++}
++
++static int exynos_decon_fb_probe(struct udevice *dev)
++{
++	struct exynos_decon_fb_priv *priv = dev_get_priv(dev);
++	struct video_uc_plat *plat = dev_get_uclass_plat(dev);
++	struct video_priv *uc_priv = dev_get_uclass_priv(dev);
++	struct ofnode_phandle_args args;
++	const char *format;
++	fdt_addr_t base, decon;
++	fdt_size_t size;
++	u32 width, height, stride;
++	int ret;
++
++	base = dev_read_addr_size(dev, &size);
++	if (base == FDT_ADDR_T_NONE) {
++		log_err("no framebuffer address\n");
++		return -EINVAL;
++	}
++
++	plat->base = base;
++	plat->size = size;
++
++	/* The framebuffer is not part of what the board maps for itself. */
++	if (IS_ENABLED(CONFIG_ARM64))
++		mmu_map_region((phys_addr_t)plat->base,
++			       (phys_addr_t)ALIGN(plat->size, SZ_4K), false);
++
++	video_set_flush_dcache(dev, true);
++
++	ret = dev_read_u32(dev, "width", &width);
++	ret = ret ?: dev_read_u32(dev, "height", &height);
++	if (ret || !width || !height) {
++		log_err("no width or height\n");
++		return ret ?: -EINVAL;
++	}
++
++	uc_priv->xsize = width;
++	uc_priv->ysize = height;
++
++	if (!dev_read_u32(dev, "stride", &stride) && stride)
++		uc_priv->line_length = stride;
++
++	format = dev_read_string(dev, "format");
++	if (!format) {
++		log_err("no format\n");
++		return -EINVAL;
++	}
++
++	if (!strcmp(format, "a8r8g8b8") || !strcmp(format, "x8r8g8b8")) {
++		uc_priv->bpix = VIDEO_BPP32;
++		uc_priv->format = VIDEO_X8R8G8B8;
++	} else if (!strcmp(format, "a8b8g8r8") ||
++		   !strcmp(format, "x8b8g8r8")) {
++		uc_priv->bpix = VIDEO_BPP32;
++		uc_priv->format = VIDEO_X8B8G8R8;
++	} else {
++		log_err("format %s is not one this panel is left in\n", format);
++		return -EINVAL;
++	}
++
++	/*
++	 * Without the controller there is still a picture, only a still one:
++	 * the console would be written and never sent. That is worth saying
++	 * rather than failing over, because everything else here works.
++	 */
++	ret = dev_read_phandle_with_args(dev, "samsung,decon", NULL, 0, 0,
++					 &args);
++	if (ret) {
++		log_warning("no display controller, the screen will not update\n");
++		return 0;
++	}
++
++	decon = ofnode_get_addr(args.node);
++	if (decon == FDT_ADDR_T_NONE) {
++		log_warning("display controller has no address\n");
++		return 0;
++	}
++
++	priv->decon = (void __iomem *)(uintptr_t)decon;
++
++	return 0;
++}
++
++static const struct video_ops exynos_decon_fb_ops = {
++	.video_sync	= exynos_decon_fb_sync,
++};
++
++static const struct udevice_id exynos_decon_fb_ids[] = {
++	{ .compatible = "samsung,exynos9820-fb" },
++	{ }
++};
++
++U_BOOT_DRIVER(exynos_decon_fb) = {
++	.name		= "exynos_decon_fb",
++	.id		= UCLASS_VIDEO,
++	.of_match	= exynos_decon_fb_ids,
++	.ops		= &exynos_decon_fb_ops,
++	.probe		= exynos_decon_fb_probe,
++	.priv_auto	= sizeof(struct exynos_decon_fb_priv),
++};
+-- 
+2.47.3
+

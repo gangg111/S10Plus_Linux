@@ -1,0 +1,13 @@
+== palec:
+palec gotowy, czekam 4000 ms
+palec: 137 2560 na 120 ms
+palec: 308 2560 na 700 ms
+palec: 308 2560 na 120 ms
+palec: 1268 2944 na 120 ms
+== odebrano: [Żz]
+== bajty:
+ c5 bb 7a 0a
+== oczekiwano Z z kropka i male z: c5 bb 7a
+ c5 bb 7a 0a
+WYNIK: ZGODNE
+== klawiatura: active

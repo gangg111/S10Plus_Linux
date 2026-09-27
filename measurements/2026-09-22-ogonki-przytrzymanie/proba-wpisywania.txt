@@ -1,0 +1,18 @@
+== mapa jadra po loadkeys pl:
+	altgr	keycode  30 = aogonek         
+	altgr	keycode  44 = zabovedot       
+	altgr	keycode  45 = zacute          
+== tryb klawiatury konsoli:
+The keyboard is in Unicode (UTF-8) mode
+== wyslano:  zażółć gęślą jaźń
+== odebrano: zażółć gęślą jaźń
+[47;45R
+== bajty odebrane:
+ 7a 61 c5 bc c3 b3 c5 82 c4 87 20 67 c4 99 c5 9b
+ 6c c4 85 20 6a 61 c5 ba c5 84 0a 1b 5b 34 37 3b
+ 34 35 52
+== bajty wyslane:
+ 7a 61 c5 bc c3 b3 c5 82 c4 87 20 67 c4 99 c5 9b
+ 6c c4 85 20 6a 61 c5 ba c5 84 0a
+WYNIK: ROZNE
+== getty z powrotem: active

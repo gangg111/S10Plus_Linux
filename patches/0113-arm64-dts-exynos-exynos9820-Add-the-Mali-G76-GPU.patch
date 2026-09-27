@@ -1,0 +1,55 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 17:15:52 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the Mali-G76 GPU
+
+Describe the Mali-G76 MP12 GPU, so panfrost can drive it.  On this
+phone GPU_ID reads 0x72110000 and SHADER_PRESENT 0x00770077, with one
+L2 cache group.
+
+The firmware on the APM owns the clock and the voltage of the GPU, so
+its clock is the ACPM DVFS domain.  There are no operating points yet:
+the GPU runs at the level the firmware starts it at, 156 MHz, and no
+DVFS message goes to the firmware.
+
+The power domain of the GPU is left out.  The bootloader leaves it on,
+and around every power cycle of it the vendor kernel saves and restores
+the TrustZone protection setup of the block with an SMC, which the
+Exynos power domain driver does not do.  How the block comes back
+without that restore has not been tested.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 69826c4f3aa..2d7d2007c0b 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -953,6 +953,25 @@ hsi2c45: i2c@15d60000 {
+ 			};
+ 		};
+ 
++		/*
++		 * A Mali-G76 MP12: GPU_ID reads 0x72110000 and SHADER_PRESENT
++		 * 0x00770077 on this phone.  The firmware on the APM owns its clock
++		 * and voltage, and with no operating points the GPU stays at the
++		 * level the firmware starts it at.  The power domain is left out:
++		 * the bootloader leaves it on, and the vendor saves and restores
++		 * the TrustZone setup of the block with an SMC around every power
++		 * cycle, which the power domain driver does not do.
++		 */
++		gpu: gpu@18500000 {
++			compatible = "samsung,exynos9820-mali", "arm,mali-bifrost";
++			reg = <0x18500000 0x5000>;
++			interrupts = <GIC_SPI 288 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 287 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 289 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "job", "mmu", "gpu";
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_G3D>;
++		};
++
+ 		pinctrl_aud: pinctrl@18c60000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x18c60000 0x1000>;

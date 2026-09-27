@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 00:26:47 +0200
+Subject: [PATCH] dt-bindings: ufs: samsung,exynos-ufs: Add Exynos9820 UFS host
+
+The host controller of this SoC takes the four register windows this
+binding already describes and the two clocks that come with them: the
+one the controller runs on and the one of the link, whose rate every
+timing of that link is computed from.
+
+The bits that decide whether its transfers are coherent sit in the FSYS1
+system register block rather than in a window of the controller, so they
+are reached through samsung,sysreg, which this binding already carries.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/ufs/samsung,exynos-ufs.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/ufs/samsung,exynos-ufs.yaml b/Documentation/devicetree/bindings/ufs/samsung,exynos-ufs.yaml
+index 710ce493f3b..dfee7f7acf2 100644
+--- a/Documentation/devicetree/bindings/ufs/samsung,exynos-ufs.yaml
++++ b/Documentation/devicetree/bindings/ufs/samsung,exynos-ufs.yaml
+@@ -17,6 +17,7 @@ properties:
+     enum:
+       - google,gs101-ufs
+       - samsung,exynos7-ufs
++      - samsung,exynos9820-ufs
+       - samsung,exynosautov9-ufs
+       - samsung,exynosautov9-ufs-vh
+       - samsung,exynosautov920-ufs

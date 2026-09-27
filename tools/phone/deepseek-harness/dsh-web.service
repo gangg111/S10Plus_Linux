@@ -1,0 +1,7 @@
+[Unit]
+Description=DeepSeek Harness (dsh web, tylko 127.0.0.1:3080)
+
+[Service]
+ExecStart=/usr/local/bin/dsh web --no-open --host 127.0.0.1 --port 3080
+Restart=on-failure
+RestartSec=5

@@ -1,7 +1,7 @@
-From 300de4c58fb1765a9b90b76892e594864455c339 Mon Sep 17 00:00:00 2001
+From 09897def9c7d93c6938430d0ed31fbf296573b20 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sat, 19 Sep 2026 02:02:15 +0200
-Subject: [PATCH 5/8] ufs: exynos: add the host controller driver for
+Subject: [PATCH 05/40] ufs: exynos: add the host controller driver for
  Exynos9820
 
 Nothing upstream drives the UFS controller of an Exynos SoC, so the storage

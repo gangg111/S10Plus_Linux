@@ -1,0 +1,43 @@
+urzadzenie: s6sy761
+zakresy osi prosto z jadra:
+  ABS_MT_POSITION_X  od 0 do 4096, biezaca 0
+  ABS_MT_POSITION_Y  od 0 do 4096, biezaca 0
+  ABS_MT_SLOT        od 0 do 16, biezaca 0
+
+dotknij 5 punktow, kazdy jednym palcem, z sekunda przerwy
+
+=> teraz: lewy GORNY rog
+   lewy GORNY rog     X=3927  Y= 110  nacisk=20
+=> teraz: prawy GORNY rog
+      odstep paczek 217101 us
+      odstep paczek 66790 us
+      odstep paczek 58476 us
+      odstep paczek 150278 us
+   prawy GORNY rog    X= 203  Y=4077  nacisk=11
+=> teraz: lewy DOLNY rog
+      odstep paczek 58450 us
+      odstep paczek 16697 us
+      odstep paczek 41774 us
+      odstep paczek 75142 us
+   lewy DOLNY rog     X=1962  Y=2058  nacisk=38
+=> teraz: prawy DOLNY rog
+
+=== test rozstrzygajacy orientacje ===
+urzadzenie: s6sy761
+zakresy osi prosto z jadra:
+  ABS_MT_POSITION_X  od 0 do 4096, biezaca 0
+  ABS_MT_POSITION_Y  od 0 do 4096, biezaca 0
+  ABS_MT_SLOT        od 0 do 16, biezaca 0
+
+dotknij 2 punktow, kazdy jednym palcem, z sekunda przerwy
+
+=> teraz: lewy GORNY rog
+   lewy GORNY rog     X=3893  Y=4039  nacisk=15
+=> teraz: prawy GORNY rog
+      odstep paczek 50114 us
+      odstep paczek 25066 us
+      odstep paczek 83493 us
+      odstep paczek 8341 us
+      odstep paczek 66796 us
+      odstep paczek 275595 us
+      odstep paczek 91872 us

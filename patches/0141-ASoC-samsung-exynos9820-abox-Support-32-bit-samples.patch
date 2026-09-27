@@ -1,0 +1,74 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 01:49:24 +0200
+Subject: [PATCH] ASoC: samsung: exynos9820-abox: Support 32-bit samples
+
+The DMA engines and UAIF take the sample width in the same format field
+as the channel count, with the width codes the vendor driver uses: 1
+for 16 bit, 2 for 24 bit and 3 for 32 bit.  Add 32-bit samples, which
+carry the 24 bits the codec converts.
+
+With the codec port recording the digital microphones at 192 kHz in
+S32_LE, the 1 kHz tone from the speakers reads at the level of a 16-bit
+recording scaled up, and the samples hold data down to bit 8 with bits
+0 to 7 clear.  The amplifiers accept 16-bit samples only, so the
+speaker link keeps negotiating that.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ sound/soc/samsung/exynos9820-abox.c | 18 +++++++++++++-----
+ 1 file changed, 13 insertions(+), 5 deletions(-)
+
+diff --git a/sound/soc/samsung/exynos9820-abox.c b/sound/soc/samsung/exynos9820-abox.c
+index 67523f53a23..2c5019108f5 100644
+--- a/sound/soc/samsung/exynos9820-abox.c
++++ b/sound/soc/samsung/exynos9820-abox.c
+@@ -107,6 +107,7 @@
+  * protection firmware is tuned for 48 kHz, so only the codec port goes
+  * higher.
+  */
++#define ABOX_FORMATS		(SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S32_LE)
+ #define ABOX_RATES		SNDRV_PCM_RATE_48000
+ #define ABOX_RATES_HIRES	(SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000 | \
+ 				 SNDRV_PCM_RATE_192000)
+@@ -183,12 +184,19 @@ static void abox_update(struct abox *abox, u32 reg, u32 mask, u32 val)
+ 	writel((readl(abox->sfr + reg) & ~mask) | val, abox->sfr + reg);
+ }
+ 
+-/* (width code << 3) | (channels - 1), width code 1 = 16 bit */
++/* (width code << 3) | (channels - 1), width code 1 = 16 bit, 3 = 32 bit */
+ static int abox_format(unsigned int width, unsigned int channels)
+ {
+-	if (width != 16 || channels != 2)
++	if (channels != 2)
+ 		return -EINVAL;
+-	return 1 << 3 | (channels - 1);
++	switch (width) {
++	case 16:
++		return 1 << 3 | (channels - 1);
++	case 32:
++		return 3 << 3 | (channels - 1);
++	default:
++		return -EINVAL;
++	}
+ }
+ 
+ static void abox_dram(struct abox *abox, bool request)
+@@ -266,7 +274,7 @@ static void abox_clock_put(struct abox *abox, struct abox_port *port,
+ static const struct snd_pcm_hardware abox_pcm_hardware = {
+ 	.info = SNDRV_PCM_INFO_INTERLEAVED | SNDRV_PCM_INFO_MMAP |
+ 		SNDRV_PCM_INFO_MMAP_VALID | SNDRV_PCM_INFO_BLOCK_TRANSFER,
+-	.formats = SNDRV_PCM_FMTBIT_S16_LE,
++	.formats = ABOX_FORMATS,
+ 	.rates = ABOX_RATES_HIRES,
+ 	.rate_min = 48000,
+ 	.rate_max = 192000,
+@@ -592,7 +600,7 @@ static const struct snd_soc_dai_ops abox_uaif_ops = {
+ 		.channels_min = 2,					\
+ 		.channels_max = 2,					\
+ 		.rates = _rates,					\
+-		.formats = SNDRV_PCM_FMTBIT_S16_LE,			\
++		.formats = ABOX_FORMATS,				\
+ 	}
+ 
+ #define ABOX_UAIF_DAI(_id, _name, _playback, _capture)			\

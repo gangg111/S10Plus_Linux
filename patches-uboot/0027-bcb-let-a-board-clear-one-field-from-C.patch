@@ -1,0 +1,77 @@
+From 970cc5aef3abebc0d1d71d0d85dfebf34846da7b Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 17:27:59 +0200
+Subject: [PATCH 27/40] bcb: let a board clear one field from C
+
+The bcb command can empty a single field of the control block and boards
+need the same from code: a loader that acts on a command is expected to
+take it away again, and the one thing the C interface offers for that is
+setting the field to an empty string, which writes one zero byte and
+leaves the rest of the old command sitting in the block.  What is left
+behind reads as empty and still looks like a command to anything that
+opens the partition and sees it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ cmd/bcb.c     | 15 +++++++++++++++
+ include/bcb.h | 11 +++++++++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/cmd/bcb.c b/cmd/bcb.c
+index d6d944bd..52de1db7 100644
+--- a/cmd/bcb.c
++++ b/cmd/bcb.c
+@@ -368,6 +368,21 @@ int bcb_get(enum bcb_field field, char *value_out, size_t value_size)
+ 	return CMD_RET_SUCCESS;
+ }
+ 
++int bcb_clear(enum bcb_field field)
++{
++	int size;
++	char *field_value;
++
++	if (field > BCB_FIELD_STAGE)
++		return CMD_RET_FAILURE;
++	if (bcb_field_get(fields[field], &field_value, &size))
++		return CMD_RET_FAILURE;
++
++	memset(field_value, 0, size);
++
++	return CMD_RET_SUCCESS;
++}
++
+ int bcb_store(void)
+ {
+ 	return __bcb_store();
+diff --git a/include/bcb.h b/include/bcb.h
+index a56b5475..b7d9ab56 100644
+--- a/include/bcb.h
++++ b/include/bcb.h
+@@ -34,6 +34,12 @@ int bcb_set(enum bcb_field field, const char *value);
+  */
+ int bcb_get(enum bcb_field field, char *value_out, size_t value_size);
+ 
++/**
++ * bcb_clear() - clear one field.
++ * @field: field to fill with zeros
++ */
++int bcb_clear(enum bcb_field field);
++
+ int bcb_store(void);
+ void bcb_reset(void);
+ 
+@@ -64,6 +70,11 @@ static inline int bcb_get(enum bcb_field field,
+ 	return -EOPNOTSUPP;
+ }
+ 
++static inline int bcb_clear(enum bcb_field field)
++{
++	return -EOPNOTSUPP;
++}
++
+ static inline int bcb_store(void)
+ {
+ 	return -EOPNOTSUPP;
+-- 
+2.47.3
+

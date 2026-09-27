@@ -1,0 +1,489 @@
+From 1623cedb3d0cb470f749789ea5b6affbab73eb28 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 23:53:59 +0200
+Subject: [PATCH 31/40] board: samsung: exynos-mobile: turn a ring on the panel
+ while it reads
+
+Between the first stage handing over and the kernel painting its own
+picture this phone spends over ten seconds on storage, and for all of it
+the screen holds one unchanging picture: the panel is a command mode one
+and only takes a frame when it is handed one.  A phone that looks dead
+that long is a phone whose owner reaches for the power key.
+
+So draw a dim ring with a brighter arc travelling around it, in the
+green of the system being loaded, over the picture the first stage left.
+The ring is laid out as overlapping discs along a circle, which keeps
+the whole of it to one table and integer multiplication, and leaves
+every pixel around it as it was.
+
+It is driven from the cyclic framework, which U-Boot runs out of
+schedule(), and the EFI layer calls that on every block it reads.  The
+ring therefore turns exactly while the reading it reports on is going
+on, and stands still when nothing is happening, which is the truth and
+not an animation.  It starts as early as it can be of use, right after
+the timer, because what takes the time - the storage controller, the
+partition scan and the read itself - all comes after that.
+
+The lookup of the framebuffer and the trigger handed to the display
+controller were already here, inside the bands the start up paints;
+they are now their own two pieces, because the ring needs both.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/exynos-mobile.c   | 362 +++++++++++++++---
+ board/samsung/exynos-mobile/exynos-mobile.env |   7 +-
+ 2 files changed, 303 insertions(+), 66 deletions(-)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index bacff2eb..eb4a2411 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -15,6 +15,7 @@
+ #include <clk.h>
+ #include <cpu_func.h>
+ #include <ctype.h>
++#include <cyclic.h>
+ #include <dm.h>
+ #include <dm/ofnode.h>
+ #include <efi.h>
+@@ -468,6 +469,89 @@ int timer_init(void)
+ 	return 0;
+ }
+ 
++/*
++ * The framebuffer the first stage left behind.
++ *
++ * Two things on this board draw into it without going through the video
++ * uclass: the bands below, which have to work before the driver model
++ * exists, and the ring further down, which has to be small enough to run
++ * from schedule().  Both write into the buffer the device tree describes as
++ * a simple framebuffer, the one the first stage filled with the vendor
++ * picture and the one the display controller reads, so both find it here.
++ */
++struct exynos_fb {
++	u8 *base;
++	u32 width;
++	u32 height;
++	u32 stride;
++};
++
++static int exynos_fb_get(struct exynos_fb *fb)
++{
++	fdt_addr_t base;
++	fdt_size_t size;
++	ofnode node;
++
++	node = ofnode_by_compatible(ofnode_null(), "simple-framebuffer");
++	if (!ofnode_valid(node))
++		return -ENODEV;
++
++	base = ofnode_get_addr_size_index_notrans(node, 0, &size);
++	if (base == FDT_ADDR_T_NONE)
++		return -ENODEV;
++
++	fb->width = ofnode_read_u32_default(node, "width", 0);
++	fb->height = ofnode_read_u32_default(node, "height", 0);
++	fb->stride = ofnode_read_u32_default(node, "stride", 0);
++	if (!fb->width || !fb->height || !fb->stride ||
++	    fb->stride % sizeof(u32))
++		return -EINVAL;
++
++	/* Do not write past what the tree says is there. */
++	if ((u64)fb->stride * fb->height > size)
++		return -EINVAL;
++
++	fb->base = (u8 *)(uintptr_t)base;
++
++	return 0;
++}
++
++/*
++ * Hand the panel what is in the framebuffer.
++ *
++ * The panel of these phones is a command mode one: it shows a picture when
++ * it is triggered, and by the time a boot loader runs nothing is triggering
++ * it any more, so whatever is written to the framebuffer stays invisible and
++ * the screen keeps the picture it came up with.  That is why everything
++ * which draws outside the video uclass has to come here afterwards.  The
++ * controller's address comes out of the device tree, so nothing at all
++ * happens on a board whose tree has no such controller; the register offset
++ * and the value are constants, and the value is the one uniLoader hands the
++ * sibling phone of this family.
++ */
++#define EXYNOS_DECON_HW_SW_TRIG_CONTROL		0x70
++#define EXYNOS_DECON_SW_TRIG_ON			0x1281
++
++static void exynos_decon_trigger(void)
++{
++	fdt_addr_t base;
++	fdt_size_t size;
++	ofnode node;
++
++	node = ofnode_by_compatible(ofnode_null(),
++				    "samsung,exynos9820-decon");
++	if (!ofnode_valid(node))
++		return;
++
++	base = ofnode_get_addr_size_index_notrans(node, 0, &size);
++	if (base == FDT_ADDR_T_NONE)
++		return;
++
++	writel(EXYNOS_DECON_SW_TRIG_ON,
++	       (void __iomem *)(uintptr_t)base +
++	       EXYNOS_DECON_HW_SW_TRIG_CONTROL);
++}
++
+ /*
+  * Marks of life, painted on the screen as the start up gets on.
+  *
+@@ -486,20 +570,7 @@ int timer_init(void)
+  *
+  * The bands go at the bottom because the console starts writing at the top,
+  * so the two can be read together rather than over each other.
+- *
+- * Before any of it the display controller has to be told to push what is in
+- * the framebuffer out to the panel.  The panel of these phones is a command
+- * mode one: it shows a picture when it is triggered, and by the time a boot
+- * loader runs nothing is triggering it any more, so whatever is written to
+- * the framebuffer stays invisible and the screen keeps the picture it came up
+- * with.  That is why the trigger is handed over again after every band and
+- * not just once.  The controller's address comes out of the device tree, so
+- * nothing at all happens on a board whose tree has no such controller; the
+- * register offset and the value are constants, and the value is the one
+- * uniLoader hands the sibling phone of this family.
+  */
+-#define EXYNOS_DECON_HW_SW_TRIG_CONTROL		0x70
+-#define EXYNOS_DECON_SW_TRIG_ON			0x1281
+ #define EXYNOS_MARK_ROWS			64
+ 
+ enum exynos_mark_stage {
+@@ -517,81 +588,237 @@ static const u32 exynos_mark_colour[EXYNOS_MARK_COUNT] = {
+ 	0xff00ff00,	/* green   */
+ };
+ 
+-static void exynos_decon_trigger(const void *fdt)
++static void exynos_mark(enum exynos_mark_stage stage)
+ {
+-	fdt_addr_t base;
+-	int node, parent;
++	struct exynos_fb fb;
++	u32 rows = EXYNOS_MARK_ROWS;
++	u32 *pixel, i, words;
+ 
+-	node = fdt_node_offset_by_compatible(fdt, -1,
+-					     "samsung,exynos9820-decon");
+-	if (node < 0)
++	if (stage >= EXYNOS_MARK_COUNT)
+ 		return;
+ 
+-	parent = fdt_parent_offset(fdt, node);
+-	base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg", 0,
+-						NULL, false);
+-	if (base == FDT_ADDR_T_NONE)
++	if (exynos_fb_get(&fb))
+ 		return;
+ 
+-	writel(EXYNOS_DECON_SW_TRIG_ON,
+-	       (void __iomem *)(uintptr_t)base +
+-	       EXYNOS_DECON_HW_SW_TRIG_CONTROL);
++	if (fb.height < rows * (stage + 1))
++		return;
++
++	pixel = (u32 *)(fb.base + (u64)fb.stride *
++			(fb.height - rows * (stage + 1)));
++	words = rows * (fb.stride / sizeof(*pixel));
++
++	for (i = 0; i < words; i++)
++		pixel[i] = exynos_mark_colour[stage];
++
++	/*
++	 * Past the point where the caches come on this is mapped as ordinary
++	 * memory, so without this the pixels would sit in the cache, where
++	 * the display controller, which reads the memory itself, would never
++	 * see them.  Every band but the first is painted after that point.
++	 */
++	flush_dcache_range((ulong)pixel, (ulong)(pixel + words));
++
++	exynos_decon_trigger();
+ }
+ 
+-static void exynos_mark(enum exynos_mark_stage stage)
++/*
++ * A ring turning on the panel while the loader reads a system off the flash.
++ *
++ * Between the first stage handing over and the kernel painting its own
++ * picture this phone spends over ten seconds reading, and for all of it the
++ * screen holds one unchanging picture, because the panel only takes a frame
++ * when it is handed one.  A phone that looks dead for ten seconds is a phone
++ * whose owner reaches for the power key, so it says instead that something
++ * is going on: a dim ring with a brighter arc travelling around it, in the
++ * green of the system being loaded.
++ *
++ * The ring is laid out as overlapping discs along a circle, which keeps the
++ * whole of it to a table and integer multiplication: no angle has to be
++ * taken an arctangent of, and no pixel outside a disc is ever touched.  What
++ * is around the ring is left as it was, so the picture underneath stays.
++ *
++ * It is driven from the cyclic framework, which U-Boot runs out of
++ * schedule(), and the EFI layer calls that on every block it reads
++ * (lib/efi_loader/efi_disk.c, efi_disk_rw_blocks).  The ring therefore turns
++ * exactly while the reading it reports on is going on, and stands still when
++ * nothing is happening, which is the truth rather than an animation.  A
++ * cyclic function running longer than CONFIG_CYCLIC_MAX_CPU_TIME_US is
++ * dropped with a warning, so a step writes only the discs, flushes only the
++ * rows they sit in, and hands the panel a single trigger.
++ *
++ * Whatever puts text on the panel has to stop it first, or the ring is drawn
++ * over the text; that is what "spinner off" is for, and the environment runs
++ * it wherever the panel is taken over.
++ */
++#define EXYNOS_SPIN_STEPS	128	/* discs around the ring          */
++#define EXYNOS_SPIN_ARC		36	/* discs in the travelling arc    */
++#define EXYNOS_SPIN_RADIUS	144	/* pixels, centre to disc centre  */
++#define EXYNOS_SPIN_DISC	8	/* pixels, radius of one disc     */
++#define EXYNOS_SPIN_ADVANCE	4	/* discs the arc moves in a step  */
++#define EXYNOS_SPIN_PERIOD_US	60000
++#define EXYNOS_SPIN_SCALE	1024
++
++/* Where each disc sits on the unit circle, from twelve o'clock clockwise. */
++static const s16 exynos_spin_at[EXYNOS_SPIN_STEPS][2] = {
++	{     0, -1024 }, {    50, -1023 }, {   100, -1019 }, {   150, -1013 },
++	{   200, -1004 }, {   249,  -993 }, {   297,  -980 }, {   345,  -964 },
++	{   392,  -946 }, {   438,  -926 }, {   483,  -903 }, {   526,  -878 },
++	{   569,  -851 }, {   610,  -822 }, {   650,  -792 }, {   688,  -759 },
++	{   724,  -724 }, {   759,  -688 }, {   792,  -650 }, {   822,  -610 },
++	{   851,  -569 }, {   878,  -526 }, {   903,  -483 }, {   926,  -438 },
++	{   946,  -392 }, {   964,  -345 }, {   980,  -297 }, {   993,  -249 },
++	{  1004,  -200 }, {  1013,  -150 }, {  1019,  -100 }, {  1023,   -50 },
++	{  1024,     0 }, {  1023,    50 }, {  1019,   100 }, {  1013,   150 },
++	{  1004,   200 }, {   993,   249 }, {   980,   297 }, {   964,   345 },
++	{   946,   392 }, {   926,   438 }, {   903,   483 }, {   878,   526 },
++	{   851,   569 }, {   822,   610 }, {   792,   650 }, {   759,   688 },
++	{   724,   724 }, {   688,   759 }, {   650,   792 }, {   610,   822 },
++	{   569,   851 }, {   526,   878 }, {   483,   903 }, {   438,   926 },
++	{   392,   946 }, {   345,   964 }, {   297,   980 }, {   249,   993 },
++	{   200,  1004 }, {   150,  1013 }, {   100,  1019 }, {    50,  1023 },
++	{     0,  1024 }, {   -50,  1023 }, {  -100,  1019 }, {  -150,  1013 },
++	{  -200,  1004 }, {  -249,   993 }, {  -297,   980 }, {  -345,   964 },
++	{  -392,   946 }, {  -438,   926 }, {  -483,   903 }, {  -526,   878 },
++	{  -569,   851 }, {  -610,   822 }, {  -650,   792 }, {  -688,   759 },
++	{  -724,   724 }, {  -759,   688 }, {  -792,   650 }, {  -822,   610 },
++	{  -851,   569 }, {  -878,   526 }, {  -903,   483 }, {  -926,   438 },
++	{  -946,   392 }, {  -964,   345 }, {  -980,   297 }, {  -993,   249 },
++	{ -1004,   200 }, { -1013,   150 }, { -1019,   100 }, { -1023,    50 },
++	{ -1024,     0 }, { -1023,   -50 }, { -1019,  -100 }, { -1013,  -150 },
++	{ -1004,  -200 }, {  -993,  -249 }, {  -980,  -297 }, {  -964,  -345 },
++	{  -946,  -392 }, {  -926,  -438 }, {  -903,  -483 }, {  -878,  -526 },
++	{  -851,  -569 }, {  -822,  -610 }, {  -792,  -650 }, {  -759,  -688 },
++	{  -724,  -724 }, {  -688,  -759 }, {  -650,  -792 }, {  -610,  -822 },
++	{  -569,  -851 }, {  -526,  -878 }, {  -483,  -903 }, {  -438,  -926 },
++	{  -392,  -946 }, {  -345,  -964 }, {  -297,  -980 }, {  -249,  -993 },
++	{  -200, -1004 }, {  -150, -1013 }, {  -100, -1019 }, {   -50, -1023 },
++};
++
++/* The green of the system this loader is there to start, and the ring. */
++static const u8 exynos_spin_lit[3] = { 0x12, 0xdc, 0x1e };
++static const u8 exynos_spin_dim[3] = { 0x12, 0x3a, 0x16 };
++
++static struct cyclic_info exynos_spin_cyclic;
++static struct exynos_fb exynos_spin_fb;
++static bool exynos_spin_on;
++static u32 exynos_spin_head;
++
++static u32 exynos_spin_colour(u32 behind)
+ {
+-	const void *fdt = gd->fdt_blob;
+-	u32 height, stride, rows, *pixel;
+-	fdt_addr_t base;
+-	fdt_size_t size;
+-	int node, parent;
+-	u64 offset;
+-	u32 i, words;
++	u32 colour = 0xff000000;
++	int i;
+ 
+-	if (stage >= EXYNOS_MARK_COUNT)
+-		return;
++	for (i = 0; i < 3; i++) {
++		int lit = exynos_spin_lit[i];
++		int dim = exynos_spin_dim[i];
++		int part = dim;
+ 
+-	node = fdt_node_offset_by_compatible(fdt, -1, "simple-framebuffer");
+-	if (node < 0)
+-		return;
++		if (behind < EXYNOS_SPIN_ARC)
++			part += (lit - dim) * (int)(EXYNOS_SPIN_ARC - behind) /
++				EXYNOS_SPIN_ARC;
+ 
+-	parent = fdt_parent_offset(fdt, node);
+-	base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg", 0,
+-						&size, false);
+-	if (base == FDT_ADDR_T_NONE)
++		colour |= (u32)part << (16 - 8 * i);
++	}
++
++	return colour;
++}
++
++static void exynos_spin_disc(u32 cx, u32 cy, u32 colour)
++{
++	const struct exynos_fb *fb = &exynos_spin_fb;
++	int dx, dy;
++
++	for (dy = -EXYNOS_SPIN_DISC; dy <= EXYNOS_SPIN_DISC; dy++) {
++		u32 *row = (u32 *)(fb->base + (u64)fb->stride * (cy + dy));
++
++		for (dx = -EXYNOS_SPIN_DISC; dx <= EXYNOS_SPIN_DISC; dx++)
++			if (dx * dx + dy * dy <=
++			    EXYNOS_SPIN_DISC * EXYNOS_SPIN_DISC)
++				row[cx + dx] = colour;
++	}
++}
++
++static void exynos_spin_step(struct cyclic_info *c)
++{
++	const struct exynos_fb *fb = &exynos_spin_fb;
++	u32 cx = fb->width / 2;
++	u32 cy = fb->height / 2;
++	u32 i, top, bottom;
++
++	for (i = 0; i < EXYNOS_SPIN_STEPS; i++) {
++		u32 behind = (exynos_spin_head + EXYNOS_SPIN_STEPS - i) %
++			     EXYNOS_SPIN_STEPS;
++		int dx = EXYNOS_SPIN_RADIUS * exynos_spin_at[i][0] /
++			 EXYNOS_SPIN_SCALE;
++		int dy = EXYNOS_SPIN_RADIUS * exynos_spin_at[i][1] /
++			 EXYNOS_SPIN_SCALE;
++
++		exynos_spin_disc(cx + dx, cy + dy, exynos_spin_colour(behind));
++	}
++
++	top = cy - EXYNOS_SPIN_RADIUS - EXYNOS_SPIN_DISC;
++	bottom = cy + EXYNOS_SPIN_RADIUS + EXYNOS_SPIN_DISC + 1;
++	flush_dcache_range((ulong)(fb->base + (u64)fb->stride * top),
++			   (ulong)(fb->base + (u64)fb->stride * bottom));
++
++	exynos_decon_trigger();
++
++	exynos_spin_head = (exynos_spin_head + EXYNOS_SPIN_ADVANCE) %
++			   EXYNOS_SPIN_STEPS;
++}
++
++static void exynos_spin_start(void)
++{
++	u32 reach = EXYNOS_SPIN_RADIUS + EXYNOS_SPIN_DISC;
++
++	if (exynos_spin_on)
+ 		return;
+ 
+-	height = fdtdec_get_int(fdt, node, "height", 0);
+-	stride = fdtdec_get_int(fdt, node, "stride", 0);
+-	if (!height || !stride || stride % sizeof(*pixel))
++	if (exynos_fb_get(&exynos_spin_fb))
+ 		return;
+ 
+-	/* Do not write past what the tree says is there. */
+-	if ((u64)stride * height > size)
++	/* Half of the ring has to fit above the centre, and half below. */
++	if (exynos_spin_fb.width < 2 * reach ||
++	    exynos_spin_fb.height < 2 * reach)
+ 		return;
+ 
+-	rows = EXYNOS_MARK_ROWS;
+-	if (height < rows * (stage + 1))
++	exynos_spin_head = 0;
++	cyclic_register(&exynos_spin_cyclic, exynos_spin_step,
++			EXYNOS_SPIN_PERIOD_US, "exynos-spin");
++	exynos_spin_on = true;
++}
++
++static void exynos_spin_stop(void)
++{
++	if (!exynos_spin_on)
+ 		return;
+ 
+-	offset = (u64)stride * (height - rows * (stage + 1));
+-	words = rows * (stride / sizeof(*pixel));
++	cyclic_unregister(&exynos_spin_cyclic);
++	exynos_spin_on = false;
++}
+ 
+-	pixel = (u32 *)(uintptr_t)(base + offset);
+-	for (i = 0; i < words; i++)
+-		pixel[i] = exynos_mark_colour[stage];
++static int do_spinner(struct cmd_tbl *cmdtp, int flag, int argc,
++		      char *const argv[])
++{
++	if (argc != 2)
++		return CMD_RET_USAGE;
+ 
+-	/*
+-	 * Past the point where the caches come on this is mapped as ordinary
+-	 * memory, so without this the pixels would sit in the cache, where
+-	 * the display controller, which reads the memory itself, would never
+-	 * see them.  Every band but the first is painted after that point.
+-	 */
+-	flush_dcache_range((ulong)pixel, (ulong)(pixel + words));
++	if (!strcmp(argv[1], "on"))
++		exynos_spin_start();
++	else if (!strcmp(argv[1], "off"))
++		exynos_spin_stop();
++	else
++		return CMD_RET_USAGE;
+ 
+-	exynos_decon_trigger(fdt);
++	return 0;
+ }
+ 
++U_BOOT_CMD(spinner, 2, 1, do_spinner,
++	   "turn the ring on the panel",
++	   "on   - draw it, and keep it turning\n"
++	   "spinner off  - stop it, and leave the panel to what draws next"
++);
++
+ int board_early_init_f(void)
+ {
+ 	exynos_mark(EXYNOS_MARK_ENTERED);
+@@ -667,6 +894,15 @@ int board_early_init_r(void)
+ {
+ 	exynos_mark(EXYNOS_MARK_STDIO);
+ 
++	/*
++	 * Here, and not later, because what takes the time is below this
++	 * point: the storage controller coming up, the partitions being
++	 * scanned and the system being read.  All the ring needs is the
++	 * framebuffer the tree describes and a timer, and the initcall
++	 * before this one is where the timer starts.
++	 */
++	exynos_spin_start();
++
+ 	return 0;
+ }
+ 
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.env b/board/samsung/exynos-mobile/exynos-mobile.env
+index 9c17e213..b11eddd1 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.env
++++ b/board/samsung/exynos-mobile/exynos-mobile.env
+@@ -10,9 +10,10 @@ preboot=run blkmapcmd
+ bootdelay=0
+ bootmenu_delay=-1
+ efiboot=bootefi bootmgr
+-bootcmd=bootefi bootmgr; echo "<-- EFI boot returned, menu in 5 s"; sleep 5; bootmenu
++bootcmd=bootefi bootmgr; spinner off;
++		echo "<-- EFI boot returned, menu in 5 s"; sleep 5; bootmenu
+ 
+-fastbootcmd=echo "Fastboot Mode";
++fastbootcmd=spinner off; echo "Fastboot Mode";
+ 	fastboot -l $fastboot_addr_r usb 0;
+ 	echo "fastboot returned, menu in 5 s";
+ 	sleep 5
+@@ -35,4 +36,4 @@ diag_storage=echo "--- ufs init ---"; ufs init;
+ diag_dm=dm tree; echo "--- done, press a key ---"; pause; bootmenu
+ 
+ button_cmd_0_name=Volume Down Key
+-button_cmd_0=bootmenu
++button_cmd_0=spinner off; bootmenu
+-- 
+2.47.3
+

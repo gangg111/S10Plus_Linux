@@ -316,18 +316,18 @@ WARNING: line length of 103 exceeds 100 columns
 +	CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PIPE2_DIGITAL_X1_WRAP_INST_0_I_APB_PCLK_SCL,
 
 WARNING: line length of 121 exceeds 100 columns
-#1189: FILE: drivers/clk/samsung/clk-exynos9820.c:1097:
+#1199: FILE: drivers/clk/samsung/clk-exynos9820.c:1107:
 +	     CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_IEEE1500_WRAPPER_FOR_PCIEG2_PHY_X1_INST_0_I_SCL_APB_PCLK,
 
 WARNING: line length of 102 exceeds 100 columns
-#1198: FILE: drivers/clk/samsung/clk-exynos9820.c:1106:
+#1208: FILE: drivers/clk/samsung/clk-exynos9820.c:1116:
 +	     CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PCIE_SUB_CTRL_INST_0_I_DRIVER_APB_CLK,
 
 WARNING: line length of 108 exceeds 100 columns
-#1203: FILE: drivers/clk/samsung/clk-exynos9820.c:1111:
+#1213: FILE: drivers/clk/samsung/clk-exynos9820.c:1121:
 +	     CLK_CON_GAT_GOUT_BLK_FSYS1_UID_PCIE_GEN2_IPCLKPORT_PIPE2_DIGITAL_X1_WRAP_INST_0_I_APB_PCLK_SCL,
 
-total: 0 errors, 61 warnings, 1 checks, 2490 lines checked
+total: 0 errors, 61 warnings, 1 checks, 2510 lines checked
 
 NOTE: For some of the reported defects, checkpatch may be able to
       mechanically convert to the typical style using --fix or --fix-inplace.
@@ -345,7 +345,7 @@ Traceback (most recent call last):
   File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
     from ply import lex, yacc
 ModuleNotFoundError: No module named 'ply'
-total: 0 errors, 0 warnings, 0 checks, 1134 lines checked
+total: 0 errors, 0 warnings, 0 checks, 1144 lines checked
 
 /c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0014-arm64-dts-exynos-Add-initial-support-for-the-Exynos9.patch has no obvious style problems and is ready for submission.
 ########## 0015-arm64-dts-exynos-Add-initial-support-for-the-Samsung.patch
@@ -357,7 +357,7 @@ WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
 #37: 
 new file mode 100644
 
-total: 0 errors, 1 warnings, 0 checks, 303 lines checked
+total: 0 errors, 1 warnings, 0 checks, 311 lines checked
 
 NOTE: For some of the reported defects, checkpatch may be able to
       mechanically convert to the typical style using --fix or --fix-inplace.
@@ -466,270 +466,270 @@ NOTE: If any of the errors are false positives, please report
       them to the maintainer, see CHECKPATCH in MAINTAINERS.
 ########## 0022-clk-samsung-exynos9820-Add-the-CMU_DPU-and-CMU_CMGP-.patch
 CHECK: Avoid CamelCase: <nMUX>
-#182: FILE: drivers/clk/samsung/clk-exynos9820.c:1663:
+#189: FILE: drivers/clk/samsung/clk-exynos9820.c:1687:
 +	nMUX(CLK_MOUT_I2C_CMGP0, "mout_i2c_cmgp0", mout_i2c_cmgp0_p,
 
 WARNING: line length of 102 exceeds 100 columns
-#379: FILE: drivers/clk/samsung/clk-exynos9820.c:1860:
+#386: FILE: drivers/clk/samsung/clk-exynos9820.c:1884:
 +#define PLL_CON0_MUX_CLKCMU_DPU_BUS_USER							0x0100
 
 WARNING: line length of 102 exceeds 100 columns
-#380: FILE: drivers/clk/samsung/clk-exynos9820.c:1861:
+#387: FILE: drivers/clk/samsung/clk-exynos9820.c:1885:
 +#define CLK_CON_DIV_DIV_CLK_DPU_BUSP								0x1800
 
 WARNING: line length of 102 exceeds 100 columns
-#381: FILE: drivers/clk/samsung/clk-exynos9820.c:1862:
+#388: FILE: drivers/clk/samsung/clk-exynos9820.c:1886:
 +#define CLK_CON_GAT_CLK_BLK_DPU_UID_DPU_CMU_DPU_IPCLKPORT_PCLK					0x2000
 
 WARNING: line length of 102 exceeds 100 columns
-#382: FILE: drivers/clk/samsung/clk-exynos9820.c:1863:
+#389: FILE: drivers/clk/samsung/clk-exynos9820.c:1887:
 +#define CLK_CON_GAT_CLK_BLK_DPU_UID_RSTNSYNC_CLK_DPU_OSCCLK_IPCLKPORT_CLK			0x2004
 
 WARNING: line length of 102 exceeds 100 columns
-#383: FILE: drivers/clk/samsung/clk-exynos9820.c:1864:
+#390: FILE: drivers/clk/samsung/clk-exynos9820.c:1888:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON0_IPCLKPORT_PCLKM				0x2008
 
 WARNING: line length of 102 exceeds 100 columns
-#384: FILE: drivers/clk/samsung/clk-exynos9820.c:1865:
+#391: FILE: drivers/clk/samsung/clk-exynos9820.c:1889:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON0_IPCLKPORT_PCLKS				0x200c
 
 WARNING: line length of 102 exceeds 100 columns
-#385: FILE: drivers/clk/samsung/clk-exynos9820.c:1866:
+#392: FILE: drivers/clk/samsung/clk-exynos9820.c:1890:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON1_IPCLKPORT_PCLKM				0x2010
 
 WARNING: line length of 102 exceeds 100 columns
-#386: FILE: drivers/clk/samsung/clk-exynos9820.c:1867:
+#393: FILE: drivers/clk/samsung/clk-exynos9820.c:1891:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON1_IPCLKPORT_PCLKS				0x2014
 
 WARNING: line length of 102 exceeds 100 columns
-#387: FILE: drivers/clk/samsung/clk-exynos9820.c:1868:
+#394: FILE: drivers/clk/samsung/clk-exynos9820.c:1892:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON2_IPCLKPORT_PCLKM				0x2018
 
 WARNING: line length of 102 exceeds 100 columns
-#388: FILE: drivers/clk/samsung/clk-exynos9820.c:1869:
+#395: FILE: drivers/clk/samsung/clk-exynos9820.c:1893:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DECON2_IPCLKPORT_PCLKS				0x201c
 
 WARNING: line length of 102 exceeds 100 columns
-#389: FILE: drivers/clk/samsung/clk-exynos9820.c:1870:
+#396: FILE: drivers/clk/samsung/clk-exynos9820.c:1894:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPP_IPCLKPORT_PCLKM					0x2020
 
 WARNING: line length of 102 exceeds 100 columns
-#390: FILE: drivers/clk/samsung/clk-exynos9820.c:1871:
+#397: FILE: drivers/clk/samsung/clk-exynos9820.c:1895:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPP_IPCLKPORT_PCLKS					0x2024
 
 WARNING: line length of 102 exceeds 100 columns
-#391: FILE: drivers/clk/samsung/clk-exynos9820.c:1872:
+#398: FILE: drivers/clk/samsung/clk-exynos9820.c:1896:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_IPCLKPORT_PCLKM				0x2028
 
 WARNING: line length of 102 exceeds 100 columns
-#392: FILE: drivers/clk/samsung/clk-exynos9820.c:1873:
+#399: FILE: drivers/clk/samsung/clk-exynos9820.c:1897:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_IPCLKPORT_PCLKS				0x202c
 
 WARNING: line length of 102 exceeds 100 columns
-#393: FILE: drivers/clk/samsung/clk-exynos9820.c:1874:
+#400: FILE: drivers/clk/samsung/clk-exynos9820.c:1898:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_PGEN_IPCLKPORT_PCLKM			0x2030
 
 WARNING: line length of 102 exceeds 100 columns
-#394: FILE: drivers/clk/samsung/clk-exynos9820.c:1875:
+#401: FILE: drivers/clk/samsung/clk-exynos9820.c:1899:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_DMA_PGEN_IPCLKPORT_PCLKS			0x2034
 
 WARNING: line length of 102 exceeds 100 columns
-#395: FILE: drivers/clk/samsung/clk-exynos9820.c:1876:
+#402: FILE: drivers/clk/samsung/clk-exynos9820.c:1900:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_WB_MUX_IPCLKPORT_PCLKM				0x2038
 
 WARNING: line length of 102 exceeds 100 columns
-#396: FILE: drivers/clk/samsung/clk-exynos9820.c:1877:
+#403: FILE: drivers/clk/samsung/clk-exynos9820.c:1901:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_DPU_WB_MUX_IPCLKPORT_PCLKS				0x203c
 
 WARNING: line length of 102 exceeds 100 columns
-#397: FILE: drivers/clk/samsung/clk-exynos9820.c:1878:
+#404: FILE: drivers/clk/samsung/clk-exynos9820.c:1902:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MCD_IPCLKPORT_PCLKM					0x2040
 
 WARNING: line length of 102 exceeds 100 columns
-#398: FILE: drivers/clk/samsung/clk-exynos9820.c:1879:
+#405: FILE: drivers/clk/samsung/clk-exynos9820.c:1903:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MCD_IPCLKPORT_PCLKS					0x2044
 
 WARNING: line length of 102 exceeds 100 columns
-#399: FILE: drivers/clk/samsung/clk-exynos9820.c:1880:
+#406: FILE: drivers/clk/samsung/clk-exynos9820.c:1904:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MIPI_DSIM0_IPCLKPORT_PCLKS				0x2048
 
 WARNING: line length of 102 exceeds 100 columns
-#400: FILE: drivers/clk/samsung/clk-exynos9820.c:1881:
+#407: FILE: drivers/clk/samsung/clk-exynos9820.c:1905:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_MIPI_DSIM1_IPCLKPORT_PCLKS				0x204c
 
 WARNING: line length of 102 exceeds 100 columns
-#401: FILE: drivers/clk/samsung/clk-exynos9820.c:1882:
+#408: FILE: drivers/clk/samsung/clk-exynos9820.c:1906:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_IPCLKPORT_PCLKM			0x2050
 
 WARNING: line length of 102 exceeds 100 columns
-#402: FILE: drivers/clk/samsung/clk-exynos9820.c:1883:
+#409: FILE: drivers/clk/samsung/clk-exynos9820.c:1907:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_IPCLKPORT_PCLKS			0x2054
 
 WARNING: line length of 102 exceeds 100 columns
-#403: FILE: drivers/clk/samsung/clk-exynos9820.c:1884:
+#410: FILE: drivers/clk/samsung/clk-exynos9820.c:1908:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_S_IPCLKPORT_PCLKM			0x2058
 
 WARNING: line length of 102 exceeds 100 columns
-#404: FILE: drivers/clk/samsung/clk-exynos9820.c:1885:
+#411: FILE: drivers/clk/samsung/clk-exynos9820.c:1909:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD0_S_IPCLKPORT_PCLKS			0x205c
 
 WARNING: line length of 102 exceeds 100 columns
-#405: FILE: drivers/clk/samsung/clk-exynos9820.c:1886:
+#412: FILE: drivers/clk/samsung/clk-exynos9820.c:1910:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_IPCLKPORT_PCLKM			0x2060
 
 WARNING: line length of 102 exceeds 100 columns
-#406: FILE: drivers/clk/samsung/clk-exynos9820.c:1887:
+#413: FILE: drivers/clk/samsung/clk-exynos9820.c:1911:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_IPCLKPORT_PCLKS			0x2064
 
 WARNING: line length of 102 exceeds 100 columns
-#407: FILE: drivers/clk/samsung/clk-exynos9820.c:1888:
+#414: FILE: drivers/clk/samsung/clk-exynos9820.c:1912:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_S_IPCLKPORT_PCLKM			0x2068
 
 WARNING: line length of 102 exceeds 100 columns
-#408: FILE: drivers/clk/samsung/clk-exynos9820.c:1889:
+#415: FILE: drivers/clk/samsung/clk-exynos9820.c:1913:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD1_S_IPCLKPORT_PCLKS			0x206c
 
 WARNING: line length of 102 exceeds 100 columns
-#409: FILE: drivers/clk/samsung/clk-exynos9820.c:1890:
+#416: FILE: drivers/clk/samsung/clk-exynos9820.c:1914:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_IPCLKPORT_PCLKM			0x2070
 
 WARNING: line length of 102 exceeds 100 columns
-#410: FILE: drivers/clk/samsung/clk-exynos9820.c:1891:
+#417: FILE: drivers/clk/samsung/clk-exynos9820.c:1915:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_IPCLKPORT_PCLKS			0x2074
 
 WARNING: line length of 102 exceeds 100 columns
-#411: FILE: drivers/clk/samsung/clk-exynos9820.c:1892:
+#418: FILE: drivers/clk/samsung/clk-exynos9820.c:1916:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_S_IPCLKPORT_PCLKM			0x2078
 
 WARNING: line length of 102 exceeds 100 columns
-#412: FILE: drivers/clk/samsung/clk-exynos9820.c:1893:
+#419: FILE: drivers/clk/samsung/clk-exynos9820.c:1917:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AD_APB_SYSMMU_DPUD2_S_IPCLKPORT_PCLKS			0x207c
 
 WARNING: line length of 102 exceeds 100 columns
-#413: FILE: drivers/clk/samsung/clk-exynos9820.c:1894:
+#420: FILE: drivers/clk/samsung/clk-exynos9820.c:1918:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AXI2APB_DPUP0_IPCLKPORT_ACLK				0x2080
 
 WARNING: line length of 102 exceeds 100 columns
-#414: FILE: drivers/clk/samsung/clk-exynos9820.c:1895:
+#421: FILE: drivers/clk/samsung/clk-exynos9820.c:1919:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_AXI2APB_DPUP1_IPCLKPORT_ACLK				0x2084
 
 WARNING: line length of 102 exceeds 100 columns
-#415: FILE: drivers/clk/samsung/clk-exynos9820.c:1896:
+#422: FILE: drivers/clk/samsung/clk-exynos9820.c:1920:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD0_IPCLKPORT_I_ACLK					0x2088
 
 WARNING: line length of 102 exceeds 100 columns
-#416: FILE: drivers/clk/samsung/clk-exynos9820.c:1897:
+#423: FILE: drivers/clk/samsung/clk-exynos9820.c:1921:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD0_IPCLKPORT_I_PCLK					0x208c
 
 WARNING: line length of 102 exceeds 100 columns
-#417: FILE: drivers/clk/samsung/clk-exynos9820.c:1898:
+#424: FILE: drivers/clk/samsung/clk-exynos9820.c:1922:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD1_IPCLKPORT_I_ACLK					0x2090
 
 WARNING: line length of 102 exceeds 100 columns
-#418: FILE: drivers/clk/samsung/clk-exynos9820.c:1899:
+#425: FILE: drivers/clk/samsung/clk-exynos9820.c:1923:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD1_IPCLKPORT_I_PCLK					0x2094
 
 WARNING: line length of 102 exceeds 100 columns
-#419: FILE: drivers/clk/samsung/clk-exynos9820.c:1900:
+#426: FILE: drivers/clk/samsung/clk-exynos9820.c:1924:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD2_IPCLKPORT_I_ACLK					0x2098
 
 WARNING: line length of 102 exceeds 100 columns
-#420: FILE: drivers/clk/samsung/clk-exynos9820.c:1901:
+#427: FILE: drivers/clk/samsung/clk-exynos9820.c:1925:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_BTM_DPUD2_IPCLKPORT_I_PCLK					0x209c
 
 WARNING: line length of 102 exceeds 100 columns
-#421: FILE: drivers/clk/samsung/clk-exynos9820.c:1902:
+#428: FILE: drivers/clk/samsung/clk-exynos9820.c:1926:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DECON					0x20a0
 
 WARNING: line length of 102 exceeds 100 columns
-#422: FILE: drivers/clk/samsung/clk-exynos9820.c:1903:
+#429: FILE: drivers/clk/samsung/clk-exynos9820.c:1927:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DMA					0x20a4
 
 WARNING: line length of 102 exceeds 100 columns
-#423: FILE: drivers/clk/samsung/clk-exynos9820.c:1904:
+#430: FILE: drivers/clk/samsung/clk-exynos9820.c:1928:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DPP					0x20a8
 
 WARNING: line length of 102 exceeds 100 columns
-#424: FILE: drivers/clk/samsung/clk-exynos9820.c:1905:
+#431: FILE: drivers/clk/samsung/clk-exynos9820.c:1929:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_DPU_IPCLKPORT_ACLK_DPU_WB_MUX				0x20ac
 
 WARNING: line length of 102 exceeds 100 columns
-#425: FILE: drivers/clk/samsung/clk-exynos9820.c:1906:
+#432: FILE: drivers/clk/samsung/clk-exynos9820.c:1930:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_D_TZPC_DPU_IPCLKPORT_PCLK					0x20b0
 
 WARNING: line length of 102 exceeds 100 columns
-#426: FILE: drivers/clk/samsung/clk-exynos9820.c:1907:
+#433: FILE: drivers/clk/samsung/clk-exynos9820.c:1931:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHM_AXI_P_DPU_IPCLKPORT_I_CLK				0x20b4
 
 WARNING: line length of 102 exceeds 100 columns
-#427: FILE: drivers/clk/samsung/clk-exynos9820.c:1908:
+#434: FILE: drivers/clk/samsung/clk-exynos9820.c:1932:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHS_AXI_D0_DPU_IPCLKPORT_I_CLK				0x20b8
 
 WARNING: line length of 102 exceeds 100 columns
-#428: FILE: drivers/clk/samsung/clk-exynos9820.c:1909:
+#435: FILE: drivers/clk/samsung/clk-exynos9820.c:1933:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHS_AXI_D1_DPU_IPCLKPORT_I_CLK				0x20bc
 
 WARNING: line length of 102 exceeds 100 columns
-#429: FILE: drivers/clk/samsung/clk-exynos9820.c:1910:
+#436: FILE: drivers/clk/samsung/clk-exynos9820.c:1934:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_LHS_AXI_D2_DPU_IPCLKPORT_I_CLK				0x20c0
 
 WARNING: line length of 102 exceeds 100 columns
-#430: FILE: drivers/clk/samsung/clk-exynos9820.c:1911:
+#437: FILE: drivers/clk/samsung/clk-exynos9820.c:1935:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD0_IPCLKPORT_ACLK					0x20c4
 
 WARNING: line length of 102 exceeds 100 columns
-#431: FILE: drivers/clk/samsung/clk-exynos9820.c:1912:
+#438: FILE: drivers/clk/samsung/clk-exynos9820.c:1936:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD0_IPCLKPORT_PCLK					0x20c8
 
 WARNING: line length of 102 exceeds 100 columns
-#432: FILE: drivers/clk/samsung/clk-exynos9820.c:1913:
+#439: FILE: drivers/clk/samsung/clk-exynos9820.c:1937:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD1_IPCLKPORT_ACLK					0x20cc
 
 WARNING: line length of 102 exceeds 100 columns
-#433: FILE: drivers/clk/samsung/clk-exynos9820.c:1914:
+#440: FILE: drivers/clk/samsung/clk-exynos9820.c:1938:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD1_IPCLKPORT_PCLK					0x20d0
 
 WARNING: line length of 102 exceeds 100 columns
-#434: FILE: drivers/clk/samsung/clk-exynos9820.c:1915:
+#441: FILE: drivers/clk/samsung/clk-exynos9820.c:1939:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD2_IPCLKPORT_ACLK					0x20d4
 
 WARNING: line length of 102 exceeds 100 columns
-#435: FILE: drivers/clk/samsung/clk-exynos9820.c:1916:
+#442: FILE: drivers/clk/samsung/clk-exynos9820.c:1940:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_PPMU_DPUD2_IPCLKPORT_PCLK					0x20d8
 
 WARNING: line length of 102 exceeds 100 columns
-#436: FILE: drivers/clk/samsung/clk-exynos9820.c:1917:
+#443: FILE: drivers/clk/samsung/clk-exynos9820.c:1941:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_RSTNSYNC_CLK_DPU_BUSD_IPCLKPORT_CLK			0x20dc
 
 WARNING: line length of 102 exceeds 100 columns
-#437: FILE: drivers/clk/samsung/clk-exynos9820.c:1918:
+#444: FILE: drivers/clk/samsung/clk-exynos9820.c:1942:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_RSTNSYNC_CLK_DPU_BUSP_IPCLKPORT_CLK			0x20e0
 
 WARNING: line length of 102 exceeds 100 columns
-#438: FILE: drivers/clk/samsung/clk-exynos9820.c:1919:
+#445: FILE: drivers/clk/samsung/clk-exynos9820.c:1943:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSMMU_DPUD0_IPCLKPORT_CLK					0x20e4
 
 WARNING: line length of 102 exceeds 100 columns
-#439: FILE: drivers/clk/samsung/clk-exynos9820.c:1920:
+#446: FILE: drivers/clk/samsung/clk-exynos9820.c:1944:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSMMU_DPUD1_IPCLKPORT_CLK					0x20e8
 
 WARNING: line length of 102 exceeds 100 columns
-#440: FILE: drivers/clk/samsung/clk-exynos9820.c:1921:
+#447: FILE: drivers/clk/samsung/clk-exynos9820.c:1945:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSMMU_DPUD2_IPCLKPORT_CLK					0x20ec
 
 WARNING: line length of 102 exceeds 100 columns
-#441: FILE: drivers/clk/samsung/clk-exynos9820.c:1922:
+#448: FILE: drivers/clk/samsung/clk-exynos9820.c:1946:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_SYSREG_DPU_IPCLKPORT_PCLK					0x20f0
 
 WARNING: line length of 102 exceeds 100 columns
-#442: FILE: drivers/clk/samsung/clk-exynos9820.c:1923:
+#449: FILE: drivers/clk/samsung/clk-exynos9820.c:1947:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_WRAPPER_FOR_S5I6280_HSI_DCPHY_COMBO_TOP_IPCLKPORT_PCLK	0x20f4
 
 WARNING: line length of 102 exceeds 100 columns
-#443: FILE: drivers/clk/samsung/clk-exynos9820.c:1924:
+#450: FILE: drivers/clk/samsung/clk-exynos9820.c:1948:
 +#define CLK_CON_GAT_GOUT_BLK_DPU_UID_XIU_P_DPU_IPCLKPORT_ACLK					0x20f8
 
-total: 0 errors, 65 warnings, 1 checks, 764 lines checked
+total: 0 errors, 65 warnings, 1 checks, 772 lines checked
 
 NOTE: For some of the reported defects, checkpatch may be able to
       mechanically convert to the typical style using --fix or --fix-inplace.
@@ -815,19 +815,9 @@ total: 0 errors, 0 warnings, 0 checks, 64 lines checked
 
 /c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0033-drm-bridge-samsung-dsim-Make-the-lazy-host-init-an-e.patch has no obvious style problems and is ready for submission.
 ########## 0034-drm-bridge-samsung-dsim-Add-Exynos9820-support.patch
-WARNING: Prefer a maximum 75 chars per line (possible unwrapped commit description?)
-#24: 
-shared table, which defines all four, so none of them can reach it. The escape prescaler
+total: 0 errors, 0 warnings, 0 checks, 321 lines checked
 
-total: 0 errors, 1 warnings, 0 checks, 321 lines checked
-
-NOTE: For some of the reported defects, checkpatch may be able to
-      mechanically convert to the typical style using --fix or --fix-inplace.
-
-/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0034-drm-bridge-samsung-dsim-Add-Exynos9820-support.patch has style problems, please review.
-
-NOTE: If any of the errors are false positives, please report
-      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0034-drm-bridge-samsung-dsim-Add-Exynos9820-support.patch has no obvious style problems and is ready for submission.
 ########## 0035-drm-exynos-dsi-Add-Exynos9820-support.patch
 total: 0 errors, 0 warnings, 0 checks, 21 lines checked
 
@@ -891,6 +881,548 @@ total: 0 errors, 0 warnings, 0 checks, 52 lines checked
 
 /c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0039-arm64-dts-exynos-exynos9820-Add-CMU_DPU-and-the-DPU-.patch has no obvious style problems and is ready for submission.
 ########## 0040-arm64-dts-exynos-exynos9820-Add-the-display-pipeline.patch
-total: 0 errors, 0 warnings, 0 checks, 291 lines checked
+total: 0 errors, 0 warnings, 0 checks, 347 lines checked
 
 /c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0040-arm64-dts-exynos-exynos9820-Add-the-display-pipeline.patch has no obvious style problems and is ready for submission.
+########## 0041-dt-bindings-soc-samsung-sysreg-Add-the-Exynos9820-FS.patch
+total: 0 errors, 0 warnings, 0 checks, 14 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0041-dt-bindings-soc-samsung-sysreg-Add-the-Exynos9820-FS.patch has no obvious style problems and is ready for submission.
+########## 0042-arm64-dts-exynos-exynos9820-Add-CMU_FSYS1-and-its-sy.patch
+total: 0 errors, 0 warnings, 0 checks, 28 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0042-arm64-dts-exynos-exynos9820-Add-CMU_FSYS1-and-its-sy.patch has no obvious style problems and is ready for submission.
+########## 0043-dt-bindings-phy-samsung-ufs-phy-Add-Exynos9820-UFS-P.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0043-dt-bindings-phy-samsung-ufs-phy-Add-Exynos9820-UFS-P.patch has no obvious style problems and is ready for submission.
+########## 0044-dt-bindings-ufs-samsung-exynos-ufs-Add-Exynos9820-UF.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0044-dt-bindings-ufs-samsung-exynos-ufs-Add-Exynos9820-UF.patch has no obvious style problems and is ready for submission.
+########## 0045-phy-samsung-ufs-Apply-the-power-mode-a-calibration-e.patch
+total: 0 errors, 0 warnings, 0 checks, 94 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0045-phy-samsung-ufs-Apply-the-power-mode-a-calibration-e.patch has no obvious style problems and is ready for submission.
+########## 0046-scsi-ufs-exynos-Tell-the-PHY-which-power-mode-was-se.patch
+total: 0 errors, 0 warnings, 0 checks, 24 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0046-scsi-ufs-exynos-Tell-the-PHY-which-power-mode-was-se.patch has no obvious style problems and is ready for submission.
+########## 0047-phy-samsung-ufs-Let-an-SoC-place-the-two-calibration.patch
+total: 0 errors, 0 warnings, 0 checks, 47 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0047-phy-samsung-ufs-Let-an-SoC-place-the-two-calibration.patch has no obvious style problems and is ready for submission.
+########## 0048-phy-samsung-ufs-Let-a-calibration-table-wait-for-the.patch
+total: 0 errors, 0 warnings, 0 checks, 50 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0048-phy-samsung-ufs-Let-a-calibration-table-wait-for-the.patch has no obvious style problems and is ready for submission.
+########## 0049-phy-samsung-ufs-Add-Exynos9820-support.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 305 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0049-phy-samsung-ufs-Add-Exynos9820-support.patch has no obvious style problems and is ready for submission.
+########## 0050-scsi-ufs-exynos-Let-an-SoC-act-just-before-the-post-.patch
+total: 0 errors, 0 warnings, 0 checks, 21 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0050-scsi-ufs-exynos-Let-an-SoC-act-just-before-the-post-.patch has no obvious style problems and is ready for submission.
+########## 0051-scsi-ufs-exynos-Add-Exynos9820-support.patch
+total: 0 errors, 0 warnings, 0 checks, 247 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0051-scsi-ufs-exynos-Add-Exynos9820-support.patch has no obvious style problems and is ready for submission.
+########## 0052-arm64-dts-exynos-exynos9820-Add-the-UFS-pin-configur.patch
+total: 0 errors, 0 warnings, 0 checks, 25 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0052-arm64-dts-exynos-exynos9820-Add-the-UFS-pin-configur.patch has no obvious style problems and is ready for submission.
+########## 0053-arm64-dts-exynos-exynos9820-Add-the-UFS-host-and-its.patch
+total: 0 errors, 0 warnings, 0 checks, 71 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0053-arm64-dts-exynos-exynos9820-Add-the-UFS-host-and-its.patch has no obvious style problems and is ready for submission.
+########## 0054-arm64-dts-exynos-exynos9820-beyond2lte-Enable-the-em.patch
+total: 0 errors, 0 warnings, 0 checks, 10 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0054-arm64-dts-exynos-exynos9820-beyond2lte-Enable-the-em.patch has no obvious style problems and is ready for submission.
+########## 0055-dt-bindings-phy-samsung-usb3-drd-phy-Add-Exynos9820-.patch
+total: 0 errors, 0 warnings, 0 checks, 14 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0055-dt-bindings-phy-samsung-usb3-drd-phy-Add-Exynos9820-.patch has no obvious style problems and is ready for submission.
+########## 0056-dt-bindings-usb-samsung-exynos-dwc3-Add-Exynos9820-U.patch
+total: 0 errors, 0 warnings, 0 checks, 9 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0056-dt-bindings-usb-samsung-exynos-dwc3-Add-Exynos9820-U.patch has no obvious style problems and is ready for submission.
+########## 0057-phy-samsung-exynos5-usbdrd-Add-Exynos9820-support.patch
+total: 0 errors, 0 warnings, 0 checks, 47 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0057-phy-samsung-exynos5-usbdrd-Add-Exynos9820-support.patch has no obvious style problems and is ready for submission.
+########## 0058-arm64-dts-exynos-exynos9820-Add-CMU_FSYS0A-and-the-U.patch
+total: 0 errors, 0 warnings, 0 checks, 74 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0058-arm64-dts-exynos-exynos9820-Add-CMU_FSYS0A-and-the-U.patch has no obvious style problems and is ready for submission.
+########## 0059-arm64-dts-exynos-exynos9820-beyond2lte-Enable-the-US.patch
+total: 0 errors, 0 warnings, 0 checks, 60 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0059-arm64-dts-exynos-exynos9820-beyond2lte-Enable-the-US.patch has no obvious style problems and is ready for submission.
+########## 0060-arm64-dts-exynos-exynos9820-Add-the-bus-the-main-PMI.patch
+total: 0 errors, 0 warnings, 0 checks, 70 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0060-arm64-dts-exynos-exynos9820-Add-the-bus-the-main-PMI.patch has no obvious style problems and is ready for submission.
+########## 0061-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-fuel-.patch
+total: 0 errors, 0 warnings, 0 checks, 124 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0061-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-fuel-.patch has no obvious style problems and is ready for submission.
+########## 0062-i2c-exynos5-Add-Exynos9820-support.patch
+total: 0 errors, 0 warnings, 0 checks, 20 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0062-i2c-exynos5-Add-Exynos9820-support.patch has no obvious style problems and is ready for submission.
+########## 0063-mfd-max77705-Accept-the-second-revision-of-the-chip.patch
+total: 0 errors, 0 warnings, 0 checks, 16 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0063-mfd-max77705-Accept-the-second-revision-of-the-chip.patch has no obvious style problems and is ready for submission.
+########## 0064-power-supply-max77705-Take-the-charge-current-from-t.patch
+total: 0 errors, 0 warnings, 0 checks, 24 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0064-power-supply-max77705-Take-the-charge-current-from-t.patch has no obvious style problems and is ready for submission.
+########## 0065-dt-bindings-Add-the-Exynos9820-mailbox-and-ACPM-firm.patch
+total: 0 errors, 0 warnings, 0 checks, 20 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0065-dt-bindings-Add-the-Exynos9820-mailbox-and-ACPM-firm.patch has no obvious style problems and is ready for submission.
+########## 0066-mailbox-exynos-Make-the-register-offsets-per-SoC.patch
+total: 0 errors, 0 warnings, 0 checks, 94 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0066-mailbox-exynos-Make-the-register-offsets-per-SoC.patch has no obvious style problems and is ready for submission.
+########## 0067-firmware-exynos-acpm-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 25 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0067-firmware-exynos-acpm-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0068-i2c-exynos5-Reset-the-controller-stuck-on-an-address.patch
+total: 0 errors, 0 warnings, 0 checks, 20 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0068-i2c-exynos5-Reset-the-controller-stuck-on-an-address.patch has no obvious style problems and is ready for submission.
+########## 0069-input-s6sy761-Restart-a-chip-that-reports-no-boot.patch
+total: 0 errors, 0 warnings, 0 checks, 71 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0069-input-s6sy761-Restart-a-chip-that-reports-no-boot.patch has no obvious style problems and is ready for submission.
+########## 0070-dt-bindings-input-samsung-s6sy761-Add-the-S6SY771.patch
+total: 0 errors, 0 warnings, 0 checks, 18 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0070-dt-bindings-input-samsung-s6sy761-Add-the-S6SY771.patch has no obvious style problems and is ready for submission.
+########## 0071-input-s6sy761-Add-S6SY771-support.patch
+total: 0 errors, 0 warnings, 0 checks, 78 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0071-input-s6sy761-Add-S6SY771-support.patch has no obvious style problems and is ready for submission.
+########## 0072-input-s6sy761-Warn-about-the-axes-the-driver-sets.patch
+total: 0 errors, 0 warnings, 0 checks, 10 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0072-input-s6sy761-Warn-about-the-axes-the-driver-sets.patch has no obvious style problems and is ready for submission.
+########## 0073-arm64-dts-exynos-exynos9820-Add-the-APM-mailbox-and-.patch
+total: 0 errors, 0 warnings, 0 checks, 63 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0073-arm64-dts-exynos-exynos9820-Add-the-APM-mailbox-and-.patch has no obvious style problems and is ready for submission.
+########## 0074-dt-bindings-clock-samsung-exynos9820-Add-CMU_PERIC1.patch
+total: 0 errors, 0 warnings, 0 checks, 144 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0074-dt-bindings-clock-samsung-exynos9820-Add-CMU_PERIC1.patch has no obvious style problems and is ready for submission.
+########## 0075-clk-samsung-exynos9820-Add-CMU_PERIC1.patch
+CHECK: Avoid CamelCase: <nMUX>
+#247: FILE: drivers/clk/samsung/clk-exynos9820.c:985:
++	nMUX(CLK_MOUT_PERIC1_I2C_CAM0_USER, "mout_peric1_i2c_cam0_user",
+
+total: 0 errors, 0 warnings, 1 checks, 621 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0075-clk-samsung-exynos9820-Add-CMU_PERIC1.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0076-dt-bindings-soc-samsung-sysreg-Add-the-Exynos9820-PE.patch
+total: 0 errors, 0 warnings, 0 checks, 18 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0076-dt-bindings-soc-samsung-sysreg-Add-the-Exynos9820-PE.patch has no obvious style problems and is ready for submission.
+########## 0077-dt-bindings-net-bluetooth-brcm-Add-the-BCM4375.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0077-dt-bindings-net-bluetooth-brcm-Add-the-BCM4375.patch has no obvious style problems and is ready for submission.
+########## 0078-Bluetooth-hci_bcm-Add-BCM4375-support.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0078-Bluetooth-hci_bcm-Add-BCM4375-support.patch has no obvious style problems and is ready for submission.
+########## 0079-arm64-dts-exynos-exynos9820-Add-CMU_PERIC1-and-the-B.patch
+total: 0 errors, 0 warnings, 0 checks, 136 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0079-arm64-dts-exynos-exynos9820-Add-CMU_PERIC1-and-the-B.patch has no obvious style problems and is ready for submission.
+########## 0080-arm64-dts-exynos-exynos9820-beyond2lte-Enable-Blueto.patch
+total: 0 errors, 0 warnings, 0 checks, 37 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0080-arm64-dts-exynos-exynos9820-beyond2lte-Enable-Blueto.patch has no obvious style problems and is ready for submission.
+########## 0081-dt-bindings-soc-samsung-Add-the-Exynos9820-CPU-inter.patch
+total: 0 errors, 0 warnings, 0 checks, 54 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0081-dt-bindings-soc-samsung-Add-the-Exynos9820-CPU-inter.patch has no obvious style problems and is ready for submission.
+########## 0082-soc-samsung-exynos-pmu-Add-CPU-hotplug-support-for-E.patch
+total: 0 errors, 0 warnings, 0 checks, 38 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0082-soc-samsung-exynos-pmu-Add-CPU-hotplug-support-for-E.patch has no obvious style problems and is ready for submission.
+########## 0083-arm64-dts-exynos-exynos9820-Add-the-CPU-interrupt-ge.patch
+total: 0 errors, 0 warnings, 0 checks, 25 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0083-arm64-dts-exynos-exynos9820-Add-the-CPU-interrupt-ge.patch has no obvious style problems and is ready for submission.
+########## 0084-dt-bindings-pci-Add-the-Exynos9820-PCIe-host-control.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 128 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0084-dt-bindings-pci-Add-the-Exynos9820-PCIe-host-control.patch has no obvious style problems and is ready for submission.
+########## 0085-PCI-exynos9820-Add-the-host-controller-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 583 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0085-PCI-exynos9820-Add-the-host-controller-driver.patch has no obvious style problems and is ready for submission.
+########## 0086-arm64-dts-exynos-exynos9820-Add-the-PCIe-controller-.patch
+total: 0 errors, 0 warnings, 0 checks, 78 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0086-arm64-dts-exynos-exynos9820-Add-the-PCIe-controller-.patch has no obvious style problems and is ready for submission.
+########## 0087-wifi-brcmfmac-Add-BCM4375-support.patch
+total: 0 errors, 0 warnings, 0 checks, 42 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0087-wifi-brcmfmac-Add-BCM4375-support.patch has no obvious style problems and is ready for submission.
+########## 0088-arm64-dts-exynos-exynos9820-Add-the-reboot-modes-of-.patch
+total: 0 errors, 0 warnings, 0 checks, 21 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0088-arm64-dts-exynos-exynos9820-Add-the-reboot-modes-of-.patch has no obvious style problems and is ready for submission.
+########## 0089-dt-bindings-mfd-Add-the-Samsung-S2MPS19-PMIC.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#43: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 130 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0089-dt-bindings-mfd-Add-the-Samsung-S2MPS19-PMIC.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0090-mfd-sec-Add-support-for-the-S2MPS19.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#392: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 659 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0090-mfd-sec-Add-support-for-the-S2MPS19.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0091-regulator-s2mps11-Add-the-S2MPS19-regulators.patch
+total: 0 errors, 0 warnings, 0 checks, 195 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0091-regulator-s2mps11-Add-the-S2MPS19-regulators.patch has no obvious style problems and is ready for submission.
+########## 0092-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-main-.patch
+total: 0 errors, 0 warnings, 0 checks, 94 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0092-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-main-.patch has no obvious style problems and is ready for submission.
+########## 0093-Input-s6sy761-fix-the-count-of-the-events-still-queu.patch
+total: 0 errors, 0 warnings, 0 checks, 13 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0093-Input-s6sy761-fix-the-count-of-the-events-still-queu.patch has no obvious style problems and is ready for submission.
+########## 0094-Input-s6sy761-report-a-complete-frame.patch
+total: 0 errors, 0 warnings, 0 checks, 48 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0094-Input-s6sy761-report-a-complete-frame.patch has no obvious style problems and is ready for submission.
+########## 0095-arm64-dts-exynos-exynos9820-beyond2lte-Describe-the-.patch
+total: 0 errors, 0 warnings, 0 checks, 30 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0095-arm64-dts-exynos-exynos9820-beyond2lte-Describe-the-.patch has no obvious style problems and is ready for submission.
+########## 0096-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-ramoo.patch
+total: 0 errors, 0 warnings, 0 checks, 26 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0096-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-ramoo.patch has no obvious style problems and is ready for submission.
+########## 0097-video-logo-Add-the-postmarketOS-logo.patch
+WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+#25: 
+new file mode 100644
+
+total: 0 errors, 1 warnings, 0 checks, 7204 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0097-video-logo-Add-the-postmarketOS-logo.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0098-fbcon-Let-an-explicit-logo-count-outlive-a-quiet-boo.patch
+total: 0 errors, 0 warnings, 0 checks, 15 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0098-fbcon-Let-an-explicit-logo-count-outlive-a-quiet-boo.patch has no obvious style problems and is ready for submission.
+########## 0099-Input-s6sy761-add-the-low-power-mode-with-a-double-t.patch
+total: 0 errors, 0 warnings, 0 checks, 278 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0099-Input-s6sy761-add-the-low-power-mode-with-a-double-t.patch has no obvious style problems and is ready for submission.
+########## 0100-backlight-exynos9820-dsim-lcd-Add-panel-power-over-t.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 362 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0100-backlight-exynos9820-dsim-lcd-Add-panel-power-over-t.patch has no obvious style problems and is ready for submission.
+########## 0101-dt-bindings-pci-samsung-exynos9820-pcie-Add-the-endp.patch
+total: 0 errors, 0 warnings, 0 checks, 12 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0101-dt-bindings-pci-samsung-exynos9820-pcie-Add-the-endp.patch has no obvious style problems and is ready for submission.
+########## 0102-PCI-exynos9820-Power-the-endpoint-and-bring-the-link.patch
+total: 0 errors, 0 warnings, 0 checks, 114 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0102-PCI-exynos9820-Power-the-endpoint-and-bring-the-link.patch has no obvious style problems and is ready for submission.
+########## 0103-arm64-dts-exynos-exynos9820-beyond2lte-Enable-Wi-Fi.patch
+total: 0 errors, 0 warnings, 0 checks, 57 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0103-arm64-dts-exynos-exynos9820-beyond2lte-Enable-Wi-Fi.patch has no obvious style problems and is ready for submission.
+########## 0104-wifi-brcmfmac-pcie-Tell-version-6-firmware-what-the-.patch
+total: 0 errors, 0 warnings, 0 checks, 36 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0104-wifi-brcmfmac-pcie-Tell-version-6-firmware-what-the-.patch has no obvious style problems and is ready for submission.
+########## 0105-power-supply-max17042_battery-Keep-the-SOC-alert-on-.patch
+CHECK: Avoid CamelCase: <MAX17042_MiscCFG>
+#71: FILE: drivers/power/supply/max17042_battery.c:1206:
++		regmap_update_bits(chip->regmap, MAX17042_MiscCFG,
+
+total: 0 errors, 0 warnings, 1 checks, 29 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0105-power-supply-max17042_battery-Keep-the-SOC-alert-on-.patch has style problems, please review.
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.
+########## 0106-dt-bindings-thermal-Add-the-Samsung-Exynos9820-TMU.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 83 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0106-dt-bindings-thermal-Add-the-Samsung-Exynos9820-TMU.patch has no obvious style problems and is ready for submission.
+########## 0107-thermal-samsung-Add-the-Exynos9820-TMU-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 228 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0107-thermal-samsung-Add-the-Exynos9820-TMU-driver.patch has no obvious style problems and is ready for submission.
+########## 0108-arm64-dts-exynos-exynos9820-Add-the-TMU-and-the-ther.patch
+total: 0 errors, 0 warnings, 0 checks, 110 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0108-arm64-dts-exynos-exynos9820-Add-the-TMU-and-the-ther.patch has no obvious style problems and is ready for submission.
+########## 0109-dt-bindings-clock-Add-the-Exynos9820-ACPM-clock-IDs.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 36 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0109-dt-bindings-clock-Add-the-Exynos9820-ACPM-clock-IDs.patch has no obvious style problems and is ready for submission.
+########## 0110-clk-samsung-acpm-Add-the-Exynos9820-clocks.patch
+total: 0 errors, 0 warnings, 0 checks, 166 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0110-clk-samsung-acpm-Add-the-Exynos9820-clocks.patch has no obvious style problems and is ready for submission.
+########## 0111-arm64-dts-exynos-exynos9820-Add-CPU-DVFS-through-ACP.patch
+total: 0 errors, 0 warnings, 0 checks, 497 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0111-arm64-dts-exynos-exynos9820-Add-CPU-DVFS-through-ACP.patch has no obvious style problems and is ready for submission.
+########## 0112-dt-bindings-gpu-mali-bifrost-Add-compatible-for-Exyn.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0112-dt-bindings-gpu-mali-bifrost-Add-compatible-for-Exyn.patch has no obvious style problems and is ready for submission.
+########## 0113-arm64-dts-exynos-exynos9820-Add-the-Mali-G76-GPU.patch
+total: 0 errors, 0 warnings, 0 checks, 25 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0113-arm64-dts-exynos-exynos9820-Add-the-Mali-G76-GPU.patch has no obvious style problems and is ready for submission.
+########## 0114-arm64-dts-exynos-exynos9820-Add-GPU-DVFS-through-ACP.patch
+total: 0 errors, 0 warnings, 0 checks, 107 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0114-arm64-dts-exynos-exynos9820-Add-GPU-DVFS-through-ACP.patch has no obvious style problems and is ready for submission.
+########## 0115-arm64-dts-exynos-exynos9820-Throttle-harder-above-92.patch
+total: 0 errors, 0 warnings, 0 checks, 115 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0115-arm64-dts-exynos-exynos9820-Throttle-harder-above-92.patch has no obvious style problems and is ready for submission.
+########## 0116-drm-panfrost-Use-the-AARCH64_4K-page-table-format-on.patch
+total: 0 errors, 0 warnings, 0 checks, 26 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0116-drm-panfrost-Use-the-AARCH64_4K-page-table-format-on.patch has no obvious style problems and is ready for submission.
+########## 0117-arm64-dts-exynos-exynos9820-beyond2lte-Route-Bluetoo.patch
+total: 0 errors, 0 warnings, 0 checks, 14 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0117-arm64-dts-exynos-exynos9820-beyond2lte-Route-Bluetoo.patch has no obvious style problems and is ready for submission.
+########## 0118-arm64-dts-exynos-exynos9820-beyond2lte-Run-the-Bluet.patch
+total: 0 errors, 0 warnings, 0 checks, 13 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0118-arm64-dts-exynos-exynos9820-beyond2lte-Run-the-Bluet.patch has no obvious style problems and is ready for submission.
+########## 0119-arm64-dts-exynos-exynos9820-Add-the-I2C-bus-of-the-s.patch
+total: 0 errors, 0 warnings, 0 checks, 58 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0119-arm64-dts-exynos-exynos9820-Add-the-I2C-bus-of-the-s.patch has no obvious style problems and is ready for submission.
+########## 0120-arm64-dts-exynos-exynos9820-beyond2lte-Enable-the-sp.patch
+total: 0 errors, 0 warnings, 0 checks, 30 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0120-arm64-dts-exynos-exynos9820-beyond2lte-Enable-the-sp.patch has no obvious style problems and is ready for submission.
+########## 0121-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-speak.patch
+total: 0 errors, 0 warnings, 0 checks, 68 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0121-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-speak.patch has no obvious style problems and is ready for submission.
+########## 0122-dt-bindings-spi-samsung-Add-Exynos9820.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0122-dt-bindings-spi-samsung-Add-Exynos9820.patch has no obvious style problems and is ready for submission.
+########## 0123-arm64-dts-exynos-exynos9820-Add-the-SPI-bus-of-the-a.patch
+total: 0 errors, 0 warnings, 0 checks, 58 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0123-arm64-dts-exynos-exynos9820-Add-the-SPI-bus-of-the-a.patch has no obvious style problems and is ready for submission.
+########## 0124-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-audio.patch
+total: 0 errors, 0 warnings, 0 checks, 116 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0124-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-audio.patch has no obvious style problems and is ready for submission.
+########## 0125-arm64-dts-exynos-exynos9820-beyond2lte-Run-the-codec.patch
+total: 0 errors, 0 warnings, 0 checks, 8 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0125-arm64-dts-exynos-exynos9820-beyond2lte-Run-the-codec.patch has no obvious style problems and is ready for submission.
+########## 0126-dt-bindings-clock-exynos9820-Add-CMU_AUD.patch
+total: 0 errors, 0 warnings, 0 checks, 120 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0126-dt-bindings-clock-exynos9820-Add-CMU_AUD.patch has no obvious style problems and is ready for submission.
+########## 0127-clk-samsung-exynos9820-Add-the-CMU_AUD-block.patch
+total: 0 errors, 0 warnings, 0 checks, 484 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0127-clk-samsung-exynos9820-Add-the-CMU_AUD-block.patch has no obvious style problems and is ready for submission.
+########## 0128-arm64-dts-exynos-exynos9820-Add-CMU_AUD.patch
+total: 0 errors, 0 warnings, 0 checks, 21 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0128-arm64-dts-exynos-exynos9820-Add-CMU_AUD.patch has no obvious style problems and is ready for submission.
+########## 0129-dt-bindings-mfd-cirrus-madera-Reference-the-SPI-peri.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0129-dt-bindings-mfd-cirrus-madera-Reference-the-SPI-peri.patch has no obvious style problems and is ready for submission.
+########## 0130-ASoC-dt-bindings-samsung-Add-the-Exynos9820-ABOX.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 89 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0130-ASoC-dt-bindings-samsung-Add-the-Exynos9820-ABOX.patch has no obvious style problems and is ready for submission.
+########## 0131-ASoC-samsung-Add-the-Exynos9820-ABOX-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 748 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0131-ASoC-samsung-Add-the-Exynos9820-ABOX-driver.patch has no obvious style problems and is ready for submission.
+########## 0132-ASoC-dt-bindings-samsung-Add-the-Galaxy-S10-audio-co.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 129 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0132-ASoC-dt-bindings-samsung-Add-the-Galaxy-S10-audio-co.patch has no obvious style problems and is ready for submission.
+########## 0133-ASoC-samsung-Add-the-Galaxy-S10-audio-driver.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 375 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0133-ASoC-samsung-Add-the-Galaxy-S10-audio-driver.patch has no obvious style problems and is ready for submission.
+########## 0134-arm64-dts-exynos-exynos9820-Add-the-ABOX-audio-subsy.patch
+total: 0 errors, 0 warnings, 0 checks, 48 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0134-arm64-dts-exynos-exynos9820-Add-the-ABOX-audio-subsy.patch has no obvious style problems and is ready for submission.
+########## 0135-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-sound.patch
+total: 0 errors, 0 warnings, 0 checks, 89 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0135-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-sound.patch has no obvious style problems and is ready for submission.
+########## 0136-i2c-exynos5-Scale-the-transfer-timeout-with-the-mess.patch
+total: 0 errors, 0 warnings, 0 checks, 37 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0136-i2c-exynos5-Scale-the-transfer-timeout-with-the-mess.patch has no obvious style problems and is ready for submission.
+########## 0137-ASoC-cs35l41-Resume-the-protection-firmware-on-its-f.patch
+total: 0 errors, 0 warnings, 0 checks, 30 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0137-ASoC-cs35l41-Resume-the-protection-firmware-on-its-f.patch has no obvious style problems and is ready for submission.
+########## 0138-ASoC-samsung-beyond-Detect-the-headset-jack-and-its-.patch
+total: 0 errors, 0 warnings, 0 checks, 431 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0138-ASoC-samsung-beyond-Detect-the-headset-jack-and-its-.patch has no obvious style problems and is ready for submission.
+########## 0139-ASoC-cs35l41-Add-the-VP-brownout-controls.patch
+total: 0 errors, 0 warnings, 0 checks, 59 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0139-ASoC-cs35l41-Add-the-VP-brownout-controls.patch has no obvious style problems and is ready for submission.
+########## 0140-ASoC-samsung-exynos9820-abox-Run-the-codec-port-at-9.patch
+total: 0 errors, 0 warnings, 0 checks, 77 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0140-ASoC-samsung-exynos9820-abox-Run-the-codec-port-at-9.patch has no obvious style problems and is ready for submission.
+########## 0141-ASoC-samsung-exynos9820-abox-Support-32-bit-samples.patch
+total: 0 errors, 0 warnings, 0 checks, 45 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0141-ASoC-samsung-exynos9820-abox-Support-32-bit-samples.patch has no obvious style problems and is ready for submission.
+########## 0142-dt-bindings-iio-imu-Add-the-Broadcom-BCM47752.patch
+Traceback (most recent call last):
+  File "C:/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/sources/linux/scripts/spdxcheck.py", line 6, in <module>
+    from ply import lex, yacc
+ModuleNotFoundError: No module named 'ply'
+total: 0 errors, 0 warnings, 0 checks, 153 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0142-dt-bindings-iio-imu-Add-the-Broadcom-BCM47752.patch has no obvious style problems and is ready for submission.
+########## 0143-arm64-dts-exynos-exynos9820-Add-the-SPI-bus-of-the-s.patch
+total: 0 errors, 0 warnings, 0 checks, 58 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0143-arm64-dts-exynos-exynos9820-Add-the-SPI-bus-of-the-s.patch has no obvious style problems and is ready for submission.
+########## 0144-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-senso.patch
+total: 0 errors, 0 warnings, 0 checks, 156 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0144-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-senso.patch has no obvious style problems and is ready for submission.
+########## 0145-dt-bindings-pwm-samsung-Add-the-Exynos9820-compatibl.patch
+total: 0 errors, 0 warnings, 0 checks, 7 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0145-dt-bindings-pwm-samsung-Add-the-Exynos9820-compatibl.patch has no obvious style problems and is ready for submission.
+########## 0146-arm64-dts-exynos-exynos9820-Add-the-PWM-timer-block.patch
+total: 0 errors, 0 warnings, 0 checks, 26 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0146-arm64-dts-exynos-exynos9820-Add-the-PWM-timer-block.patch has no obvious style problems and is ready for submission.
+########## 0147-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-vibra.patch
+total: 0 errors, 0 warnings, 0 checks, 86 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0147-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-vibra.patch has no obvious style problems and is ready for submission.
+########## 0148-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-flip-.patch
+total: 0 errors, 0 warnings, 0 checks, 59 lines checked
+
+/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches/0148-arm64-dts-exynos-exynos9820-beyond2lte-Add-the-flip-.patch has no obvious style problems and is ready for submission.

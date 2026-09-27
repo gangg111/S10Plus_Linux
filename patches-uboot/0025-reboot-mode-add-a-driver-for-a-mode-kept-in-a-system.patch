@@ -1,0 +1,267 @@
+From 173ab192239aa91aefe55bc7eaf7303982d18a09 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 15:27:49 +0200
+Subject: [PATCH 25/40] reboot-mode: add a driver for a mode kept in a system
+ controller
+
+A system on chip with no scratch space of its own that outlives a reset
+keeps the word saying where the next boot should go in a register of its
+power management unit or another system controller.  Linux has written
+that word for years through the binding it calls syscon-reboot-mode, and
+nothing here could read it back, so the request died at the reset.
+
+The uclass already does all of it but the register: it parses the
+mode-<name> properties, matches the word, names it in the environment and
+clears it afterwards.  This driver only hands it a way in and out of that
+register, taking the map from the controller the node sits inside, which
+is where the binding puts it and the only place it can be, since such a
+node carries no window of its own.
+
+The sandbox tree gains a controller with such a node and a test that
+writes the word, asks for the update and checks both halves of the
+answer: the name reached the environment, and the register is back to
+zero.  Sandbox drops readl() and writel() until a test asks for them,
+hence the call that turns them on.  The test that counts the system
+controllers of that tree now counts one more.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/sandbox/dts/test.dts                |  12 +++
+ drivers/reboot-mode/Kconfig              |  12 +++
+ drivers/reboot-mode/Makefile             |   1 +
+ drivers/reboot-mode/reboot-mode-syscon.c | 100 +++++++++++++++++++++++
+ test/dm/reboot-mode.c                    |  35 ++++++++
+ test/dm/syscon.c                         |   4 +-
+ 6 files changed, 163 insertions(+), 1 deletion(-)
+ create mode 100644 drivers/reboot-mode/reboot-mode-syscon.c
+
+diff --git a/arch/sandbox/dts/test.dts b/arch/sandbox/dts/test.dts
+index d24feec5..d5818739 100644
+--- a/arch/sandbox/dts/test.dts
++++ b/arch/sandbox/dts/test.dts
+@@ -1675,6 +1675,18 @@
+ 		};
+ 	};
+ 
++	syscon4: syscon@4 {
++		compatible = "syscon";
++		reg = <0x0001a0 0x10>;
++
++		reboot-mode-syscon {
++			compatible = "syscon-reboot-mode";
++			offset = <0x4>;
++			u-boot,env-variable = "bootstatus";
++			mode-test = <0x21969147>;
++		};
++	};
++
+ 	muxcontroller1: emul-mux-controller {
+ 		compatible = "mux-emul";
+ 		#mux-control-cells = <0>;
+diff --git a/drivers/reboot-mode/Kconfig b/drivers/reboot-mode/Kconfig
+index 3fdb4218..7667fce3 100644
+--- a/drivers/reboot-mode/Kconfig
++++ b/drivers/reboot-mode/Kconfig
+@@ -32,6 +32,18 @@ config DM_REBOOT_MODE_RTC
+ 	  a device in a specific mode by using a register(s) that can be controlled
+ 	  outside U-Boot (e.g. Kernel).
+ 
++config DM_REBOOT_MODE_SYSCON
++	bool "Use a register of a system controller as reboot mode backend"
++	depends on DM_REBOOT_MODE
++	select REGMAP
++	select SYSCON
++	help
++	  Use a register of a system controller to control the reboot mode.
++	  This is where a system on chip with no other scratch space that
++	  survives a reset keeps the word its boot loader reads afterwards, so
++	  an operating system can say where the next boot should go. The
++	  binding is the one Linux calls syscon-reboot-mode.
++
+ config REBOOT_MODE_NVMEM
+ 	bool "Use NVMEM reboot mode"
+ 	depends on DM_REBOOT_MODE && NVMEM
+diff --git a/drivers/reboot-mode/Makefile b/drivers/reboot-mode/Makefile
+index 48c8ab7f..56f7b81f 100644
+--- a/drivers/reboot-mode/Makefile
++++ b/drivers/reboot-mode/Makefile
+@@ -7,4 +7,5 @@
+ obj-$(CONFIG_DM_REBOOT_MODE) += reboot-mode-uclass.o
+ obj-$(CONFIG_DM_REBOOT_MODE_GPIO) += reboot-mode-gpio.o
+ obj-$(CONFIG_DM_REBOOT_MODE_RTC) += reboot-mode-rtc.o
++obj-$(CONFIG_DM_REBOOT_MODE_SYSCON) += reboot-mode-syscon.o
+ obj-$(CONFIG_REBOOT_MODE_NVMEM) += reboot-mode-nvmem.o
+diff --git a/drivers/reboot-mode/reboot-mode-syscon.c b/drivers/reboot-mode/reboot-mode-syscon.c
+new file mode 100644
+index 00000000..91290ff4
+--- /dev/null
++++ b/drivers/reboot-mode/reboot-mode-syscon.c
+@@ -0,0 +1,100 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * Copyright (c) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The reboot mode kept in a register of a system controller, which is where a
++ * system on chip with no other scratch space that survives a reset leaves the
++ * word saying where the next boot should go.  An operating system writes it
++ * and asks for a reset; the boot loader reads it and obeys.
++ *
++ * The binding is the one Linux documents as syscon-reboot-mode: the node is a
++ * child of the controller and has no register window of its own, "offset"
++ * names the register inside the controller, an optional "mask" says which bits
++ * of it belong to the mode, and every "mode-<name>" property gives the value
++ * that stands for <name>.  Reading, matching and clearing are the uclass's
++ * work; all this driver owes it is a way in and out of that register.
++ */
++
++#include <dm.h>
++#include <dm/device_compat.h>
++#include <linux/err.h>
++#include <reboot-mode/reboot-mode.h>
++#include <regmap.h>
++#include <syscon.h>
++
++struct syscon_reboot_mode_priv {
++	struct regmap *map;
++	u32 offset;
++	u32 mask;
++};
++
++static int syscon_reboot_mode_get(struct udevice *dev, u32 *mode)
++{
++	struct syscon_reboot_mode_priv *priv = dev_get_priv(dev);
++	int ret;
++
++	ret = regmap_read(priv->map, priv->offset, mode);
++	if (ret)
++		return ret;
++
++	/*
++	 * Only the bits the tree claims are the mode.  Whatever else shares
++	 * the register belongs to someone else and must not reach the
++	 * comparison against the values from the tree.
++	 */
++	*mode &= priv->mask;
++
++	return 0;
++}
++
++static int syscon_reboot_mode_set(struct udevice *dev, u32 mode)
++{
++	struct syscon_reboot_mode_priv *priv = dev_get_priv(dev);
++
++	return regmap_update_bits(priv->map, priv->offset, priv->mask, mode);
++}
++
++static int syscon_reboot_mode_probe(struct udevice *dev)
++{
++	struct syscon_reboot_mode_priv *priv = dev_get_priv(dev);
++
++	/*
++	 * The controller is the parent and can be nothing else: this node
++	 * carries no reg of its own, so the only window it can reach is the
++	 * one it sits inside.
++	 */
++	priv->map = syscon_node_to_regmap(dev_ofnode(dev->parent));
++	if (IS_ERR(priv->map)) {
++		dev_dbg(dev, "the parent is not a system controller\n");
++		return PTR_ERR(priv->map);
++	}
++
++	if (dev_read_u32(dev, "offset", &priv->offset)) {
++		dev_dbg(dev, "no offset given\n");
++		return -EINVAL;
++	}
++
++	/* Without a mask the whole word is the mode. */
++	priv->mask = dev_read_u32_default(dev, "mask", ~0U);
++
++	return 0;
++}
++
++static const struct reboot_mode_ops syscon_reboot_mode_ops = {
++	.get = syscon_reboot_mode_get,
++	.set = syscon_reboot_mode_set,
++};
++
++static const struct udevice_id syscon_reboot_mode_ids[] = {
++	{ .compatible = "syscon-reboot-mode" },
++	{ }
++};
++
++U_BOOT_DRIVER(syscon_reboot_mode) = {
++	.name = "syscon-reboot-mode",
++	.id = UCLASS_REBOOT_MODE,
++	.of_match = syscon_reboot_mode_ids,
++	.probe = syscon_reboot_mode_probe,
++	.priv_auto = sizeof(struct syscon_reboot_mode_priv),
++	.ops = &syscon_reboot_mode_ops,
++};
+diff --git a/test/dm/reboot-mode.c b/test/dm/reboot-mode.c
+index 9a3b2bf0..350bf15f 100644
+--- a/test/dm/reboot-mode.c
++++ b/test/dm/reboot-mode.c
+@@ -15,6 +15,8 @@
+ #include <test/ut.h>
+ #include <rtc.h>
+ #include <linux/byteorder/generic.h>
++#include <regmap.h>
++#include <syscon.h>
+ 
+ static int dm_test_reboot_mode_gpio(struct unit_test_state *uts)
+ {
+@@ -66,3 +68,36 @@ static int dm_test_reboot_mode_rtc(struct unit_test_state *uts)
+ }
+ DM_TEST(dm_test_reboot_mode_rtc,
+ 	UTF_PROBE_TEST | UTF_SCAN_FDT | UTF_FLAT_TREE);
++
++static int dm_test_reboot_mode_syscon(struct unit_test_state *uts)
++{
++	struct udevice *rm_dev;
++	struct regmap *map;
++	const char *mode;
++	u32 val;
++
++	/* Sandbox drops readl() and writel() until this is asked for. */
++	sandbox_set_enable_memio(true);
++
++	ut_assertok(uclass_get_device_by_name(UCLASS_REBOOT_MODE,
++					      "reboot-mode-syscon", &rm_dev));
++
++	/* The word lives in the controller this node sits inside. */
++	map = syscon_node_to_regmap(dev_ofnode(rm_dev->parent));
++	ut_assertok_ptr(map);
++	ut_assertok(regmap_write(map, 0x4, 0x21969147));
++
++	ut_assertok(dm_reboot_mode_update(rm_dev));
++
++	mode = env_get("bootstatus");
++	ut_assertnonnull(mode);
++	ut_asserteq_str("test", mode);
++
++	/* Read once and gone, or every later boot would go the same way. */
++	ut_assertok(regmap_read(map, 0x4, &val));
++	ut_asserteq(0, val);
++
++	return 0;
++}
++DM_TEST(dm_test_reboot_mode_syscon,
++	UTF_PROBE_TEST | UTF_SCAN_FDT | UTF_FLAT_TREE);
+diff --git a/test/dm/syscon.c b/test/dm/syscon.c
+index 98558597..363f11b7 100644
+--- a/test/dm/syscon.c
++++ b/test/dm/syscon.c
+@@ -24,7 +24,9 @@ static int dm_test_syscon_base(struct unit_test_state *uts)
+ 	ut_assertok(uclass_get_device(UCLASS_SYSCON, 1, &dev));
+ 	ut_asserteq(SYSCON1, dev->driver_data);
+ 
+-	ut_asserteq(-ENODEV, uclass_get_device(UCLASS_SYSCON, 2, &dev));
++	/* syscon@4 carries the reboot mode, so it is the third. */
++	ut_assertok(uclass_get_device(UCLASS_SYSCON, 2, &dev));
++	ut_asserteq(-ENODEV, uclass_get_device(UCLASS_SYSCON, 3, &dev));
+ 
+ 	return 0;
+ }
+-- 
+2.47.3
+

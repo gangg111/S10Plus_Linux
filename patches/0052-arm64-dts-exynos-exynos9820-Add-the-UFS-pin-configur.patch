@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 01:53:19 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the UFS pin
+ configurations
+
+The reset line of the embedded storage and the reference clock going out
+to it.  Both take their second function and hold their level while the
+domain they belong to is down.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index e37677140f7..5cd948284ac 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -498,6 +498,25 @@ gpf3: gpf3-gpio-bank {
+ 		interrupt-controller;
+ 		#interrupt-cells = <2>;
+ 	};
++
++	/*
++	 * The two pins of the embedded storage: the reset line of the device
++	 * and the reference clock going out to it.  Both take their second
++	 * function and keep their level while the domain is down.
++	 */
++	ufs_refclk_out: ufs-refclk-out-pins {
++		samsung,pins = "gpf3-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
++
++	ufs_rst_n: ufs-rst-n-pins {
++		samsung,pins = "gpf3-1";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++	};
+ };
+ 
+ &pinctrl_peric0 {

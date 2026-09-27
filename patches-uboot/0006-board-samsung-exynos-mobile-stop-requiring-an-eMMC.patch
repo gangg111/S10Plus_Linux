@@ -1,7 +1,7 @@
-From 5cc98ef271ab3c933276fa824bc19c485092af17 Mon Sep 17 00:00:00 2001
+From 379579070188004167bf7524d390218d46439ea4 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sat, 19 Sep 2026 03:54:47 +0200
-Subject: [PATCH 6/8] board: samsung: exynos-mobile: stop requiring an eMMC
+Subject: [PATCH 06/40] board: samsung: exynos-mobile: stop requiring an eMMC
 
 This board is meant for Exynos phones, and the newer ones of that family
 have UFS where the older ones have eMMC. Two things here assumed eMMC and

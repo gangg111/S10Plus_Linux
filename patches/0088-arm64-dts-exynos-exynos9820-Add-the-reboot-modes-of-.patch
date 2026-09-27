@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 11:10:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the reboot modes of the
+ bootloader
+
+Describe the word the bootloader reads after a reset to learn where it
+should go.  The values are the ones the vendor driver writes: a fixed
+prefix and the number of the mode.
+
+Without this, getting into the download mode of the bootloader means
+holding buttons while the phone starts, so it takes somebody standing
+next to it.  With it, the same thing is one command over the cable.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 6b13a7e097e..87d954131b4 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -705,6 +705,21 @@ poweroff: syscon-poweroff {
+ 				value = <0x0>;
+ 			};
+ 
++			/*
++			 * What the bootloader reads after a reset to learn where it
++			 * should go.  The values are the ones the vendor driver
++			 * writes: a fixed prefix and the number of the mode.
++			 */
++			reboot_mode: reboot-mode {
++				compatible = "syscon-reboot-mode";
++				offset = <0x080c>;
++				mode-download = <0x12345671>;
++				mode-upload = <0x12345672>;
++				mode-charging = <0x12345673>;
++				mode-recovery = <0x12345674>;
++				mode-bootloader = <0x1234567d>;
++			};
++
+ 			reboot: syscon-reboot {
+ 				compatible = "syscon-reboot";
+ 				regmap = <&pmu_system_controller>;

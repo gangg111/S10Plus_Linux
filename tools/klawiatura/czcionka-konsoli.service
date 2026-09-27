@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0
+# Duza czcionka konsoli na ekranie o wysokiej gestosci.
+#
+# Najwieksza czcionka wbudowana w jadro daje na tym panelu znak szerokosci
+# okolo 0,8 mm, czyli na granicy czytelnosci. Ta jest dwa razy wieksza.
+
+[Unit]
+Description=Czcionka konsoli 32x64
+# Czcionke ustawia sie na konsoli, wiec musi juz istniec.
+After=systemd-vconsole-setup.service
+Before=getty@tty1.service klawiatura.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Bez wskazania konsoli setfont trafia na terminal uslugi, ktorego nie ma.
+ExecStart=/usr/sbin/setfont -C /dev/tty1 /usr/share/consolefonts/ter32x64.psf
+
+[Install]
+WantedBy=multi-user.target

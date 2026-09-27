@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 05:05:40 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the speaker
+ amplifiers
+
+Describe the two CS35L40 amplifiers on hsi2c38: 0x40 drives the bottom
+speaker, 0x41 the earpiece, which doubles as the second speaker.
+
+Both come out of reset with the boost coefficients of the 1.0 uH, below
+20 uF row of the driver table (K1 0x24, K2 0x24, slope 0x75), and the
+vendor driver only ever sets the peak current, to 4100 mA.  Describing
+that row and that current makes the driver program what the phone has
+always run with.
+
+The interrupt line is shared by both amplifiers and pulled up on the
+board: with both GPIO2 outputs off it reads high even while the SoC pulls
+it down.  Drive it open drain from both instead of the push-pull output
+the vendor tree selects, which lets one amplifier fight the other.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 56 +++++++++++++++++++
+ 1 file changed, 56 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 327568ef1c6..b1976026dbd 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -393,6 +393,53 @@ panel_vci: ldo4 {
+ &hsi2c38 {
+ 	clock-frequency = <400000>;
+ 	status = "okay";
++
++	/*
++	 * Both amplifiers come out of reset with the boost coefficients of the
++	 * 1.0 uH, below 20 uF row of the driver table (K1 0x24, K2 0x24, slope
++	 * 0x75), and the vendor driver never changes them, only the peak current.
++	 * Describing that row makes this driver program what the phone always
++	 * ran with.  The interrupt line is shared and pulled up on the board (it
++	 * reads high with both outputs off and the SoC pulling down), so both
++	 * drive it open drain rather than push-pull.  The subsystem ID and the
++	 * prefix name the speaker protection firmware and tuning each part loads,
++	 * cirrus/cs35l41-dsp1-spk-prot-samsung-beyond2lte-{bottom,top}.
++	 */
++	speaker_bottom: amplifier@40 {
++		compatible = "cirrus,cs35l40";
++		reg = <0x40>;
++		#sound-dai-cells = <1>;
++		sound-name-prefix = "Bottom";
++		cirrus,subsystem-id = "samsung-beyond2lte";
++		pinctrl-0 = <&amp_int_pins>;
++		pinctrl-names = "default";
++		interrupts-extended = <&gpm24 0 IRQ_TYPE_LEVEL_LOW>;
++		reset-gpios = <&gph1 1 GPIO_ACTIVE_HIGH>;
++		cirrus,boost-type = <0>;
++		cirrus,boost-peak-milliamp = <4100>;
++		cirrus,boost-ind-nanohenry = <1000>;
++		cirrus,boost-cap-microfarad = <15>;
++		cirrus,asp-sdout-hiz = <3>;
++		cirrus,gpio2-src-select = <2>;
++		cirrus,gpio2-output-enable;
++	};
++
++	speaker_top: amplifier@41 {
++		compatible = "cirrus,cs35l40";
++		reg = <0x41>;
++		#sound-dai-cells = <1>;
++		sound-name-prefix = "Top";
++		cirrus,subsystem-id = "samsung-beyond2lte";
++		interrupts-extended = <&gpm24 0 IRQ_TYPE_LEVEL_LOW>;
++		reset-gpios = <&gph1 2 GPIO_ACTIVE_HIGH>;
++		cirrus,boost-type = <0>;
++		cirrus,boost-peak-milliamp = <4100>;
++		cirrus,boost-ind-nanohenry = <1000>;
++		cirrus,boost-cap-microfarad = <15>;
++		cirrus,asp-sdout-hiz = <3>;
++		cirrus,gpio2-src-select = <2>;
++		cirrus,gpio2-output-enable;
++	};
+ };
+ 
+ /*
+@@ -517,6 +564,15 @@ pmic_irq: pmic-irq-pins {
+ 	};
+ };
+ 
++&pinctrl_cmgp {
++	amp_int_pins: amp-int-pins {
++		samsung,pins = "gpm24-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++};
++
+ &pinctrl_peric0 {
+ 	wlan_en_pins: wlan-en-pins {
+ 		samsung,pins = "gpg0-5";

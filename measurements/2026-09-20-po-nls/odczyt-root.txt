@@ -1,0 +1,185 @@
+Warning: Permanently added '172.16.42.1' (ED25519) to the list of known hosts.
+--- uname ---
+Linux pmos 7.2.0-01001-ga9d566a524be-dirty #10 SMP PREEMPT Sun Sep 20 14:53:21 CEST 2026 aarch64 Linux
+--- dyski ---
+major minor  #blocks  name
+
+   7        0  116334592 loop0
+ 259       16     491520 loop0p1
+ 259       17  115834860 loop0p2
+   8        0  124944384 sda
+   8        1       4608 sda1
+   8        2       7680 sda2
+   8        3      20480 sda3
+   8        4       8192 sda4
+   8        5       8192 sda5
+   8        6        512 sda6
+   8        7      20480 sda7
+   8        8       8192 sda8
+   8        9       4096 sda9
+   8       10       2048 sda10
+   8       11       4096 sda11
+   8       12       8192 sda12
+   8       13       8192 sda13
+   8       14      56320 sda14
+   8       15      66048 sda15
+ 259        0      51200 sda16
+ 259        1       1024 sda17
+ 259        2        512 sda18
+ 259        3       1024 sda19
+ 259        4      16384 sda20
+ 259        5      16384 sda21
+ 259        6      16384 sda22
+ 259        7         64 sda23
+ 259        8       1472 sda24
+ 259        9    5836800 sda25
+ 259       10    1126400 sda26
+ 259       11     634880 sda27
+ 259       12     614400 sda28
+ 259       13      51200 sda29
+ 259       14       5120 sda30
+ 259       15  116334592 sda31
+   8       16       4096 sdb
+   8       32       4096 sdc
+   8       48       8192 sdd
+   8       49       6144 sdd1
+   8       64       8192 sde
+--- montowania ---
+/dev/loop0p2 on / type ext4 (rw,relatime)
+/dev/loop0p1 on /boot type vfat (rw,nosuid,nodev,noexec,relatime,nosymfollow,fmask=0077,dmask=0077,codepage=437,iocharset=ascii,shortname=mixed,errors=remount-ro)
+--- wejscia ---
+I: Bus=0019 Vendor=0001 Product=0001 Version=0100
+N: Name="gpio-keys"
+P: Phys=gpio-keys/input0
+S: Sysfs=/devices/platform/gpio-keys/input/input0
+U: Uniq=
+H: Handlers=kbd event0 
+B: PROP=0
+B: EV=3
+B: KEY=1000000 1c000000000000 0
+
+total 0
+drwxr-xr-x    2 root     root            60 Jan  1  1970 by-path
+crw-rw----    1 root     input      13,  64 Sep 15 17:21 event0
+--- zasilanie ---
+[/sys/class/power_supply/*]
+--- i2c ---
+0-0060
+1-0036
+1-0066
+2-0048
+i2c-0
+i2c-1
+i2c-2
+--- sterowniki, ktore nas obchodza ---
+[    8.622522] SCSI subsystem initialized
+[   13.978584] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 243)
+[   16.963254] i2c_dev: i2c /dev entries driver
+[   17.179902] exynos5-hsi2c 15d50000.i2c: tx timeout
+[   17.731900] exynos5-hsi2c 15d50000.i2c: tx timeout
+[   17.947927] exynos5-hsi2c 15d60000.i2c: tx timeout
+[   18.307898] exynos5-hsi2c 104b0000.i2c: tx timeout
+[   18.420345] s6sy761 2-0048: probe with driver s6sy761 failed with error -110
+[   18.555848] exynos-ufshc 13d60000.ufs: ufshcd_populate_vreg: Unable to find vdd-hba-supply regulator, assuming enabled
+[   18.668447] exynos-ufshc 13d60000.ufs: ufshcd_populate_vreg: Unable to find vcc-supply regulator, assuming enabled
+[   18.780987] exynos-ufshc 13d60000.ufs: ufshcd_populate_vreg: Unable to find vccq-supply regulator, assuming enabled
+[   18.893416] exynos-ufshc 13d60000.ufs: ufshcd_populate_vreg: Unable to find vccq2-supply regulator, assuming enabled
+[   19.007750] scsi host0: ufshcd
+[   19.228892] exynos-ufshc 13d60000.ufs: dme-set: attr-id 0x9540 val 0x1 failed 0 retries
+[   19.341219] exynos-ufshc 13d60000.ufs: dme-set: attr-id 0x321 val 0xd failed 0 retries
+[   19.453769] exynos-ufshc 13d60000.ufs: dme-set: attr-id 0x321 val 0xd failed 0 retries
+[   19.566166] exynos-ufshc 13d60000.ufs: dme-set: attr-id 0x9540 val 0x0 failed 0 retries
+[   19.681225] exynos-ufshc 13d60000.ufs: Power mode changed to : FAST series_B G_3 L_2
+[   19.794362] scsi 0:0:0:49488: Well-known LUN    SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   20.138798] scsi 0:0:0:49476: Well-known LUN    SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   20.361079] scsi 0:0:0:49456: Well-known LUN    SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   20.666808] scsi 0:0:0:0: Direct-Access     SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   20.769853] sd 0:0:0:0: [sda] 31236096 4096-byte logical blocks: (128 GB/119 GiB)
+[   20.982329] scsi 0:0:0:1: Direct-Access     SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   21.084021] sd 0:0:0:0: [sda] Write Protect is off
+[   21.286866] sd 0:0:0:0: [sda] Mode Sense: 00 32 00 10
+[   21.489348] sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, supports DPO and FUA
+[   21.691981] sd 0:0:0:0: [sda] Preferred minimum I/O size 8192 bytes
+[   21.895336] scsi 0:0:0:2: Direct-Access     SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   22.097514] sd 0:0:0:0: [sda] Optimal transfer size 8192 bytes
+[   22.978036] scsi 0:0:0:3: Direct-Access     SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   23.792381] scsi 0:0:0:4: Direct-Access     SAMSUNG  KLUDG4U1EA-B0C1  0002 PQ: 0 ANSI: 6
+[   24.602786] sd 0:0:0:1: [sdb] Attached SCSI disk
+[   24.704195]  sda: sda1 sda2 sda3 sda4 sda5 sda6 sda7 sda8 sda9 sda10 sda11 sda12 sda13 sda14 sda15 sda16 sda17 sda18 sda19 sda20 sda21 sda22 sda23 sda24 sda25 sda26 sda27 sda28 sda29 sda30 sda31
+[   25.274009] sd 0:0:0:0: [sda] Attached SCSI disk
+[   25.610944] sd 0:0:0:2: [sdc] Attached SCSI disk
+[   26.291238] sd 0:0:0:3: [sdd] Attached SCSI disk
+[   26.403943] sd 0:0:0:4: [sde] Attached SCSI disk
+[   33.069439] [pmOS-rd]: Mount subpartitions of /dev/sda31
+[   41.396086] i2c 1-0036: deferred probe pending: i2c: supplier 1-0066 not ready
+--- ogon dmesg ---
+[   52.967704] systemd[1]: Listening on Disk Encryption Enrollment Service Socket.
+[   53.165671] systemd[1]: Listening on Factory Reset Management.
+[   53.348314] systemd[1]: Listening on Hostname Service Socket.
+[   53.537120] systemd[1]: Listening on Journal Socket (/dev/log).
+[   53.724264] systemd[1]: Listening on Journal Sockets.
+[   53.909291] systemd[1]: Listening on DDI File System Mounter Socket.
+[   54.105453] systemd[1]: Listening on Console Output Muting Service Socket.
+[   54.274634] systemd[1]: Listening on Namespace Resource Manager Socket.
+[   54.452973] systemd[1]: Userspace Out-Of-Memory (OOM) Killer Socket skipped, unmet condition check ConditionPathExists=/proc/pressure/memory
+[   54.617947] systemd[1]: TPM PCR Measurements skipped, unmet condition check ConditionSecurity=measured-os
+[   54.765210] systemd[1]: Make TPM PCR Policy skipped, unmet condition check ConditionSecurity=measured-uki
+[   54.916821] systemd[1]: Listening on Disk Repartitioning Service Socket.
+[   55.099230] systemd[1]: Listening on Report System Basic Metrics Socket.
+[   55.313508] systemd[1]: Listening on CGroup Report Varlink Socket.
+[   55.493823] systemd[1]: Listening on Report Files Metrics Socket.
+[   55.693265] systemd[1]: Listening on Report Signing Socket (Local Software Key).
+[   55.866020] systemd[1]: Report Signing Socket (TPM2) skipped, unmet condition check ConditionSecurity=measured-uki
+[   56.023991] systemd[1]: Report Signing Socket (configfs-tsm) skipped, unmet condition check ConditionSecurity=cvm
+[   56.175269] systemd[1]: Listening on System Report Socket.
+[   56.342628] systemd[1]: Listening on Resolve Monitor Varlink Socket.
+[   56.524862] systemd[1]: Listening on Resolve Service Varlink Socket.
+[   56.720848] systemd[1]: Listening on Simple Block Device Backed Storage Provider.
+[   56.912964] systemd[1]: Listening on Simple File System Backed Storage Provider.
+[   57.091705] systemd[1]: Listening on System Install Tool.
+[   57.264866] systemd[1]: Recompute TPM PCR Policy on Completed System Update skipped, unmet condition check ConditionSecurity=measured-uki
+[   57.437941] systemd[1]: Listening on System Updates.
+[   57.604186] systemd[1]: Listening on udev Kernel Socket.
+[   57.771783] systemd[1]: Listening on udev Varlink Socket.
+[   57.952209] systemd[1]: Mounting Huge Pages File System...
+[   58.176157] systemd[1]: Mounting POSIX Message Queue File System...
+[   58.392411] systemd[1]: Mounting Kernel Debug File System...
+[   58.578593] systemd[1]: Kernel Trace File System skipped, unmet condition check ConditionPathExists=/sys/kernel/tracing
+[   58.738930] systemd[1]: Create List of Static Device Nodes skipped, unmet condition check ConditionFileNotEmpty=/lib/modules/7.2.0-01001-ga9d566a524be-dirty/modules.devname
+[   58.886513] systemd[1]: Load Kernel Module configfs skipped, unmet condition check ConditionKernelModuleLoaded=!configfs
+[   59.033981] systemd[1]: Load Kernel Module drm skipped, unmet condition check ConditionKernelModuleLoaded=!drm
+[   59.181455] systemd[1]: Load Kernel Module efi_pstore skipped, unmet condition check ConditionKernelModuleLoaded=!efi_pstore
+[   59.336311] systemd[1]: Starting Load Kernel Module fuse...
+[   59.544083] systemd[1]: Starting nftables static rule set...
+[   59.764420] systemd[1]: Starting Enable compressed swap in memory using zram...
+[   59.996926] systemd[1]: Clear SysFail Entry If The Boot Is Successful skipped, unmet condition check ConditionPathExists=/sys/firmware/efi/efivars/LoaderEntrySysFail-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+[   60.284779] systemd[1]: File System Check on Root Device skipped, unmet condition check ConditionPathIsReadWrite=!/
+[   60.456472] systemd[1]: Starting Journal Service...
+[   60.668655] systemd[1]: Load Kernel Modules skipped, no trigger condition checks were met.
+[   60.890878] systemd[1]: TPM PCR Machine ID Measurement skipped, unmet condition check ConditionSecurity=measured-os
+[   61.045472] systemd[1]: TPM PCR Root File System Measurement skipped, unmet condition check ConditionSecurity=measured-os
+[   61.198721] systemd-journald[352]: Collecting audit messages is disabled.
+[   61.328141] systemd[1]: TPM PCR OS Separator skipped, unmet condition check ConditionSecurity=measured-os
+[   61.516366] systemd[1]: Starting Remount Root and Kernel File Systems...
+[   61.828195] systemd[1]: Starting Apply Kernel Variables...
+[   62.048381] EXT4-fs (loop0p2): re-mounted 57990aa3-7e81-47bf-9a96-ae3d0090d3bd.
+[   62.260459] systemd[1]: Starting Create Static Device Nodes in /dev gracefully...
+[   62.475082] systemd[1]: Early TPM SRK Setup skipped, unmet condition check ConditionSecurity=measured-os
+[   62.652482] systemd[1]: TPM PCR NvPCR Initialization Separator skipped, unmet condition check ConditionPathExists=/etc/initrd-release
+[   62.812166] systemd[1]: TPM NvPCR Product ID Measurement skipped, unmet condition check ConditionSecurity=measured-os
+[   62.980717] systemd[1]: Starting Load udev Rules from Credentials...
+[   63.181086] systemd[1]: Starting Coldplug All udev Devices...
+[   63.424191] systemd[1]: Starting Virtual Console Setup...
+[   63.834755] systemd[1]: Started Journal Service.
+[   65.350734] systemd-journald[352]: Received client request to flush runtime journal.
+[   67.115912] random: crng init done
+--- bledy systemd ---
+  UNIT                           LOAD   ACTIVE SUB    DESCRIPTION
+● nftables.service               loaded failed failed nftables static rule set
+● postmarketos-zram-swap.service loaded failed failed Enable compressed swap in memory using zram
+
+Legend: LOAD   → Reflects whether the unit definition was properly loaded.
+        ACTIVE → The high-level unit activation state, i.e. generalization of SUB.
+        SUB    → The low-level unit activation state, values depend on unit type.
+
+2 loaded units listed.

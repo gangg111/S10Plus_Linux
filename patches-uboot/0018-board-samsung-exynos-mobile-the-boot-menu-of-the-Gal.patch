@@ -1,0 +1,726 @@
+From 9fc12d077ad1afc70af7c3449b63455cf48ec4c7 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 18/40] board: samsung: exynos-mobile: the boot menu of the
+ Galaxy S10+
+
+The phone has no serial port that a user can reach: the connector carries
+it, but only behind a jig that this port could not make work, and the one
+thing a user does have is the panel and three keys.  So the boot loader
+gets a menu on the panel, driven by volume up, volume down and power.
+
+Eight entries, and each one does something a person with a phone in their
+hand actually needs: continue, fastboot, the UEFI maintenance menu, reboot,
+power off, a storage report, the driver model tree and download mode.  The
+two diagnostic entries are there because this is a port under construction
+and the answers they print are otherwise unreachable without a cable.
+
+Four languages, because the point of the panel is that it is the only thing
+the user can read.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/exynos-mobile.c   | 515 ++++++++++++++++--
+ board/samsung/exynos-mobile/exynos-mobile.env |  12 +
+ configs/exynos9820-beyond2lte_defconfig       |  28 +-
+ 3 files changed, 503 insertions(+), 52 deletions(-)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index dd8a3ff1..9000b228 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -8,8 +8,11 @@
+ #include <asm/armv8/mmu.h>
+ #include <asm/io.h>
+ #include <blk.h>
++#include <charset.h>
+ #include <bootflow.h>
++#include <cpu_func.h>
+ #include <ctype.h>
++#include <dm.h>
+ #include <dm/ofnode.h>
+ #include <efi.h>
+ #include <efi_loader.h>
+@@ -19,11 +22,14 @@
+ #include <linux/sizes.h>
+ #include <lmb.h>
+ #include <part.h>
++#include <scsi.h>
+ #include <stdbool.h>
++#include <video_console.h>
+ #include <string.h>
+ 
+ DECLARE_GLOBAL_DATA_PTR;
+ 
++
+ #define lmb_alloc(size, addr) \
+ 	lmb_alloc_mem(LMB_MEM_ALLOC_ANY, SZ_2M, addr, size, LMB_NONE)
+ 
+@@ -211,6 +217,17 @@ static struct blk_desc *exynos_get_boot_blk(const char **ifname, int devnum)
+ 	struct blk_desc *desc;
+ 	int i;
+ 
++	/*
++	 * Nothing has scanned the SCSI bus by the time this runs.  The MMC
++	 * bus is scanned on the way here, but a SCSI bus is only ever scanned
++	 * by the command of that name, and what is looked up below is the
++	 * list of block devices that a scan is what creates.  On a phone
++	 * whose storage hangs off UFS that would mean never finding it at
++	 * all, so the scan is done here.
++	 */
++	if (IS_ENABLED(CONFIG_SCSI))
++		scsi_scan(false);
++
+ 	for (i = 0; i < ARRAY_SIZE(ifnames); i++) {
+ 		desc = blk_get_dev(ifnames[i], devnum);
+ 		if (desc) {
+@@ -359,40 +376,78 @@ int timer_init(void)
+ }
+ 
+ /*
+- * A sign of life, put on the screen before anything else has run.
++ * Marks of life, painted on the screen as the start up gets on.
++ *
++ * On a phone there is nowhere else for a boot loader to say how far it got.
++ * There is no serial port to plug into, and whether the console comes up at
++ * all depends on clocks, drivers and a device tree that may every one of them
++ * be wrong.  So each of four points of the start up paints its own band of
++ * colour, stacked up from the bottom of the screen, and what is on the screen
++ * when it stops is a map of how far it came:
+  *
+- * Two things are going on here, and both are for the same reason: on a phone
+- * there is nowhere else for a boot loader to say that it got as far as running
+- * at all.  There is no serial port to plug into, and whether the console comes
+- * up depends on clocks, drivers and a device tree that may all be wrong.  So a
+- * band of colour is painted along the bottom of the screen from the earliest
+- * hook there is, before relocation, before any driver and before the console.
+- * If the band shows and no text follows, the boot loader started and something
+- * later hung; if nothing shows at all, it never ran or the screen is not where
+- * this thinks it is.  Those two used to look exactly alike.
++ *	nothing		it never ran, or the screen is not where this thinks
++ *	magenta		it entered the image and could read the device tree
++ *	and cyan	the memory, the relocation and the driver model
++ *	and yellow	the tables the console is built on
++ *	and green	the console itself, and the command line behind it
+  *
+- * The band goes at the bottom because the console starts writing at the top,
+- * so the two do not overwrite each other and can be read together.
++ * The bands go at the bottom because the console starts writing at the top,
++ * so the two can be read together rather than over each other.
+  *
+- * Before any of that the display controller has to be told to push what is in
++ * Before any of it the display controller has to be told to push what is in
+  * the framebuffer out to the panel.  The panel of these phones is a command
+  * mode one: it shows a picture when it is triggered, and by the time a boot
+- * loader runs nothing is triggering it any more, so whatever is written to the
+- * framebuffer stays invisible and the screen keeps the picture it came up
+- * with.  The register is this SoC's DECON_HW_SW_TRIG_CONTROL, and the address
+- * of the controller comes out of the device tree, so nothing at all happens on
+- * a board whose tree has no such controller.  The value written to it is the
+- * one uniLoader hands the sibling phone of this family.
+- *
+- * UNVERIFIED: none of this has been tried on hardware.
++ * loader runs nothing is triggering it any more, so whatever is written to
++ * the framebuffer stays invisible and the screen keeps the picture it came up
++ * with.  That is why the trigger is handed over again after every band and
++ * not just once.  The controller's address comes out of the device tree, so
++ * nothing at all happens on a board whose tree has no such controller; the
++ * register offset and the value are constants, and the value is the one
++ * uniLoader hands the sibling phone of this family.
+  */
+ #define EXYNOS_DECON_HW_SW_TRIG_CONTROL		0x70
+ #define EXYNOS_DECON_SW_TRIG_ON			0x1281
+-#define EXYNOS_SIGN_OF_LIFE_ROWS		128
+-#define EXYNOS_SIGN_OF_LIFE_COLOUR		0xffff00ff	/* opaque magenta */
++#define EXYNOS_MARK_ROWS			64
++
++enum exynos_mark_stage {
++	EXYNOS_MARK_ENTERED,	/* before the memory, before relocation  */
++	EXYNOS_MARK_DRIVERS,	/* memory, relocation, the driver model  */
++	EXYNOS_MARK_STDIO,	/* the tables the console is built on    */
++	EXYNOS_MARK_CONSOLE,	/* the console, and the command line     */
++	EXYNOS_MARK_COUNT,
++};
++
++static const u32 exynos_mark_colour[EXYNOS_MARK_COUNT] = {
++	0xffff00ff,	/* magenta */
++	0xff00ffff,	/* cyan    */
++	0xffffff00,	/* yellow  */
++	0xff00ff00,	/* green   */
++};
++
++static void exynos_decon_trigger(const void *fdt)
++{
++	fdt_addr_t base;
++	int node, parent;
++
++	node = fdt_node_offset_by_compatible(fdt, -1,
++					     "samsung,exynos9820-decon");
++	if (node < 0)
++		return;
++
++	parent = fdt_parent_offset(fdt, node);
++	base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg", 0,
++						NULL, false);
++	if (base == FDT_ADDR_T_NONE)
++		return;
++
++	writel(EXYNOS_DECON_SW_TRIG_ON,
++	       (void __iomem *)(uintptr_t)base +
++	       EXYNOS_DECON_HW_SW_TRIG_CONTROL);
++}
+ 
+-static void exynos_show_sign_of_life(const void *fdt)
++static void exynos_mark(enum exynos_mark_stage stage)
+ {
++	const void *fdt = gd->fdt_blob;
+ 	u32 height, stride, rows, *pixel;
+ 	fdt_addr_t base;
+ 	fdt_size_t size;
+@@ -400,16 +455,8 @@ static void exynos_show_sign_of_life(const void *fdt)
+ 	u64 offset;
+ 	u32 i, words;
+ 
+-	node = fdt_node_offset_by_compatible(fdt, -1, "samsung,exynos9820-decon");
+-	if (node >= 0) {
+-		parent = fdt_parent_offset(fdt, node);
+-		base = fdtdec_get_addr_size_auto_parent(fdt, parent, node, "reg",
+-							0, NULL, false);
+-		if (base != FDT_ADDR_T_NONE)
+-			writel(EXYNOS_DECON_SW_TRIG_ON,
+-			       (void __iomem *)(uintptr_t)base +
+-			       EXYNOS_DECON_HW_SW_TRIG_CONTROL);
+-	}
++	if (stage >= EXYNOS_MARK_COUNT)
++		return;
+ 
+ 	node = fdt_node_offset_by_compatible(fdt, -1, "simple-framebuffer");
+ 	if (node < 0)
+@@ -430,20 +477,31 @@ static void exynos_show_sign_of_life(const void *fdt)
+ 	if ((u64)stride * height > size)
+ 		return;
+ 
+-	rows = EXYNOS_SIGN_OF_LIFE_ROWS;
+-	if (height < rows)
+-		rows = height;
+-	offset = (u64)stride * (height - rows);
++	rows = EXYNOS_MARK_ROWS;
++	if (height < rows * (stage + 1))
++		return;
++
++	offset = (u64)stride * (height - rows * (stage + 1));
+ 	words = rows * (stride / sizeof(*pixel));
+ 
+ 	pixel = (u32 *)(uintptr_t)(base + offset);
+ 	for (i = 0; i < words; i++)
+-		pixel[i] = EXYNOS_SIGN_OF_LIFE_COLOUR;
++		pixel[i] = exynos_mark_colour[stage];
++
++	/*
++	 * Past the point where the caches come on this is mapped as ordinary
++	 * memory, so without this the pixels would sit in the cache, where
++	 * the display controller, which reads the memory itself, would never
++	 * see them.  Every band but the first is painted after that point.
++	 */
++	flush_dcache_range((ulong)pixel, (ulong)(pixel + words));
++
++	exynos_decon_trigger(fdt);
+ }
+ 
+ int board_early_init_f(void)
+ {
+-	exynos_show_sign_of_life(gd->fdt_blob);
++	exynos_mark(EXYNOS_MARK_ENTERED);
+ 	exynos_parse_dram_banks(gd->fdt_blob);
+ 
+ 	return 0;
+@@ -478,18 +536,393 @@ int dram_init_banksize(void)
+ 
+ int board_init(void)
+ {
++	exynos_mark(EXYNOS_MARK_DRIVERS);
++
++	return 0;
++}
++
++int board_early_init_r(void)
++{
++	exynos_mark(EXYNOS_MARK_STDIO);
++
++	return 0;
++}
++
++int board_late_init(void)
++{
++	exynos_mark(EXYNOS_MARK_CONSOLE);
++
++	return 0;
++}
++
++/*
++ * The menu this board draws: its own name, what it found, and where it can go,
++ * in whichever of four languages is picked.
++ *
++ * The generic boot menu takes every line it draws from the environment, so all
++ * of this is a matter of setting variables: bootmenu_hdr_<n> above the entries,
++ * bootmenu_<n> for the entries themselves, bootmenu_ftr_<n> below them.
++ * Changing language is then setting them again and asking for the menu once
++ * more, which is what the bmenu command below does.
++ *
++ * Nothing here mixes languages: a line is either wholly in the chosen one or
++ * it is a name, a number or a unit, which are the same everywhere.
++ */
++
++enum exynos_lang {
++	EXYNOS_LANG_DE,
++	EXYNOS_LANG_EN,
++	EXYNOS_LANG_ES,
++	EXYNOS_LANG_PL,
++	EXYNOS_LANG_COUNT,
++};
++
++struct exynos_menu_text {
++	const char *code;	/* what to write in the environment	*/
++	const char *own_name;	/* what the language calls itself	*/
++	const char *entry[8];
++	const char *language;
++	const char *back;
++	const char *keys;
++	const char *banks;	/* "%u MB ..." with the count of banks	*/
++	const char *no_link;
++	const char *unknown;
++};
++
++/*
++ * In the order each language names itself, which is the order they are offered
++ * in: Deutsch, English, Espanol, Polski.
++ */
++static const struct exynos_menu_text exynos_menu_lang[EXYNOS_LANG_COUNT] = {
++	{
++		.code = "de", .own_name = "Deutsch",
++		.entry = { "System starten", "Fastboot-Modus", "UEFI-Wartung",
++			   "Neustart", "Ausschalten", "Speicher-Diagnose",
++			   "Treiberbaum", "Download-Modus" },
++		.language = "Sprache", .back = "Zurück",
++		.keys = "VOL+/-  bewegen   POWER  wählen",
++		.banks = "%u MB in %u Bänken",
++		.no_link = "Verbindung fehlt", .unknown = "unbekannt",
++	}, {
++		.code = "en", .own_name = "English",
++		.entry = { "Continue boot", "Fastboot mode", "UEFI maintenance",
++			   "Reboot", "Power off", "Storage diagnostics",
++			   "Driver tree", "Download mode" },
++		.language = "Language", .back = "Back",
++		.keys = "VOL+/-  move      POWER  select",
++		.banks = "%u MB in %u banks",
++		.no_link = "link did not come up", .unknown = "unknown",
++	}, {
++		.code = "es", .own_name = "Español",
++		.entry = { "Iniciar el sistema", "Modo Fastboot",
++			   "Mantenimiento UEFI", "Reiniciar", "Apagar",
++			   "Diagnóstico de disco", "Árbol de controladores",
++			   "Modo Download" },
++		.language = "Idioma", .back = "Volver",
++		.keys = "VOL+/-  mover     POWER  elegir",
++		.banks = "%u MB en %u bancos",
++		.no_link = "sin enlace", .unknown = "desconocido",
++	}, {
++		.code = "pl", .own_name = "Polski",
++		.entry = { "Uruchom system", "Tryb Fastboot", "Obsługa UEFI",
++			   "Restart", "Wyłącz", "Diagnostyka pamięci",
++			   "Drzewo sterowników", "Tryb Download" },
++		.language = "Język", .back = "Wstecz",
++		.keys = "VOL+/-  ruch      POWER  wybierz",
++		.banks = "%u MB w %u bankach",
++		.no_link = "łącze nie wstało", .unknown = "nieznany",
++	},
++};
++
++/* What each entry does, in the same order, and the same in every language. */
++static const char * const exynos_menu_cmd[8] = {
++	/*
++	 * Each of these ends by asking for the menu again, because selecting
++	 * an entry leaves it: without that, a command which returns drops to
++	 * a command line that two volume keys cannot type into, and the next
++	 * keypress is read there as a command. The three that never return,
++	 * reset, poweroff and the one that reboots into Download mode, have
++	 * nothing to add.
++	 */
++	"boot; bootmenu",
++	"run fastbootcmd; bootmenu",
++	"eficonfig; bootmenu",
++	"reset",
++	"poweroff",
++	"run diag_storage",
++	"run diag_dm",
++	"run dlmode",
++};
++
++#define EXYNOS_MENU_NAME	"B E Y O N D   B O O T"
++#define EXYNOS_MENU_MAX_COLS	96
++
++static const struct exynos_menu_text *exynos_menu_chosen(void)
++{
++	const char *code = env_get("menu_lang");
++	int i;
++
++	if (code) {
++		for (i = 0; i < EXYNOS_LANG_COUNT; i++) {
++			if (!strcmp(code, exynos_menu_lang[i].code))
++				return &exynos_menu_lang[i];
++		}
++	}
++
++	return &exynos_menu_lang[EXYNOS_LANG_EN];
++}
++
++/*
++ * How wide the console is, in characters. Everything framed below is drawn to
++ * that width, so a different panel or font needs no changes here.
++ */
++static int exynos_menu_cols(void)
++{
++	struct vidconsole_priv *priv;
++	struct udevice *con;
++
++	if (uclass_first_device_err(UCLASS_VIDEO_CONSOLE, &con))
++		return 0;
++
++	priv = dev_get_uclass_priv(con);
++	if (priv->cols < 24)
++		return 0;
++
++	return min_t(int, priv->cols, EXYNOS_MENU_MAX_COLS);
++}
++
++/*
++ * Length in characters rather than in bytes: the accented letters of three of
++ * these languages take more than one byte each, and counting bytes would pull
++ * every frame around them out of true. A byte that is not a continuation byte
++ * starts a character.
++ */
++static int exynos_menu_len(const char *s)
++{
++	int n = 0;
++
++	for (; *s; s++) {
++		if ((*s & 0xc0) != 0x80)
++			n++;
++	}
++
++	return n;
++}
++
++static void exynos_menu_var(const char *prefix, int n, const char *value)
++{
++	char name[24];
++
++	snprintf(name, sizeof(name), "%s_%d", prefix, n);
++	env_set(name, value);
++}
++
++/* A line of the frame, in the colour the rest of the frame is drawn in. */
++static void exynos_menu_rule(const char *prefix, int n, int cols)
++{
++	char buf[EXYNOS_MENU_MAX_COLS + 16];
++	int i, at = 0;
++
++	at += snprintf(buf + at, sizeof(buf) - at, "\033[33m+");
++	for (i = 0; i < cols - 2; i++)
++		buf[at++] = '-';
++	snprintf(buf + at, sizeof(buf) - at, "+\033[0m");
++	exynos_menu_var(prefix, n, buf);
++}
++
++static void exynos_menu_middle(const char *prefix, int n, int cols,
++			       const char *text, const char *colour)
++{
++	char buf[EXYNOS_MENU_MAX_COLS * 2];
++	int len = exynos_menu_len(text);
++	int pad = (cols - 2 - len) / 2;
++
++
++	if (pad < 0)
++		pad = 0;
++
++	snprintf(buf, sizeof(buf), "\033[33m|%*s\033[%sm%s\033[0;33m%*s|\033[0m",
++		 pad, "", colour, text, cols - 2 - pad - len, "");
++	exynos_menu_var(prefix, n, buf);
++}
++
++static void exynos_menu_field(const char *prefix, int n, int cols,
++			      const char *label, const char *value,
++			      const char *colour)
++{
++	char buf[EXYNOS_MENU_MAX_COLS * 2];
++	int len = exynos_menu_len(value);
++	int room = cols - 10;
++
++	if (len > room)
++		len = room;
++
++	snprintf(buf, sizeof(buf), "\033[33m| %-6s \033[%sm%.*s%*s\033[0;33m|\033[0m",
++		 label, colour, (int)strlen(value), value, room - len, "");
++	exynos_menu_var(prefix, n, buf);
++}
++
++/*
++ * What the storage probe found, kept from the first time it ran.
++ *
++ * It is the one expensive thing on this screen: looking for a block device
++ * scans the SCSI bus, and on a phone whose link does not come up that is four
++ * timeouts. Doing it again every time the menu is rebuilt, which is what
++ * changing language does, is felt as a menu that takes seconds to answer.
++ */
++static struct {
++	bool probed;
++	bool found;
++	char text[40];
++} exynos_storage;
++
++static void exynos_storage_probe(void)
++{
++	const struct blk_desc *blk;
++	const char *ifname;
++
++	if (exynos_storage.probed)
++		return;
++
++	exynos_storage.probed = true;
++
++	blk = exynos_get_boot_blk(&ifname, 0);
++	if (!blk)
++		return;
++
++	exynos_storage.found = true;
++	snprintf(exynos_storage.text, sizeof(exynos_storage.text),
++		 "%s  %llu MB", ifname, ((u64)blk->lba * blk->blksz) >> 20);
++}
++
++static void exynos_menu_hardware(const struct exynos_menu_text *txt, int cols)
++{
++	struct udevice *con;
++	char buf[64];
++	u64 total = 0;
++	u32 banks = 0;
++	int i;
++
++	/*
++	 * Summed rather than taken from gd->ram_size, which is the one region
++	 * U-Boot picked to live in, not what the phone has.
++	 */
++	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
++		if (gd->dram[i].size) {
++			total += gd->dram[i].size;
++			banks++;
++		}
++	}
++
++	exynos_menu_field("bootmenu_hdr", 4, cols, "SoC",
++			  env_get("platform") ? : txt->unknown, "1;33");
++
++	snprintf(buf, sizeof(buf), txt->banks, (u32)(total >> 20), banks);
++	exynos_menu_field("bootmenu_hdr", 5, cols, "DRAM", buf, "1;33");
++
++	if (!uclass_first_device_err(UCLASS_VIDEO_CONSOLE, &con)) {
++		struct vidconsole_priv *vc = dev_get_uclass_priv(con);
++		struct video_priv *vid = dev_get_uclass_priv(con->parent);
++
++		snprintf(buf, sizeof(buf), "%dx%d  %dx%d", vid->xsize,
++			 vid->ysize, vc->cols, vc->rows);
++		exynos_menu_field("bootmenu_hdr", 6, cols, "Panel", buf, "1;33");
++	}
++
++	exynos_storage_probe();
++	if (exynos_storage.found)
++		exynos_menu_field("bootmenu_hdr", 7, cols, "UFS",
++				  exynos_storage.text, "1;32");
++	else
++		exynos_menu_field("bootmenu_hdr", 7, cols, "UFS", txt->no_link,
++				  "1;31");
++}
++
++/**
++ * exynos_menu_build() - put the whole menu into the environment
++ *
++ * @lang_list:	true to offer the languages instead of the usual entries
++ */
++static void exynos_menu_build(bool lang_list)
++{
++	const struct exynos_menu_text *txt = exynos_menu_chosen();
++	char buf[EXYNOS_MENU_MAX_COLS * 2];
++	int cols = exynos_menu_cols();
++	int i, n = 0;
++
++	if (!cols)
++		return;
++
++	exynos_menu_rule("bootmenu_hdr", 0, cols);
++	exynos_menu_middle("bootmenu_hdr", 1, cols, EXYNOS_MENU_NAME, "1;33");
++	snprintf(buf, sizeof(buf), "%s  .  %s",
++		 env_get("platform") ? : "", env_get("board") ? : "");
++	exynos_menu_middle("bootmenu_hdr", 2, cols, buf, "33");
++	exynos_menu_rule("bootmenu_hdr", 3, cols);
++	exynos_menu_hardware(txt, cols);
++	exynos_menu_rule("bootmenu_hdr", 8, cols);
++
++	if (lang_list) {
++		for (i = 0; i < EXYNOS_LANG_COUNT; i++) {
++			snprintf(buf, sizeof(buf), "%s=setenv menu_lang %s; bmenu; bootmenu",
++				 exynos_menu_lang[i].own_name,
++				 exynos_menu_lang[i].code);
++			exynos_menu_var("bootmenu", n++, buf);
++		}
++		snprintf(buf, sizeof(buf), "%s=bmenu; bootmenu", txt->back);
++		exynos_menu_var("bootmenu", n++, buf);
++	} else {
++		for (i = 0; i < 8; i++) {
++			snprintf(buf, sizeof(buf), "%s=%s", txt->entry[i],
++				 exynos_menu_cmd[i]);
++			exynos_menu_var("bootmenu", n++, buf);
++		}
++		snprintf(buf, sizeof(buf), "%s=bmenu lang; bootmenu",
++			 txt->language);
++		exynos_menu_var("bootmenu", n++, buf);
++	}
++
++	/* Whatever the longer list left behind has to go, or it stays on. */
++	for (i = n; i < EXYNOS_LANG_COUNT + 9; i++)
++		exynos_menu_var("bootmenu", i, NULL);
++
++	exynos_menu_rule("bootmenu_ftr", 0, cols);
++	exynos_menu_middle("bootmenu_ftr", 1, cols, txt->keys, "33");
++	exynos_menu_rule("bootmenu_ftr", 2, cols);
++}
++
++static int do_bmenu(struct cmd_tbl *cmdtp, int flag, int argc,
++		    char *const argv[])
++{
++	exynos_menu_build(argc > 1 && !strcmp(argv[1], "lang"));
++
+ 	return 0;
+ }
+ 
++U_BOOT_CMD(bmenu, 2, 1, do_bmenu,
++	   "rebuild the board's boot menu",
++	   "       - the usual entries\n"
++	   "bmenu lang  - the list of languages"
++);
++
+ int misc_init_r(void)
+ {
+ 	int ret;
+ 
+ 	exynos_env_setup();
+ 
++	/*
++	 * A boot loader that cannot find storage should still bring up its
++	 * command line: that is the one tool there is for working out why it
++	 * could not.  Returning the error here would instead hang the board,
++	 * because that is what a failed initcall does.
++	 */
+ 	ret = exynos_blk_env_setup();
+ 	if (ret)
+-		return ret;
++		log_warning("%s: carrying on without storage (%d)\n",
++				    __func__, ret);
++
++	exynos_menu_build(false);
+ 
+ 	return exynos_fastboot_setup();
+ }
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.env b/board/samsung/exynos-mobile/exynos-mobile.env
+index 33f76731..1da33815 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.env
++++ b/board/samsung/exynos-mobile/exynos-mobile.env
+@@ -8,6 +8,7 @@ blkmapcmd=blkmap create root;
+ preboot=run blkmapcmd
+ 
+ bootdelay=0
++bootmenu_delay=-1
+ bootcmd=bootefi bootmgr; pause; bootmenu
+ 
+ fastbootcmd=echo "Fastboot Mode";
+@@ -18,6 +19,17 @@ bootmenu_1=Enter Fastboot Mode=run fastbootcmd
+ bootmenu_2=UEFI Maintenance Menu=eficonfig
+ bootmenu_3=Reboot=reset
+ bootmenu_4=Power Off=poweroff
++bootmenu_5=Storage diagnostics=run diag_storage
++bootmenu_6=Driver model tree=run diag_dm
++bootmenu_7=Reboot to Download mode=run dlmode
++
++dlmode=mw.l 0x1586080c 0x12345671; reset
++
++diag_storage=echo "--- ufs init ---"; ufs init;
++	     echo "--- scsi part ---"; scsi part;
++	     echo "--- done, press a key ---"; pause; bootmenu
++
++diag_dm=dm tree; echo "--- done, press a key ---"; pause; bootmenu
+ 
+ button_cmd_0_name=Volume Down Key
+ button_cmd_0=bootmenu
+diff --git a/configs/exynos9820-beyond2lte_defconfig b/configs/exynos9820-beyond2lte_defconfig
+index 519a4a2e..3c67beb1 100644
+--- a/configs/exynos9820-beyond2lte_defconfig
++++ b/configs/exynos9820-beyond2lte_defconfig
+@@ -19,25 +19,23 @@ CONFIG_SAVE_PREV_BL_INITRAMFS_START_ADDR=y
+ CONFIG_SYS_PBSIZE=1024
+ CONFIG_BOARD_TYPES=y
+ # CONFIG_DISPLAY_CPUINFO is not set
++CONFIG_BOARD_EARLY_INIT_R=y
++CONFIG_BOARD_LATE_INIT=y
+ CONFIG_MISC_INIT_R=y
+ CONFIG_HUSH_PARSER=y
+ CONFIG_CMD_BOOTMENU=y
+-CONFIG_CMD_POWEROFF=y
+-CONFIG_CMD_FS_GENERIC=y
+ CONFIG_CMD_CLK=y
+-CONFIG_CMD_DM=y
+-CONFIG_CMD_FDT=y
+-CONFIG_CMD_PINMUX=y
+-CONFIG_CMD_SCSI=y
++CONFIG_CMD_POWEROFF=y
+ CONFIG_CMD_UFS=y
++CONFIG_CMD_FS_GENERIC=y
+ CONFIG_EFI_PARTITION=y
+ CONFIG_OF_UPSTREAM=y
+ CONFIG_OF_UPSTREAM_BUILD_VENDOR=y
+ CONFIG_OF_BOARD=y
+ CONFIG_BLKMAP=y
+ CONFIG_BUTTON_REMAP_PHONE_KEYS=y
+-CONFIG_BUTTON_KEYBOARD=y
+ CONFIG_CLK_EXYNOS9820=y
++CONFIG_BUTTON_KEYBOARD=y
+ CONFIG_MISC=y
+ CONFIG_PHY=y
+ CONFIG_PHY_SAMSUNG_UFS=y
+@@ -45,14 +43,22 @@ CONFIG_PHY_EXYNOS9820_UFS=y
+ CONFIG_PINCTRL=y
+ CONFIG_PINCTRL_EXYNOS9820=y
+ CONFIG_SCSI=y
+-CONFIG_UFS=y
+-CONFIG_UFS_EXYNOS=y
+ CONFIG_SOC_SAMSUNG=y
+ CONFIG_EXYNOS_PMU=y
+ CONFIG_SYSRESET=y
+ CONFIG_SYSRESET_CMD_POWEROFF=y
+ CONFIG_SYSRESET_SYSCON=y
+-CONFIG_FS_EXT4=y
+-CONFIG_FS_FAT=y
++CONFIG_UFS=y
++CONFIG_UFS_EXYNOS=y
+ CONFIG_VIDEO=y
++CONFIG_NO_FB_CLEAR=y
+ CONFIG_VIDEO_SIMPLE=y
++CONFIG_FS_EXT4=y
++CONFIG_FS_FAT=y
++CONFIG_VIDEO_EXYNOS_DECON_FB=y
++# CONFIG_VIDEO_FONT_8X16 is not set
++CONFIG_CMD_PAUSE=y
++CONFIG_LOGLEVEL=7
++CONFIG_VIDEO_FONT_32X64=y
++# CONFIG_VIDEO_FONT_16X32 is not set
++CONFIG_VIDEO_FONT_POLISH=y
+-- 
+2.47.3
+

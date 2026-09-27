@@ -1,0 +1,49 @@
+From 4940cfe89ad6a86f47394e62a247ef0f60636fcb Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 09:04:21 +0200
+Subject: [PATCH 24/40] dts: exynos: take the ramoops region from the kernel
+ tree
+
+The kernel series gave the board a ramoops region so that a hang leaves the
+last console lines behind in memory the firmware does not clear.  This tree
+carries a copy of that board file, and the copy has to stay a copy.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../arm64/exynos/exynos9820-beyond2lte.dts    | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+index 457a1330..df360473 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
++++ b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+@@ -207,6 +207,26 @@
+ 			no-map;
+ 		};
+ 
++		/*
++		 * A kernel log that survives a reset.  The vendor reserves this
++		 * region for "debug-snapshot,log_kernel" and its kernel keeps a
++		 * ramoops buffer in it, so this memory is known to outlive a warm
++		 * reset on this phone: the oops this port read back from
++		 * /sys/fs/pstore after a reboot came from here.
++		 *
++		 * Without it a hang leaves nothing behind.  Bringing a secondary
++		 * CPU online wedges this phone hard enough to take the USB link
++		 * with it, and the console buffer below is the only way to see
++		 * what the kernel printed last.
++		 */
++		ramoops@fd910000 {
++			compatible = "ramoops";
++			reg = <0x0 0xfd910000 0x200000>;
++			console-size = <0x100000>;
++			record-size = <0x20000>;
++			pmsg-size = <0x20000>;
++		};
++
+ 		el2_earlymem@9fd800000 {
+ 			reg = <0x9 0xfd800000 0x2800000>;
+ 			no-map;
+-- 
+2.47.3
+

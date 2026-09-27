@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 07:54:02 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add CMU_AUD
+
+Describe the clock controller of the audio block. Its window is the
+CMU_AUD base of the vendor register map and its input is the audio CPU
+clock CMU_TOP divides down.
+
+The block sits in the AUD power domain, but the node does not name it
+yet: the boot loader leaves the domain on, and until a driver in this
+tree holds one of the audio clocks, runtime PM would switch the domain
+off right after boot and take the whole block with it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 15 +++++++++++++++
+ 1 file changed, 15 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index ec828743d0b..b092f12e72a 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -1052,6 +1052,21 @@ gpu: gpu@18500000 {
+ 			#cooling-cells = <2>;
+ 		};
+ 
++		/*
++		 * No power-domains yet: the boot loader leaves the AUD domain on
++		 * and nothing in this series holds a clock of the block, so runtime
++		 * PM would switch the domain off right after boot.
++		 */
++		cmu_aud: clock-controller@18c00000 {
++			compatible = "samsung,exynos9820-cmu-aud";
++			reg = <0x18c00000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_AUD_CPU>;
++			clock-names = "oscclk", "cpu";
++		};
++
+ 		pinctrl_aud: pinctrl@18c60000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x18c60000 0x1000>;

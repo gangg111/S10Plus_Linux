@@ -1,0 +1,474 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 00:38:27 +0200
+Subject: [PATCH] ASoC: samsung: beyond: Detect the headset jack and its
+ buttons
+
+The CS47L93 senses the 3.5 mm socket through its jack detect pins, but
+mainline has no accessory detection for madera codecs.  Arm it from the
+machine driver the way the vendor device tree configures the codec:
+both detect pins feed the MICD clamp (mode JD1L/JD2L), whose rise and
+fall interrupts follow the plug.
+
+Once a plug is in, the MICD ADC measures the microphone contact through
+MICBIAS2A.  A microphone or an open contact reports a headset, a short
+reports headphones, with the vendor thresholds.  The result goes to a
+card jack driving the Headphone and Headset Mic pins, so userspace sees
+which ports are usable.
+
+With a headset in, MICD keeps running in level mode.  The four levels
+come from the vendor device tree and report play/pause, the voice
+command key and volume up and down through the jack buttons.  The jack
+is made from late_probe, so that its input device registers with the
+card.
+
+With the socket empty the jack reports nothing, the headphone port
+reads as not available in PipeWire and the "Headset" input device
+offers the four keys and the two insert switches.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ sound/soc/samsung/beyond-audio.c | 388 ++++++++++++++++++++++++++++++-
+ 1 file changed, 386 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/samsung/beyond-audio.c b/sound/soc/samsung/beyond-audio.c
+index 857e34185ae..39a78702e8d 100644
+--- a/sound/soc/samsung/beyond-audio.c
++++ b/sound/soc/samsung/beyond-audio.c
+@@ -14,14 +14,27 @@
+  * output, which has no driver here.  ABOX starts the bit clock when a
+  * stream is prepared, before DAPM powers the codec, so the FLL is started
+  * on the way into the prepare bias level and stopped on the way out.
++ *
++ * The headset jack is sensed the way the vendor sets the codec up: both
++ * jack detect pins feed the MICD clamp, which lets go while a plug is in.
++ * A plug is then told apart by the impedance the MICD ADC reads on the
++ * microphone contact through MICBIAS2A: a microphone or an open contact
++ * makes a headset, a short makes headphones.  With a headset in, MICD keeps
++ * running in level mode and the level it lands on names the remote button.
+  */
+ 
+-#include <linux/interrupt.h>	/* for sound/cs35l41.h */
++#include <linux/completion.h>
++#include <linux/input.h>
++#include <linux/interrupt.h>
++#include <linux/irqchip/irq-madera.h>
+ #include <linux/mfd/madera/core.h>
++#include <linux/mfd/madera/registers.h>
+ #include <linux/module.h>
++#include <linux/mutex.h>
+ #include <linux/of.h>
+ #include <linux/platform_device.h>
+ #include <sound/cs35l41.h>
++#include <sound/jack.h>
+ #include <sound/pcm_params.h>
+ #include <sound/soc.h>
+ 
+@@ -30,6 +43,24 @@
+ #define BEYOND_MAX_AMPS		2
+ #define BEYOND_SYSCLK_RATE	98304000
+ 
++/* jack detection settings of the vendor device tree (accdet node) */
++#define BEYOND_MICD_BIAS	"MICBIAS2A"	/* MICD bias source 4 */
++#define BEYOND_MICD_BIAS_SRC	4
++#define BEYOND_MICD_GND		1
++#define BEYOND_MICD_RATE	7
++#define BEYOND_MICD_START_TIME	1
++#define BEYOND_MICD_DEBOUNCE_MS	300
++#define BEYOND_MICD_TIMEOUT_MS	1000
++#define BEYOND_JD_INIT_DELAY_MS	30
++#define BEYOND_CLAMP_JD1L_JD2L	0x8
++#define BEYOND_MIC_MIN_OHM	1257
++#define BEYOND_MICD_LVL_0_TO_7	0x03fc
++#define BEYOND_MICD_LVL_0_TO_8	0x07fc
++#define BEYOND_MICD_LEVELS	8
++#define BEYOND_MICD_LEVEL_OFF	0x3f
++#define BEYOND_JACK_BUTTONS	(SND_JACK_BTN_0 | SND_JACK_BTN_1 | \
++				 SND_JACK_BTN_2 | SND_JACK_BTN_3)
++
+ enum {
+ 	BEYOND_LINK_SPEAKERS,
+ 	BEYOND_LINK_CODEC,
+@@ -42,6 +73,43 @@ struct beyond_priv {
+ 	struct snd_soc_dai_link_component platform[BEYOND_NUM_LINKS];
+ 	struct snd_soc_component *codec;
+ 	unsigned int codec_bclk;
++
++	struct madera *madera;
++	struct snd_soc_jack jack;
++	struct snd_soc_jack_pin jack_pins[2];
++	struct work_struct jack_work;
++	struct work_struct button_work;
++	struct completion micd_done;
++	struct mutex jack_lock;		/* serialises the jack and button work */
++	bool plugged;
++	bool buttons;			/* MICD runs in level mode for buttons */
++};
++
++/* ohms per MICDET_ADCVAL step, as the vendor accessory driver has them */
++static const unsigned int beyond_micd_ohms[] = {
++	3, 6, 8, 11, 13, 16, 18, 21, 23, 26, 28, 31, 34, 36, 39, 41, 44, 46,
++	49, 52, 54, 57, 60, 62, 65, 67, 70, 73, 75, 78, 81, 83, 89, 94, 100,
++	105, 111, 116, 122, 127, 139, 150, 161, 173, 186, 196, 209, 220, 245,
++	270, 295, 321, 348, 375, 402, 430, 489, 550, 614, 681, 752, 903, 1071,
++	1257, 30000,
++};
++
++/*
++ * Remote buttons: the highest impedance of each MICD level, from the
++ * cirrus,micd-ranges of the vendor device tree.  The vendor maps the first
++ * one to KEY_MEDIA; play/pause is what that key does on Android, and what
++ * desktops act on.  Its fifth range (1257 ohm, KEY_SEARCH) never reads as a
++ * button, as it is no lower than the microphone threshold.
++ */
++static const struct {
++	unsigned int max_ohm;
++	int key;
++	enum snd_jack_types btn;
++} beyond_buttons[] = {
++	{ 116, KEY_PLAYPAUSE, SND_JACK_BTN_0 },
++	{ 173, KEY_VOICECOMMAND, SND_JACK_BTN_1 },
++	{ 321, KEY_VOLUMEUP, SND_JACK_BTN_2 },
++	{ 752, KEY_VOLUMEDOWN, SND_JACK_BTN_3 },
+ };
+ 
+ /* receive slots per amplifier position: RX1 takes its own channel */
+@@ -197,6 +265,318 @@ static int beyond_quiet_asptx2(struct beyond_priv *priv)
+ 	return ret;
+ }
+ 
++static bool beyond_jack_plugged(struct beyond_priv *priv)
++{
++	unsigned int val;
++
++	if (regmap_read(priv->madera->regmap, MADERA_IRQ1_RAW_STATUS_7, &val))
++		return false;
++	/* the clamp holds the MICD pins down while the socket is empty */
++	return !(val & MADERA_MICD_CLAMP_RISE_STS1);
++}
++
++/* impedance on the microphone contact, UINT_MAX for an open contact */
++static unsigned int beyond_micd_measure(struct beyond_priv *priv)
++{
++	struct snd_soc_dapm_context *dapm = snd_soc_component_to_dapm(priv->codec);
++	struct regmap *regmap = priv->madera->regmap;
++	unsigned int val = ARRAY_SIZE(beyond_micd_ohms);
++	unsigned long left;
++
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_0,
++			   MADERA_MICD1_ADC_MODE_MASK, MADERA_MICD1_ADC_MODE_MASK);
++	regmap_update_bits(regmap, MADERA_MICD_CLAMP_CONTROL,
++			   MADERA_MICD_CLAMP_OVD_MASK, 0);
++	snd_soc_dapm_force_enable_pin(dapm, BEYOND_MICD_BIAS);
++	snd_soc_dapm_sync(dapm);
++
++	reinit_completion(&priv->micd_done);
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_1,
++			   MADERA_MICD_ENA, MADERA_MICD_ENA);
++	left = wait_for_completion_timeout(&priv->micd_done,
++					   msecs_to_jiffies(BEYOND_MICD_TIMEOUT_MS));
++	if (left)
++		msleep(BEYOND_MICD_DEBOUNCE_MS);
++
++	/* the ADC value is read with detection stopped */
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_1,
++			   MADERA_MICD_ENA, 0);
++	regmap_read(regmap, MADERA_MIC_DETECT_1_CONTROL_4, &val);
++	val &= MADERA_MICDET_ADCVAL_MASK;
++
++	snd_soc_dapm_disable_pin(dapm, BEYOND_MICD_BIAS);
++	snd_soc_dapm_sync(dapm);
++	/* the clamp override is back on while detection idles */
++	regmap_update_bits(regmap, MADERA_MICD_CLAMP_CONTROL,
++			   MADERA_MICD_CLAMP_OVD_MASK, MADERA_MICD_CLAMP_OVD);
++
++	dev_info(priv->card.dev, "MICDET_ADCVAL %u%s\n", val,
++		 left ? "" : " (no MICDET interrupt)");
++	return val < ARRAY_SIZE(beyond_micd_ohms) - 1 ?
++	       beyond_micd_ohms[val] : UINT_MAX;
++}
++
++/* keep the bias up and MICD running in level mode while a headset is in */
++static void beyond_buttons_start(struct beyond_priv *priv)
++{
++	struct snd_soc_dapm_context *dapm = snd_soc_component_to_dapm(priv->codec);
++	struct regmap *regmap = priv->madera->regmap;
++
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_0,
++			   MADERA_MICD1_ADC_MODE_MASK, 0);
++	regmap_update_bits(regmap, MADERA_MICD_CLAMP_CONTROL,
++			   MADERA_MICD_CLAMP_OVD_MASK, 0);
++	snd_soc_dapm_force_enable_pin(dapm, BEYOND_MICD_BIAS);
++	snd_soc_dapm_sync(dapm);
++	priv->buttons = true;
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_1,
++			   MADERA_MICD_ENA, MADERA_MICD_ENA);
++}
++
++static void beyond_buttons_stop(struct beyond_priv *priv)
++{
++	struct snd_soc_dapm_context *dapm = snd_soc_component_to_dapm(priv->codec);
++	struct regmap *regmap = priv->madera->regmap;
++
++	if (!priv->buttons)
++		return;
++	priv->buttons = false;
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_1,
++			   MADERA_MICD_ENA, 0);
++	snd_soc_dapm_disable_pin(dapm, BEYOND_MICD_BIAS);
++	snd_soc_dapm_sync(dapm);
++	regmap_update_bits(regmap, MADERA_MICD_CLAMP_CONTROL,
++			   MADERA_MICD_CLAMP_OVD_MASK, MADERA_MICD_CLAMP_OVD);
++	snd_soc_jack_report(&priv->jack, 0, BEYOND_JACK_BUTTONS);
++}
++
++static void beyond_button_work(struct work_struct *work)
++{
++	struct beyond_priv *priv = container_of(work, struct beyond_priv,
++						button_work);
++	unsigned int val = 0;
++	int i, lvl, btn = 0;
++
++	mutex_lock(&priv->jack_lock);
++	if (!priv->buttons)
++		goto out;
++
++	/* the level is valid once one of its bits reads set */
++	for (i = 0; i < 10 && !(val & BEYOND_MICD_LVL_0_TO_8); i++) {
++		if (regmap_read(priv->madera->regmap,
++				MADERA_MIC_DETECT_1_CONTROL_3, &val))
++			goto out;
++		if (!(val & MADERA_MICD_VALID))
++			goto out;
++	}
++	if (!(val & BEYOND_MICD_LVL_0_TO_8))
++		goto out;
++
++	if ((val & MADERA_MICD_STS) && (val & BEYOND_MICD_LVL_0_TO_7)) {
++		lvl = ffs((val & MADERA_MICD_LVL_MASK) >>
++			  MADERA_MICD_LVL_SHIFT) - 1;
++		if (lvl < ARRAY_SIZE(beyond_buttons))
++			btn = beyond_buttons[lvl].btn;
++	}
++	snd_soc_jack_report(&priv->jack, btn, BEYOND_JACK_BUTTONS);
++out:
++	mutex_unlock(&priv->jack_lock);
++}
++
++/* the MICD level of each button, and every level past them turned off */
++static void beyond_buttons_init(struct beyond_priv *priv)
++{
++	struct regmap *regmap = priv->madera->regmap;
++	unsigned int reg, mask, level;
++	int i, j;
++
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_2,
++			   MADERA_MICD_LVL_SEL_MASK, 0x81);
++	for (i = 0; i < BEYOND_MICD_LEVELS; i++) {
++		level = BEYOND_MICD_LEVEL_OFF;
++		if (i < ARRAY_SIZE(beyond_buttons)) {
++			for (j = 0; j < ARRAY_SIZE(beyond_micd_ohms) - 1; j++)
++				if (beyond_micd_ohms[j] >= beyond_buttons[i].max_ohm)
++					break;
++			level = j;
++			snd_jack_set_key(priv->jack.jack, beyond_buttons[i].btn,
++					 beyond_buttons[i].key);
++			regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_2,
++					   BIT(i), BIT(i));
++		}
++		/* two levels per register, from LEVEL_4 down */
++		reg = MADERA_MIC_DETECT_1_LEVEL_4 - i / 2;
++		mask = i % 2 ? 0x3f : 0x3f00;
++		regmap_update_bits(regmap, reg, mask,
++				   i % 2 ? level : level << 8);
++	}
++}
++
++static void beyond_jack_work(struct work_struct *work)
++{
++	struct beyond_priv *priv = container_of(work, struct beyond_priv,
++						jack_work);
++	unsigned int db = MADERA_MICD_CLAMP_DB | MADERA_JD1_DB | MADERA_JD2_DB;
++	struct regmap *regmap = priv->madera->regmap;
++	unsigned int ohms;
++	bool plugged;
++	int type;
++
++	mutex_lock(&priv->jack_lock);
++	plugged = beyond_jack_plugged(priv);
++	if (plugged == priv->plugged)
++		goto out;
++	priv->plugged = plugged;
++
++	if (!plugged) {
++		beyond_buttons_stop(priv);
++		regmap_update_bits(regmap, MADERA_INTERRUPT_DEBOUNCE_7, db, db);
++		snd_soc_jack_report(&priv->jack, 0, SND_JACK_HEADSET);
++		dev_info(priv->card.dev, "jack removed\n");
++		goto out;
++	}
++
++	/* no debounce while a plug is in, as the vendor driver runs it */
++	regmap_update_bits(regmap, MADERA_INTERRUPT_DEBOUNCE_7, db, 0);
++	msleep(BEYOND_JD_INIT_DELAY_MS);
++
++	ohms = beyond_micd_measure(priv);
++	/* an open contact counts as a microphone, as the vendor declares it */
++	type = ohms >= BEYOND_MIC_MIN_OHM ? SND_JACK_HEADSET : SND_JACK_HEADPHONE;
++	if (!beyond_jack_plugged(priv))
++		goto out;
++	snd_soc_jack_report(&priv->jack, type, SND_JACK_HEADSET);
++	if (type == SND_JACK_HEADSET)
++		beyond_buttons_start(priv);
++	dev_info(priv->card.dev, "jack inserted: %s, %u ohm\n",
++		 type == SND_JACK_HEADSET ? "headset" : "headphones", ohms);
++out:
++	mutex_unlock(&priv->jack_lock);
++}
++
++static irqreturn_t beyond_jackdet_irq(int irq, void *data)
++{
++	struct beyond_priv *priv = data;
++
++	queue_work(system_freezable_wq, &priv->jack_work);
++	return IRQ_HANDLED;
++}
++
++static irqreturn_t beyond_micdet_irq(int irq, void *data)
++{
++	struct beyond_priv *priv = data;
++
++	if (READ_ONCE(priv->buttons))
++		queue_work(system_freezable_wq, &priv->button_work);
++	else
++		complete(&priv->micd_done);
++	return IRQ_HANDLED;
++}
++
++static void beyond_jack_free(void *data)
++{
++	struct beyond_priv *priv = data;
++	struct madera *madera = priv->madera;
++
++	madera_free_irq(madera, MADERA_IRQ_MICD_CLAMP_FALL, priv);
++	madera_free_irq(madera, MADERA_IRQ_MICD_CLAMP_RISE, priv);
++	madera_free_irq(madera, MADERA_IRQ_MICDET1, priv);
++	cancel_work_sync(&priv->jack_work);
++	cancel_work_sync(&priv->button_work);
++	regmap_update_bits(madera->regmap, MADERA_JACK_DETECT_ANALOGUE,
++			   MADERA_JD1_ENA | MADERA_JD2_ENA, 0);
++}
++
++/*
++ * The jack is made before the card registers, so that its input device,
++ * which carries the remote buttons, registers along with the card.
++ */
++static int beyond_late_probe(struct snd_soc_card *card)
++{
++	struct beyond_priv *priv = snd_soc_card_get_drvdata(card);
++	int ret;
++
++	if (!priv->codec)
++		return 0;
++
++	/* the codec component is a cell of the madera MFD */
++	priv->madera = dev_get_drvdata(priv->codec->dev->parent);
++	INIT_WORK(&priv->jack_work, beyond_jack_work);
++	INIT_WORK(&priv->button_work, beyond_button_work);
++	init_completion(&priv->micd_done);
++	mutex_init(&priv->jack_lock);
++
++	priv->jack_pins[0].pin = "Headphone";
++	priv->jack_pins[0].mask = SND_JACK_HEADPHONE;
++	priv->jack_pins[1].pin = "Headset Mic";
++	priv->jack_pins[1].mask = SND_JACK_MICROPHONE;
++	ret = snd_soc_card_jack_new_pins(card, "Headset",
++					 SND_JACK_HEADSET | BEYOND_JACK_BUTTONS,
++					 &priv->jack, priv->jack_pins,
++					 ARRAY_SIZE(priv->jack_pins));
++	if (ret)
++		return ret;
++	beyond_buttons_init(priv);
++	return 0;
++}
++
++/* detection starts once the card is up, so it is stopped before it goes */
++static int beyond_jack_init(struct beyond_priv *priv)
++{
++	unsigned int db = MADERA_MICD_CLAMP_DB | MADERA_JD1_DB | MADERA_JD2_DB;
++	unsigned int jd = MADERA_JD1_ENA | MADERA_JD2_ENA;
++	struct madera *madera = priv->madera;
++	struct regmap *regmap = madera->regmap;
++	struct device *dev = priv->card.dev;
++	int ret;
++
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_1,
++			   MADERA_MICD_BIAS_STARTTIME_MASK |
++			   MADERA_MICD_RATE_MASK | MADERA_MICD_BIAS_SRC_MASK |
++			   MADERA_MICD_DBTIME_MASK | MADERA_MICD_ENA,
++			   BEYOND_MICD_START_TIME << MADERA_MICD_BIAS_STARTTIME_SHIFT |
++			   BEYOND_MICD_RATE << MADERA_MICD_RATE_SHIFT |
++			   BEYOND_MICD_BIAS_SRC << MADERA_MICD_BIAS_SRC_SHIFT |
++			   1 << MADERA_MICD_DBTIME_SHIFT);
++	regmap_update_bits(regmap, MADERA_MIC_DETECT_1_CONTROL_0,
++			   MADERA_MICD1_ADC_MODE_MASK | MADERA_MICD1_SENSE_MASK |
++			   MADERA_MICD1_GND_MASK,
++			   MADERA_MICD1_ADC_MODE_MASK | BEYOND_MICD_GND);
++	regmap_update_bits(regmap, MADERA_HEADPHONE_DETECT_0,
++			   MADERA_HPD_GND_SEL_MASK, BEYOND_MICD_GND);
++	regmap_update_bits(regmap, MADERA_OUTPUT_PATH_CONFIG_1,
++			   MADERA_HP1_GND_SEL_MASK, BEYOND_MICD_GND);
++	regmap_update_bits(regmap, MADERA_MICD_CLAMP_CONTROL,
++			   MADERA_MICD_CLAMP_MODE_MASK, BEYOND_CLAMP_JD1L_JD2L);
++	regmap_update_bits(regmap, MADERA_INTERRUPT_DEBOUNCE_7, db, db);
++	regmap_update_bits(regmap, MADERA_JACK_DETECT_ANALOGUE, jd, jd);
++
++	ret = madera_request_irq(madera, MADERA_IRQ_MICDET1, "MICDET",
++				 beyond_micdet_irq, priv);
++	if (ret)
++		return dev_err_probe(dev, ret, "cannot get the MICDET irq\n");
++	ret = madera_request_irq(madera, MADERA_IRQ_MICD_CLAMP_RISE,
++				 "JACKDET rise", beyond_jackdet_irq, priv);
++	if (ret)
++		goto err_micdet;
++	ret = madera_request_irq(madera, MADERA_IRQ_MICD_CLAMP_FALL,
++				 "JACKDET fall", beyond_jackdet_irq, priv);
++	if (ret)
++		goto err_rise;
++	ret = devm_add_action_or_reset(dev, beyond_jack_free, priv);
++	if (ret)
++		return ret;
++
++	queue_work(system_freezable_wq, &priv->jack_work);
++	return 0;
++
++err_rise:
++	madera_free_irq(madera, MADERA_IRQ_MICD_CLAMP_RISE, priv);
++err_micdet:
++	madera_free_irq(madera, MADERA_IRQ_MICDET1, priv);
++	return dev_err_probe(dev, ret, "cannot get the JACKDET irq\n");
++}
++
+ static void beyond_put_link(void *data)
+ {
+ 	struct snd_soc_dai_link *link = data;
+@@ -271,6 +651,7 @@ static int beyond_probe(struct platform_device *pdev)
+ 	card->dapm_widgets = beyond_widgets;
+ 	card->num_dapm_widgets = ARRAY_SIZE(beyond_widgets);
+ 	card->set_bias_level = beyond_set_bias_level;
++	card->late_probe = beyond_late_probe;
+ 	card->dai_link = priv->link;
+ 	card->num_links = 1;
+ 	snd_soc_card_set_drvdata(card, priv);
+@@ -316,7 +697,10 @@ static int beyond_probe(struct platform_device *pdev)
+ 	ret = devm_snd_soc_register_card(dev, card);
+ 	if (ret)
+ 		return dev_err_probe(dev, ret, "cannot register the card\n");
+-	return beyond_quiet_asptx2(priv);
++	ret = beyond_quiet_asptx2(priv);
++	if (ret || !priv->codec)
++		return ret;
++	return beyond_jack_init(priv);
+ }
+ 
+ static const struct of_device_id beyond_of_match[] = {

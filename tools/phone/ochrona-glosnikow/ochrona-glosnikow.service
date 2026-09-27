@@ -1,0 +1,14 @@
+[Unit]
+Description=Ochrona glosnikow: firmware CSPL z kalibracja fabryczna
+After=sound.target alsa-restore.service
+Wants=sound.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# karta rejestruje sie po zaladowaniu firmware wzmacniaczy, czekamy na kontrolke
+ExecStartPre=/bin/sh -c 'for i in $(seq 60); do amixer -c0 cget name="Top DSP1 Firmware" >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+ExecStart=/usr/bin/python3 /usr/local/sbin/ochrona-glosnikow
+
+[Install]
+WantedBy=multi-user.target

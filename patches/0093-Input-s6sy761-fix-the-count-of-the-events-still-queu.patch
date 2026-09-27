@@ -1,0 +1,45 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 23:05:31 +0200
+Subject: [PATCH] Input: s6sy761 - fix the count of the events still queued
+
+Byte 7 of an event carries that count in its low five bits only.  Bit 5 is
+the max energy flag of the touch point and the two bits above it are
+the low half of the touch type, so a six bit mask adds 32 to the count
+whenever the controller raises that flag.
+
+The driver then finds the count larger than the event buffer and returns
+without handling anything, dropping the event it had already read together
+with the rest of the batch.  Release events go missing that way, and a slot
+that never hears about the finger lifting stays busy for good: read back
+from a Galaxy S10+ with nobody touching the screen, three slots still held
+tracking ids 12, 7 and 10.  Userspace sees three fingers pressed forever.
+
+The layout is the one the vendor driver of this panel describes, where the
+field was narrowed from six bits to five and the freed bit became the flag.
+A count above 31 could not be used anyway, since the buffer holds 32
+events.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/input/touchscreen/s6sy761.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/input/touchscreen/s6sy761.c b/drivers/input/touchscreen/s6sy761.c
+index 4d78c7cb3ab..fcbb5d3f380 100644
+--- a/drivers/input/touchscreen/s6sy761.c
++++ b/drivers/input/touchscreen/s6sy761.c
+@@ -69,7 +69,12 @@
+ #define S6SY761_MASK_X			0xf0 /* byte 3 */
+ #define S6SY761_MASK_Y			0x0f
+ #define S6SY761_MASK_Z			0x3f /* byte 6 */
+-#define S6SY761_MASK_LEFT_EVENTS	0x3f /* byte 7 */
++/*
++ * Byte 7 carries the number of events still queued in its low five bits.
++ * Bit 5 is the max energy flag of the touch point, and bits 6 and 7 are
++ * the low half of the touch type, so none of them belongs to the count.
++ */
++#define S6SY761_MASK_LEFT_EVENTS	0x1f /* byte 7 */
+ #define S6SY761_MASK_TOUCH_TYPE		0xc0 /* MSB in byte 6, LSB in byte 7 */
+ 
+ /* event touch state values */

@@ -1,0 +1,25 @@
+#!/bin/sh
+# Aplikacja DeepSeek Harness: uruchamia serwer dsh web jako usluge uzytkownika,
+# pokazuje jego Web UI we wlasnym oknie (Qt WebEngine) i zatrzymuje serwer po
+# zamknieciu okna.  Token dostepu dsh losuje przy kazdym starcie serwera
+# i wypisuje go w adresie; bierzemy go z dziennika biezacego uruchomienia.
+systemctl --user start dsh-web.service || exit 1
+id=$(systemctl --user show -p InvocationID --value dsh-web.service)
+url=""
+i=0
+while [ -z "$url" ] && [ $i -lt 90 ]; do
+	url=$(journalctl --user _SYSTEMD_INVOCATION_ID="$id" -o cat 2>/dev/null |
+		grep -o 'http://127.0.0.1:3080/?token=[A-Za-z0-9_-]*' | tail -1)
+	[ -n "$url" ] || sleep 1
+	i=$((i + 1))
+done
+if [ -z "$url" ]; then
+	notify-send "DeepSeek Harness" "Serwer nie wystartowal w 90 s" 2>/dev/null
+	exit 1
+fi
+qml="${XDG_RUNTIME_DIR:-/tmp}/deepseek-harness.qml"
+sed "s|@DSH_URL@|$url|" "$HOME/.local/share/deepseek-harness/deepseek-harness.qml" > "$qml"
+chmod 600 "$qml"
+QT_QPA_PLATFORM=wayland /usr/lib/qt6/bin/qmlscene "$qml"
+rm -f "$qml"
+systemctl --user stop dsh-web.service

@@ -1,0 +1,65 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# Hub czujnikow i GNSS Galaxy S10+ (BCM47752 za SPI17), port sterownikow
+# producenta drivers/sensorhub/brcm (LineageOS @7d08ec3) na mainline 7.2.
+# Jeden modul spoza drzewa: brcm_sensorhub.ko.
+#
+# Zestaw opcji odtwarza defconfig producenta
+# (exynos9820-beyond2lte_defconfig, linie 5450-5523). Opcji, ktore
+# wymagaja infrastruktury Samsunga bez odpowiednika w mainline
+# (MUIC_NOTIFIER, PANEL_NOTIFY, SEC_DEBUG, HAS_EARLYSUSPEND,
+# BATTERY_SAMSUNG), celowo tu nie ma: patrz README.md.
+
+obj-m += brcm_sensorhub.o
+
+brcm_sensorhub-y := ssp_port.o sensors_core.o \
+	ssp_dev.o ssp_i2c.o ssp_data.o ssp_sysfs.o ssp_firmware.o \
+	ssp_debug.o ssp_dump.o ssp_iio.o ssp_iio_ring.o \
+	ssp_sensorhub.o ssp_misc.o ssp_bbd.o \
+	factory/accel_lsm6dsl.o factory/gyro_lsm6dsl.o \
+	factory/magnetic_common.o factory/pressure_lps22h.o \
+	factory/light_tmg399x.o factory/prox_autocal_ams.o \
+	factory/light_colorid.o factory/barcode_emul_tmg3992.o \
+	factory/thermistor.o factory/mcu_bcm4774.o \
+	bbdpl/bbd.o bbdpl/bbd_rpc_lh.o \
+	bbdpl/bcm_gps_spi.o bbdpl/bcm_gps_regs.o bbdpl/bcm_gps_mem.o
+
+# bcm_gps_hostwake.c: producent go nie kompiluje (brak
+# CONFIG_BCM_GPS_HOSTWAKE_DRIVER w defconfigu). Wlaczenie:
+# make ... BCM_GPS_HOSTWAKE=y
+ifeq ($(BCM_GPS_HOSTWAKE),y)
+brcm_sensorhub-y += bbdpl/bcm_gps_hostwake.o
+ccflags-y += -DCONFIG_BCM_GPS_HOSTWAKE_DRIVER=1
+endif
+
+# Wersja Androida, dla ktorej producent zbudowal jadro (PLATFORM_VERSION
+# 11.0 w TopMakefile:511-520). Steruje formatem ramek (ssp_data.c:44)
+# i dawniej wyborem patcha; patch jest teraz wybrany na sztywno w bbd.c.
+ccflags-y += -DANDROID_VERSION=110000
+
+ccflags-y += -DCONFIG_SENSORS_SYSFS=1 \
+	-DCONFIG_SENSORS_SSP=1 \
+	-DCONFIG_SENSORS_SSP_BBD=1 \
+	-DCONFIG_SENSORS_SSP_BEYOND=1 \
+	-DCONFIG_SENSORS_SSP_LSM6DSO=1 \
+	-DCONFIG_SENSORS_SSP_MAGNETIC_COMMON=1 \
+	-DCONFIG_SENSORS_SSP_LPS22H=1 \
+	-DCONFIG_SENSORS_SSP_SENSORHUB=1 \
+	-DCONFIG_SENSORS_SSP_MOBEAM=1 \
+	-DCONFIG_SENSORS_SSP_TMD4910=1 \
+	-DCONFIG_SENSORS_SSP_PROX_AUTOCAL_AMS=1 \
+	-DCONFIG_SENSORS_SSP_LIGHT_REPORT_LUX=1 \
+	-DCONFIG_SENSORS_SSP_LIGHT_ADDING_LUMINANCE=1 \
+	-DCONFIG_SENSORS_SSP_LIGHT_MAX_ATIME_2BYTE=1 \
+	-DCONFIG_SENSORS_SSP_LIGHT_MAX_GAIN_2BYTE=1 \
+	-DCONFIG_SENSORS_SSP_LIGHT_COLORID=1 \
+	-DCONFIG_SENSORS_SSP_IRDATA_FOR_CAMERA=1 \
+	-DCONFIG_SENSORS_MULTIPLE_GLASS_TYPE=1 \
+	-DCONFIG_SENSORS_SSP_INTERRUPT_GYRO_SENSOR=1 \
+	-DCONFIG_SENSORS_SSP_HIFI_BATCHING=1 \
+	-DCONFIG_SENSORS_SSP_THERMISTOR=1 \
+	-DCONFIG_SSP_SUPPORT_MAGNETIC_OVERFLOW=1 \
+	-DCONFIG_SENSORS_SSP_LIGHT_LUX_RAW=1 \
+	-DCONFIG_BCM_GPS_SPI_DRIVER=1
+
+ccflags-y += -I$(src) -I$(src)/bbdpl

@@ -1,0 +1,450 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 23 Sep 2026 20:14:39 +0200
+Subject: [PATCH] backlight: exynos9820-dsim-lcd: Add panel power over the
+ boot-loader DSI link
+
+Until the DECON and DSI drivers of the Exynos9820 run on hardware, a board
+built around it shows the simple-framebuffer its boot loader leaves
+behind: DSIM0 in command mode, and DECON0 sending that buffer to the panel
+on every tearing effect pulse.  Blanking the framebuffer then paints it
+black and nothing more, while the panel keeps scanning.
+
+Add an LCD class driver that sends the DCS display off and display on
+commands over that link.  fb blanking notifies LCD class devices, so
+console blanking now turns the picture of the panel off and unblanking
+turns it back on.  With the default VESA mode console blanking arrives as
+LCD_POWER_REDUCED rather than LCD_POWER_OFF, so anything but LCD_POWER_ON
+counts as off.
+
+A command goes out the way dsim_write_data() of the vendor driver sends a
+short DCS write: one header written to the packet header queue with the
+bits above the header kept, then a wait for the queue to drain, with the
+same 50 ms the vendor driver allows.  A header only ever goes into an
+empty queue, since a queue that does not drain has no reset short of
+initialising the link again.  Once it is in the queue it counts as sent,
+as it does for the vendor driver: a late drain or an error bit is only
+reported.  Nothing else of the link, its D-PHY or DECON is touched.
+
+A command that finds the queue busy is retried from a work item, a few
+times 100 ms apart: the LCD core drops what set_power returns, and the
+console does not ask a second time once it thinks it is unblanked, so a
+lost display on would otherwise leave the panel dark under a running
+system.  Both commands are sent on every notification, being idempotent.
+
+Sleep in is left out: the vendor driver cuts the panel supplies after it
+and runs the whole panel initialisation on the way back.
+
+The registers this needs are added to exynos9820_regs.h, next to the ones
+the DSI driver takes from there.
+
+Measured on a Galaxy S10+ with an out-of-tree module doing the same
+writes: both commands leave the queue with no error bit set, the panel
+goes dark on 0x28 and shows the same picture again on 0x29, and tearing
+effect pulses keep coming at 60 Hz while the picture is off, so DECON is
+not left waiting for one.  With this driver built in, every blank and
+unblank of the console, from the power key, from a double tap and from
+the 30 s idle timeout of the on-screen keyboard, moved lcd_power between
+4 and 0 within 200 ms of the DPMS change, the picture came back every
+time, and the driver logged nothing.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                                   |   1 +
+ drivers/gpu/drm/exynos/exynos9820_regs.h      |   8 +
+ drivers/video/backlight/Kconfig               |  15 +
+ drivers/video/backlight/Makefile              |   1 +
+ drivers/video/backlight/exynos9820-dsim-lcd.c | 295 ++++++++++++++++++
+ 5 files changed, 320 insertions(+)
+ create mode 100644 drivers/video/backlight/exynos9820-dsim-lcd.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index f2438c6f166..caddf06892d 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24007,6 +24007,7 @@ F:	arch/arm64/boot/dts/exynos/exynos9820*
+ F:	drivers/clk/samsung/clk-exynos9820.c
+ F:	drivers/pci/controller/dwc/pcie-exynos9820.c
+ F:	drivers/phy/samsung/phy-exynos9820-ufs.c
++F:	drivers/video/backlight/exynos9820-dsim-lcd.c
+ F:	include/dt-bindings/clock/samsung,exynos9820.h
+ 
+ SAMSUNG EXYNOS ACPM MAILBOX PROTOCOL
+diff --git a/drivers/gpu/drm/exynos/exynos9820_regs.h b/drivers/gpu/drm/exynos/exynos9820_regs.h
+index fe393d7d582..88576a2d512 100644
+--- a/drivers/gpu/drm/exynos/exynos9820_regs.h
++++ b/drivers/gpu/drm/exynos/exynos9820_regs.h
+@@ -337,7 +337,10 @@
+ #define DSIM_INTSRC_PLL_STABLE			BIT(31)
+ #define DSIM_INTSRC_SFR_PL_FIFO_EMPTY		BIT(29)
+ #define DSIM_INTSRC_SFR_PH_FIFO_EMPTY		BIT(28)
++#define DSIM_INTSRC_SFR_PH_FIFO_OVERFLOW	BIT(27)
+ #define DSIM_INTSRC_FRAME_DONE			BIT(24)
++#define DSIM_INTSRC_INVALID_SFR_VALUE		BIT(23)
++#define DSIM_INTSRC_ABNRMAL_CMD_ST		BIT(22)
+ #define DSIM_INTSRC_RX_DATA_DONE		BIT(18)
+ 
+ #define DSIM_INTMSK				0x0054
+@@ -346,11 +349,14 @@
+ #define DSIM_PKTHDR_DATA1(x)			((x) << 16)
+ #define DSIM_PKTHDR_DATA0(x)			((x) << 8)
+ #define DSIM_PKTHDR_ID(x)			((x) << 0)
++#define DSIM_PKTHDR_DATA			(0x1ffffff << 0)
+ #define DSIM_PAYLOAD				0x005c
+ #define DSIM_RXFIFO				0x0060
+ 
+ #define DSIM_FIFOCTRL				0x0068
++#define DSIM_FIFOCTRL_NUMBER_OF_PH_SFR_GET(x)	(((x) >> 16) & 0x3f)
+ #define DSIM_FIFOCTRL_EMPTY_RX			BIT(12)
++#define DSIM_FIFOCTRL_EMPTY_PH_SFR		BIT(10)
+ 
+ #define DSIM_CMD_CONFIG				0x0080
+ #define DSIM_CMD_CONFIG_PKT_GO_EN		BIT(16)
+@@ -362,6 +368,8 @@
+ #define DSIM_CMD_TE_CTRL1_TIME_TE_PROTECT_ON(x)	((x) << 16)
+ #define DSIM_CMD_TE_CTRL1_TIME_TE_TOUT(x)	((x) << 0)
+ 
++#define DSIM_CMD_STATUS				0x008c
++
+ /* DSIM D-PHY (M4S0 block, second reg range of the dsim node) */
+ 
+ #define DSIM_PHY_BIAS_CON(i)			(0x0000 + 4 * (i))
+diff --git a/drivers/video/backlight/Kconfig b/drivers/video/backlight/Kconfig
+index 7aa1c4b2111..d83524d9b8e 100644
+--- a/drivers/video/backlight/Kconfig
++++ b/drivers/video/backlight/Kconfig
+@@ -128,6 +128,21 @@ config LCD_OTM3225A
+ 	  If you have a panel based on the OTM3225A controller
+ 	  chip then say y to include a driver for it.
+ 
++config LCD_EXYNOS9820_DSIM
++	bool "Exynos9820 panel power over the boot-loader DSI link"
++	depends on LCD_CLASS_DEVICE=y
++	depends on ARCH_EXYNOS || COMPILE_TEST
++	depends on OF && HAS_IOMEM && COMMON_CLK
++	depends on !DRM_EXYNOS_DSI
++	help
++	  Say Y to turn the panel picture off and on with fb blanking while
++	  an Exynos9820 board shows the simple-framebuffer the boot loader
++	  left, with DSIM0 still running as the boot loader set it up.
++	  Without it, blanking only paints that framebuffer black.
++
++	  The DSI driver of the SoC takes the link over for good, so this
++	  is only offered without it.
++
+ endif # LCD_CLASS_DEVICE
+ 
+ #
+diff --git a/drivers/video/backlight/Makefile b/drivers/video/backlight/Makefile
+index 21c8313cfb1..a5d573ac101 100644
+--- a/drivers/video/backlight/Makefile
++++ b/drivers/video/backlight/Makefile
+@@ -4,6 +4,7 @@
+ obj-$(CONFIG_LCD_AMS369FG06)		+= ams369fg06.o
+ obj-$(CONFIG_LCD_CLASS_DEVICE)		+= lcd.o
+ obj-$(CONFIG_LCD_CORGI)			+= corgi_lcd.o
++obj-$(CONFIG_LCD_EXYNOS9820_DSIM)	+= exynos9820-dsim-lcd.o
+ obj-$(CONFIG_LCD_HP700)			+= jornada720_lcd.o
+ obj-$(CONFIG_LCD_HX8357)		+= hx8357.o
+ obj-$(CONFIG_LCD_ILI922X)		+= ili922x.o
+diff --git a/drivers/video/backlight/exynos9820-dsim-lcd.c b/drivers/video/backlight/exynos9820-dsim-lcd.c
+new file mode 100644
+index 00000000000..4452bc4e433
+--- /dev/null
++++ b/drivers/video/backlight/exynos9820-dsim-lcd.c
+@@ -0,0 +1,295 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Panel power over the boot-loader DSI link of the Exynos9820
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * Until the DECON and DSI drivers of this SoC run on hardware, the display
++ * is the simple-framebuffer the boot loader leaves behind.  DSIM0 stays in
++ * command mode and DECON0 keeps sending that buffer to the panel on every
++ * tearing effect pulse.  Blanking the framebuffer then only paints it
++ * black: the panel keeps scanning a black picture.
++ *
++ * This driver turns the picture of the panel off and back on with the two
++ * DCS commands meant for it, and hangs them on fb blanking through an LCD
++ * class device, so console blanking reaches the panel.  A command goes out
++ * the way the vendor driver sends a short DCS write: one header written to
++ * the packet header queue of the link, then a wait for the queue to drain.
++ * Nothing else is touched.  The link, its D-PHY and DECON stay as the boot
++ * loader set them up, which is also what the vendor driver relies on when
++ * it takes over a link the boot loader started.
++ *
++ * Sleep in is left out on purpose.  The vendor driver never leaves it with
++ * sleep out alone: it cuts the panel supplies after it and runs the whole
++ * panel initialisation on the way back, which takes the real display stack.
++ */
++
++#define pr_fmt(fmt) "exynos9820-dsim-lcd: " fmt
++
++#include <linux/bits.h>
++#include <linux/clk.h>
++#include <linux/err.h>
++#include <linux/init.h>
++#include <linux/io.h>
++#include <linux/iopoll.h>
++#include <linux/lcd.h>
++#include <linux/lockdep.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/of_address.h>
++#include <linux/slab.h>
++#include <linux/workqueue.h>
++#include <video/mipi_display.h>
++
++#include "../../gpu/drm/exynos/exynos9820_regs.h"
++
++/* How long the vendor driver lets a queued header take to leave. */
++#define EXYNOS9820_DSIM_LCD_TIMEOUT_US	50000
++/* How often, and how far apart, a command that found the queue busy is retried. */
++#define EXYNOS9820_DSIM_LCD_TRIES	5
++#define EXYNOS9820_DSIM_LCD_RETRY_MS	100
++
++#define EXYNOS9820_DSIM_LCD_ERRORS	(DSIM_INTSRC_SFR_PH_FIFO_OVERFLOW | \
++					 DSIM_INTSRC_INVALID_SFR_VALUE | \
++					 DSIM_INTSRC_ABNRMAL_CMD_ST)
++
++struct exynos9820_dsim_lcd {
++	void __iomem *regs;
++	struct delayed_work retry;
++	/* One header in the queue at a time, and the state below. */
++	struct mutex lock;
++	unsigned int tries;
++	/* What fb blanking asked for last, and what the panel was last sent. */
++	bool want;
++	bool on;
++};
++
++static bool exynos9820_dsim_lcd_idle(u32 fifoctrl)
++{
++	return (fifoctrl & DSIM_FIFOCTRL_EMPTY_PH_SFR) &&
++	       !DSIM_FIFOCTRL_NUMBER_OF_PH_SFR_GET(fifoctrl);
++}
++
++/*
++ * Returns -EBUSY when the header could not even be queued.  Once it is in
++ * the queue it counts as sent, as it does for the vendor driver: a late
++ * drain or an error bit is only reported.
++ */
++static int exynos9820_dsim_lcd_send(struct exynos9820_dsim_lcd *ctx, u8 cmd)
++{
++	u32 val, err;
++
++	/*
++	 * A header queue that does not drain cannot be reset short of
++	 * initialising the whole link again, and the vendor driver keeps
++	 * its function reset disabled.  So a header only ever goes into an
++	 * empty queue.
++	 */
++	if (readl_poll_timeout(ctx->regs + DSIM_FIFOCTRL, val,
++			       exynos9820_dsim_lcd_idle(val), 100,
++			       EXYNOS9820_DSIM_LCD_TIMEOUT_US))
++		return -EBUSY;
++
++	writel(DSIM_INTSRC_SFR_PH_FIFO_EMPTY | EXYNOS9820_DSIM_LCD_ERRORS,
++	       ctx->regs + DSIM_INTSRC);
++
++	/* Bits above the header are kept, as the vendor driver does. */
++	val = readl(ctx->regs + DSIM_PKTHDR) & ~DSIM_PKTHDR_DATA;
++	writel(val | DSIM_PKTHDR_ID(MIPI_DSI_DCS_SHORT_WRITE) |
++	       DSIM_PKTHDR_DATA0(cmd), ctx->regs + DSIM_PKTHDR);
++
++	/*
++	 * The vendor driver waits for the interrupt of the queue running
++	 * empty and falls back to this register when it does not come.
++	 * Nothing here says a masked source is latched at all, so the
++	 * register is the only thing polled.
++	 */
++	if (readl_poll_timeout(ctx->regs + DSIM_FIFOCTRL, val,
++			       exynos9820_dsim_lcd_idle(val), 100,
++			       EXYNOS9820_DSIM_LCD_TIMEOUT_US))
++		pr_warn("DCS %#x still queued after %d us (fifoctrl %#x)\n",
++			cmd, EXYNOS9820_DSIM_LCD_TIMEOUT_US, val);
++
++	err = readl(ctx->regs + DSIM_INTSRC) & EXYNOS9820_DSIM_LCD_ERRORS;
++	if (err) {
++		writel(err, ctx->regs + DSIM_INTSRC);
++		pr_warn("DCS %#x: intsrc %#x, command status %#x\n", cmd, err,
++			readl(ctx->regs + DSIM_CMD_STATUS));
++	}
++
++	return 0;
++}
++
++/*
++ * The LCD core drops what set_power returns, and the console does not ask
++ * a second time once it thinks it is unblanked, so a command that found
++ * the queue busy is retried from here.
++ */
++static void exynos9820_dsim_lcd_apply(struct exynos9820_dsim_lcd *ctx)
++{
++	bool on = ctx->want;
++
++	lockdep_assert_held(&ctx->lock);
++
++	if (!exynos9820_dsim_lcd_send(ctx, on ? MIPI_DCS_SET_DISPLAY_ON :
++						MIPI_DCS_SET_DISPLAY_OFF)) {
++		ctx->on = on;
++		return;
++	}
++
++	if (++ctx->tries < EXYNOS9820_DSIM_LCD_TRIES)
++		schedule_delayed_work(&ctx->retry,
++				      msecs_to_jiffies(EXYNOS9820_DSIM_LCD_RETRY_MS));
++	else
++		pr_err("header queue busy, display %s not sent\n",
++		       on ? "on" : "off");
++}
++
++static void exynos9820_dsim_lcd_retry(struct work_struct *work)
++{
++	struct exynos9820_dsim_lcd *ctx =
++		container_of(to_delayed_work(work), struct exynos9820_dsim_lcd,
++			     retry);
++
++	guard(mutex)(&ctx->lock);
++
++	if (ctx->want != ctx->on)
++		exynos9820_dsim_lcd_apply(ctx);
++}
++
++static int exynos9820_dsim_lcd_set_power(struct lcd_device *ld, int power)
++{
++	struct exynos9820_dsim_lcd *ctx = lcd_get_data(ld);
++
++	guard(mutex)(&ctx->lock);
++
++	/*
++	 * Console blanking with the default VESA mode arrives here as
++	 * LCD_POWER_REDUCED rather than LCD_POWER_OFF, so anything but on
++	 * turns the picture off.  Both commands are sent even when the
++	 * panel should already be in that state: they are idempotent, and
++	 * it puts the panel back in step after anything went astray.
++	 */
++	ctx->want = power == LCD_POWER_ON;
++	ctx->tries = 0;
++	cancel_delayed_work(&ctx->retry);
++	exynos9820_dsim_lcd_apply(ctx);
++
++	return 0;
++}
++
++static int exynos9820_dsim_lcd_get_power(struct lcd_device *ld)
++{
++	struct exynos9820_dsim_lcd *ctx = lcd_get_data(ld);
++
++	guard(mutex)(&ctx->lock);
++
++	return ctx->on ? LCD_POWER_ON : LCD_POWER_OFF;
++}
++
++static bool exynos9820_dsim_lcd_controls_device(struct lcd_device *ld,
++						struct device *display_dev)
++{
++	return display_dev &&
++	       of_device_is_compatible(display_dev->of_node, "simple-framebuffer");
++}
++
++static const struct lcd_ops exynos9820_dsim_lcd_ops = {
++	.get_power = exynos9820_dsim_lcd_get_power,
++	.set_power = exynos9820_dsim_lcd_set_power,
++	.controls_device = exynos9820_dsim_lcd_controls_device,
++};
++
++static int __init exynos9820_dsim_lcd_init(void)
++{
++	struct exynos9820_dsim_lcd *ctx;
++	struct device_node *np;
++	struct lcd_device *ld;
++	struct clk *clk;
++	bool available;
++	int ret;
++
++	/*
++	 * Without a framebuffer from the boot loader nothing says the display
++	 * power domain is up, and a read of the link with it down aborts the
++	 * bus.
++	 */
++	np = of_find_compatible_node(NULL, NULL, "simple-framebuffer");
++	available = of_device_is_available(np);
++	of_node_put(np);
++	if (!available)
++		return 0;
++
++	np = of_find_compatible_node(NULL, NULL, "samsung,exynos9820-mipi-dsi");
++	if (!np)
++		return 0;
++	if (!of_device_is_available(np)) {
++		ret = 0;
++		goto err_put_node;
++	}
++
++	ctx = kzalloc_obj(*ctx);
++	if (!ctx) {
++		ret = -ENOMEM;
++		goto err_put_node;
++	}
++	mutex_init(&ctx->lock);
++	INIT_DELAYED_WORK(&ctx->retry, exynos9820_dsim_lcd_retry);
++
++	/*
++	 * The registers of the link sit behind this gate, and a read with
++	 * the gate shut aborts the bus.  Once enabled it is never turned off
++	 * again, not even on the error paths below: it was open when the
++	 * kernel came up, and shutting it now would be the first time anyone
++	 * did, under a link that is still running.
++	 */
++	clk = of_clk_get_by_name(np, "bus");
++	if (IS_ERR(clk)) {
++		ret = PTR_ERR(clk);
++		goto err_free;
++	}
++	ret = clk_prepare_enable(clk);
++	if (ret)
++		goto err_put_clk;
++
++	ctx->regs = of_iomap(np, 0);
++	if (!ctx->regs) {
++		ret = -ENOMEM;
++		goto err_free;
++	}
++
++	/* Only a link the boot loader started can take a command as is. */
++	if (!(readl(ctx->regs + DSIM_CLK_CTRL) & DSIM_CLK_CTRL_CLOCK_SEL)) {
++		pr_info("link not started by the boot loader, nothing to drive\n");
++		ret = 0;
++		goto err_unmap;
++	}
++
++	ctx->want = true;
++	ctx->on = true;
++	ld = lcd_device_register("exynos9820-dsim", NULL, ctx,
++				 &exynos9820_dsim_lcd_ops);
++	if (IS_ERR(ld)) {
++		ret = PTR_ERR(ld);
++		goto err_unmap;
++	}
++
++	of_node_put(np);
++	return 0;
++
++err_unmap:
++	iounmap(ctx->regs);
++	goto err_free;
++err_put_clk:
++	clk_put(clk);
++err_free:
++	kfree(ctx);
++err_put_node:
++	of_node_put(np);
++	if (ret)
++		pr_err("not registered: %d\n", ret);
++	return ret;
++}
++
++/* After deferred probing has settled, so the DPU clock controller is up. */
++late_initcall_sync(exynos9820_dsim_lcd_init);

@@ -1,0 +1,53 @@
+From eceead395b5ac1e0eed864fe901d5aee5c3da240 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 19:06:19 +0200
+Subject: [PATCH 21/40] configs: exynos9820-beyond2lte: give the heap room for
+ a sparse write
+
+Flashing a sparse image over fastboot fails on the very first chunk,
+whatever its size, with "Malloc failed for: CHUNK_TYPE_RAW".  The size of
+the chunk is a red herring: what fails is a buffer the sparse writer
+allocates once, and it is sized from the device, not from the chunk.
+
+lib/image-sparse.c asks for FASTBOOT_MAX_BLK_WRITE blocks of bounce buffer
+whenever the data cache is on, and that constant is 16384.  The storage of
+this board hands out blocks of 4096 bytes, so the request is 64 MiB against
+a heap of 32.  It can never succeed, which is why chunks of 128, 32, 8 and
+2 MiB all failed the same way.
+
+A second buffer can be live at the same time: the block backend falls back
+to writing zeros when the device has no erase operation, and that one asks
+for FASTBOOT_MAX_BLOCKS_SOFT_ERASE blocks, another 16 MiB.  So the worst
+case is 80 MiB of buffers plus everything else the loader keeps on the
+heap.
+
+128 MiB leaves room for both and for growth.  Memory is not the scarce
+thing here: this phone has eight gigabytes and the loader already stops
+itself at the four gigabyte line for the sake of the storage controller.
+
+What this buys is not a tidier log.  Without it the only way to put an
+image on this phone is the vendor tool, which needs a person holding the
+phone in download mode; with it the whole loop can run from the host over
+the cable.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ configs/exynos9820-beyond2lte_defconfig | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/configs/exynos9820-beyond2lte_defconfig b/configs/exynos9820-beyond2lte_defconfig
+index 334a48f8..3c63f416 100644
+--- a/configs/exynos9820-beyond2lte_defconfig
++++ b/configs/exynos9820-beyond2lte_defconfig
+@@ -3,7 +3,7 @@ CONFIG_SKIP_LOWLEVEL_INIT=y
+ CONFIG_COUNTER_FREQUENCY=26000000
+ CONFIG_POSITION_INDEPENDENT=y
+ CONFIG_ARCH_EXYNOS=y
+-CONFIG_SYS_MALLOC_LEN=0x2000000
++CONFIG_SYS_MALLOC_LEN=0x8000000
+ CONFIG_SYS_MALLOC_F_LEN=0x16000
+ CONFIG_TARGET_EXYNOS_MOBILE=y
+ CONFIG_NR_DRAM_BANKS=6
+-- 
+2.47.3
+

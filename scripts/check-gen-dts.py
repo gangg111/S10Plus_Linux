@@ -31,8 +31,8 @@ BAZA = "1200d84f4c0a929a0780180d25063d93773be79c"
 
 # (generator, sciezka w drzewie jadra, liczba etapow)
 PLIKI = (
-    ("gen-dts-exynos9820.py", "arch/arm64/boot/dts/exynos/exynos9820.dtsi", 4),
-    ("gen-dts-beyond2lte.py", "arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts", 2),
+    ("gen-dts-exynos9820.py", "arch/arm64/boot/dts/exynos/exynos9820.dtsi", 25),
+    ("gen-dts-beyond2lte.py", "arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts", 21),
 )
 
 

@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 22:30:00 +0200
+Subject: [PATCH] i2c: exynos5: Reset the controller stuck on an address
+
+The master can be left in HSI2C_MASTER_ST_ADDR1, in the middle of sending
+an address, and it does not leave that state on its own.  It does not clear
+on the next transfer either: every following one ends immediately, so a
+device that is present and answering looks absent.
+
+Measured on a Galaxy S10+.  Its touchscreen answers a scan that resets the
+block before each address and is not found at all without one, and reading
+its registers through the driver fails with -ENXIO until the controller is
+reset.  With the reset below the same registers read back the device ID and
+a boot status of "application".
+
+The state is already read here for the arbitration-lost check, so this
+costs nothing but the comparison.  The vendor driver does the same, under a
+samsung,reset-before-trans property, and keys it off the same value.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/i2c/busses/i2c-exynos5.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/i2c/busses/i2c-exynos5.c b/drivers/i2c/busses/i2c-exynos5.c
+index 20f8d4af6c2..4b7d99f7e7b 100644
+--- a/drivers/i2c/busses/i2c-exynos5.c
++++ b/drivers/i2c/busses/i2c-exynos5.c
+@@ -689,6 +689,20 @@ static void exynos5_i2c_bus_check(struct exynos5_i2c *i2c)
+ 	if (i2c->variant->hw == I2C_TYPE_EXYNOS5)
+ 		return;
+ 
++	/*
++	 * HSI2C_MASTER_ST_ADDR1 state before a transaction means the master
++	 * never finished the previous one and stayed in the middle of sending
++	 * an address.  It does not recover on its own and it does not clear on
++	 * the next transfer either: every following one ends immediately, so
++	 * the device on the bus looks absent.  Measured on a Galaxy S10+, whose
++	 * touchscreen answers a scan that resets the block before each address
++	 * and is not found at all without it.  A reset of the controller is
++	 * what the vendor does here too.
++	 */
++	if ((readl(i2c->regs + HSI2C_TRANS_STATUS) & HSI2C_MASTER_ST_MASK) ==
++	    HSI2C_MASTER_ST_ADDR1)
++		exynos5_i2c_reset(i2c);
++
+ 	/*
+ 	 * HSI2C_MASTER_ST_LOSE state (in Exynos7 and ExynosAutoV9 variants)
+ 	 * before transaction indicates that bus is stuck (SDA is low).

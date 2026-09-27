@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 01:00:25 +0200
+Subject: [PATCH] dt-bindings: soc: samsung: sysreg: Add the Exynos9820 FSYS1
+ sysreg
+
+The block that carries, among other things, the bits deciding whether
+the transfers of the embedded storage of this SoC are coherent.  It
+takes a clock, like the other system register blocks that have one.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml  | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml b/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
+index 7dfac26701b..15afc884acc 100644
+--- a/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
++++ b/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
+@@ -36,6 +36,7 @@ properties:
+               - samsung,exynos8895-peric0-sysreg
+               - samsung,exynos8895-peric1-sysreg
+               - samsung,exynos9820-dpu-sysreg
++              - samsung,exynos9820-fsys1-sysreg
+               - samsung,exynos9820-peric0-sysreg
+               - samsung,exynos990-peric0-sysreg
+               - samsung,exynos990-peric1-sysreg
+@@ -108,6 +109,7 @@ allOf:
+               - samsung,exynos8895-fsys1-sysreg
+               - samsung,exynos8895-peric0-sysreg
+               - samsung,exynos8895-peric1-sysreg
++              - samsung,exynos9820-fsys1-sysreg
+               - samsung,exynos9820-peric0-sysreg
+               - samsung,exynos990-peric0-sysreg
+               - samsung,exynos990-peric1-sysreg

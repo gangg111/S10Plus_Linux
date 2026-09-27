@@ -1,0 +1,119 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 08:24:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the sound card
+
+Enable ABOX and add the card: the two speaker amplifiers on UAIF1, the
+earpiece on the left channel and the bottom speaker on the right, the
+way the vendor card pairs them and the way their monitors report back,
+and the CS47L93 codec on UAIF0.
+
+The codec gets what the vendor tree gives it: the two DMICs on IN3 and
+IN4 with MICBIAS1 as their reference, the input and output modes, and
+MICVDD at 3.0 V. Its AIF1 pins come out of reset unassigned, which made
+the port record nothing but zeros, so they are switched to the AIF1
+function. The routes tie the microphones to their bias and inputs, the
+headset microphone to IN1B and the headphones to HPOUT2.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 62 ++++++++++++++++++-
+ 1 file changed, 60 insertions(+), 2 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index e348451d9b9..326825353bc 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -232,6 +232,45 @@ el2_earlymem@9fd800000 {
+ 			no-map;
+ 		};
+ 	};
++
++	/*
++	 * The earpiece takes the left channel and the bottom speaker the right
++	 * one, the way the vendor card pairs them.
++	 */
++	sound {
++		compatible = "samsung,beyond-audio";
++		model = "Samsung Galaxy S10+";
++		audio-routing = "Receiver", "Top SPK",
++				"Speaker", "Bottom SPK",
++				"DMIC1", "MICBIAS1A", "IN1ARN", "DMIC1", "IN1ARP", "DMIC1",
++				"DMIC2", "MICBIAS1B", "IN2ARN", "DMIC2", "IN2ARP", "DMIC2",
++				"Headset Mic", "MICBIAS2A", "IN1BLN", "Headset Mic",
++				"IN1BLP", "Headset Mic",
++				"Headphone", "HPOUT2L", "Headphone", "HPOUT2R";
++
++		cpu {
++			sound-dai = <&abox 1>;
++		};
++
++		codec {
++			sound-dai = <&speaker_top 0>, <&speaker_bottom 0>;
++		};
++
++		/* the microphones and the headset jack, on UAIF0 */
++		codec-link {
++			cpu {
++				sound-dai = <&abox 0>;
++			};
++
++			codec {
++				sound-dai = <&audio_codec 0>;
++			};
++		};
++	};
++};
++
++&abox {
++	status = "okay";
+ };
+ 
+ /*
+@@ -688,10 +727,16 @@ &spi_2 {
+ 	cs-gpios = <&gpp0 7 GPIO_ACTIVE_LOW>;
+ 	status = "okay";
+ 
+-	audio-codec@0 {
++	audio_codec: audio-codec@0 {
+ 		compatible = "cirrus,cs47l93";
+ 		reg = <0>;
+ 		spi-max-frequency = <25000000>;
++		#sound-dai-cells = <1>;
++
++		/* the two DMICs on IN3 and IN4 run from MICBIAS1 */
++		cirrus,dmic-ref = <0 0 1 1>;
++		cirrus,inmode = <0 0 0 0 0 0 1 1>;
++		cirrus,out-mono = <0 0 0 1 0 0>;
+ 
+ 		interrupts-extended = <&gpa2 2 IRQ_TYPE_LEVEL_LOW>;
+ 		interrupt-controller;
+@@ -707,7 +752,7 @@ audio-codec@0 {
+ 		 * switching the pin to output from a group would not.
+ 		 */
+ 		reset-gpios = <&gpg1 0 GPIO_ACTIVE_HIGH>;
+-		pinctrl-0 = <&codec_irq>;
++		pinctrl-0 = <&codec_irq>, <&codec_pins>;
+ 		pinctrl-names = "default";
+ 
+ 		AVDD-supply = <&ldo17m>;
+@@ -716,6 +761,19 @@ audio-codec@0 {
+ 		CPVDD2-supply = <&ldo18m>;
+ 		DCVDD-supply = <&ldo18m>;
+ 
++		codec_pins: pin-settings {
++			aif1-pins {
++				groups = "aif1";
++				function = "aif1";
++				bias-bus-hold;
++			};
++		};
++
++		micvdd {
++			regulator-min-microvolt = <3000000>;
++			regulator-max-microvolt = <3000000>;
++		};
++
+ 		controller-data {
+ 			samsung,spi-feedback-delay = <1>;
+ 		};

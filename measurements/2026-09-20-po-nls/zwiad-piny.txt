@@ -1,0 +1,53 @@
+Warning: Permanently added '172.16.42.1' (ED25519) to the list of known hosts.
+=== kontrolery pinow ===
+10430000.pinctrl-samsung-pinctrl
+10830000.pinctrl-samsung-pinctrl
+13030000.pinctrl-samsung-pinctrl
+13c40000.pinctrl-samsung-pinctrl
+15580000.pinctrl-samsung-pinctrl
+15850000.pinctrl-samsung-pinctrl
+15c30000.pinctrl-samsung-pinctrl
+18c60000.pinctrl-samsung-pinctrl
+pinctrl-devices
+pinctrl-handles
+pinctrl-maps
+
+=== uchwyty pinctrl zazadane przez sterowniki ===
+--- /sys/kernel/debug/pinctrl/10430000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+--- /sys/kernel/debug/pinctrl/10830000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+--- /sys/kernel/debug/pinctrl/13030000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+--- /sys/kernel/debug/pinctrl/13c40000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+--- /sys/kernel/debug/pinctrl/15580000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+--- /sys/kernel/debug/pinctrl/15850000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+--- /sys/kernel/debug/pinctrl/15c30000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+--- /sys/kernel/debug/pinctrl/18c60000.pinctrl-samsung-pinctrl/pinmux-pins ---
+Pinmux settings per pin
+Format: pin (name): mux_owner gpio_owner hog?
+
+=== drzewo urzadzen: czy magistrale maja piny ===
+[15d50000.i2c]
+
+
+[15d60000.i2c]
+
+
+[104b0000.i2c]
+
+
+[104b00c0.usi]
+
+

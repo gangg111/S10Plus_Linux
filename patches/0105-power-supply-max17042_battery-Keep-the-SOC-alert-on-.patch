@@ -1,0 +1,75 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 00:36:52 +0200
+Subject: [PATCH] power: supply: max17042_battery: Keep the SOC alert on RepSOC
+
+The SOC alert compares SALRT_Th with the register MiscCFG.SACFG selects.
+Since commit 3a3acf839b2c ("power: supply: max17042_battery: Fix SOC
+threshold calc w/ no current sense") the driver takes the thresholds
+from RepSOC when a sense resistor is described and from VFSOC when it
+is not, but it sets SACFG only in the second case, to VFSOC.  With a
+sense resistor it relies on SACFG still being at its power-on value.
+The gauge keeps MiscCFG for as long as the battery is connected, so a
+boot of the same driver without the resistor in the device tree, or the
+firmware, can leave the alert on VFSOC while the thresholds follow
+RepSOC.
+
+That is what happened on a Samsung Galaxy S10+ (MAX77705) after its
+device tree gained the sense resistor.  With the battery full, RepSOC
+read 100.0 % and VFSOC 104.9 %, so the window became 99..101 %, SMX was
+set again the moment the handler cleared it, and the handler wrote the
+same window back.  Measured over 10 s on an idle system: 108 gauge
+interrupts per second, 10154 per second on the I2C controller, upowerd
+in uninterruptible sleep behind the power_supply_changed() storm, and
+85 % idle CPU.  Setting SACFG to RepSOC by hand brought the gauge
+interrupt to 0/s, the I2C controller to 14/s and idle CPU to 99 %.
+
+Set SACFG to RepSOC whenever the driver reads RepSOC, before the
+interrupt is requested.  On boards that were already consistent this
+writes the value the register holds.  The voltage-only setup also zeroes
+CGAIN, and that is left alone here: the gain is encoded differently on
+the ModelGauge m5 parts, where 0x0400 is unity (the value that brings the
+current reading back on this MAX77705), than on the MAX17047, where it is
+0x4000.
+
+Fixes: 3a3acf839b2c ("power: supply: max17042_battery: Fix SOC threshold calc w/ no current sense")
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/power/supply/max17042_battery.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/drivers/power/supply/max17042_battery.c b/drivers/power/supply/max17042_battery.c
+index d409d2f0d38..72af2076980 100644
+--- a/drivers/power/supply/max17042_battery.c
++++ b/drivers/power/supply/max17042_battery.c
+@@ -40,6 +40,10 @@
+ #define CFG_ALRT_BIT_ENBL	(1 << 2)
+ #define CFG2_DSOCI_BIT_ENBL	(1 << 7)
+ 
++/* MiscCFG: the SOC register the SOC alert compares against */
++#define MISCCFG_SACFG_MASK	0x3
++#define MISCCFG_SACFG_REPSOC	0x0
++
+ #define VFSOC0_LOCK		0x0000
+ #define VFSOC0_UNLOCK		0x0080
+ #define MODEL_UNLOCK1	0X0059
+@@ -1188,6 +1192,19 @@ static int max17042_probe(struct i2c_client *client, struct device *dev, int irq
+ 		regmap_write(chip->regmap, MAX17042_CGAIN, 0x0000);
+ 		regmap_write(chip->regmap, MAX17042_MiscCFG, 0x0003);
+ 		regmap_write(chip->regmap, MAX17042_LearnCFG, 0x0007);
++	} else {
++		/*
++		 * The SOC thresholds are taken from RepSOC in this mode, so
++		 * the alert has to compare against RepSOC too.  The gauge
++		 * keeps MiscCFG for as long as the battery is connected, and
++		 * the voltage-only setup above, from a boot that described no
++		 * sense resistor, or the firmware may have left the alert on
++		 * VFSOC.  Thresholds around one register and an alert on
++		 * another keep the alert asserted, and the interrupt fires
++		 * again as soon as it is acknowledged.
++		 */
++		regmap_update_bits(chip->regmap, MAX17042_MiscCFG,
++				   MISCCFG_SACFG_MASK, MISCCFG_SACFG_REPSOC);
+ 	}
+ 
+ 	chip->task_period = MAX17042_DEFAULT_TASK_PERIOD;

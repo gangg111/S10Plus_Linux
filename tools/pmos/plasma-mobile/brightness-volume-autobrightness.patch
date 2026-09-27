@@ -1,0 +1,336 @@
+diff -ruN a/plasma-mobile-6.7.5/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml b/plasma-mobile-6.7.5/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml
+--- a/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml	2026-09-08 12:56:31.000000000 +0200
++++ b/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml	2026-09-27 19:11:03.526718400 +0200
+@@ -10,15 +10,22 @@
+ import QtQuick.Layouts 1.1
+ import org.kde.kirigami as Kirigami
+ 
+-import org.kde.plasma.core as PlasmaCore
+-import org.kde.plasma.components 3.0 as PC3
+ import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBrightness
+ import org.kde.plasma.private.mobileshell as MobileShell
++import org.kde.plasma.private.volume
++import org.kde.plasma.workspace.dbus as DBus
+ 
+-Item {
++/*
++ * Brightness and volume, each a thick rounded slider with a round button next
++ * to it: automatic brightness beside brightness, mute beside volume.  The
++ * automatic brightness button talks to the autojasnosc service over D-Bus and
++ * is hidden when that service is not running.
++ */
++ColumnLayout {
+     id: root
+-    implicitHeight: brightnessRow.implicitHeight
+-    visible: screenBrightness.brightnessAvailable
++    spacing: Kirigami.Units.largeSpacing
++
++    visible: screenBrightness.brightnessAvailable || !!PreferredDevice.sink
+ 
+     property double brightnessPressedValue: 1
+     Behavior on brightnessPressedValue {
+@@ -28,54 +35,178 @@
+         }
+     }
+ 
++    readonly property real rowHeight: Kirigami.Units.gridUnit * 3.25
++
+     ScreenBrightness.ScreenBrightnessUtil {
+         id: screenBrightness
+     }
+ 
+-    MobileShell.PanelBackground {
+-        anchors.fill: parent
+-        anchors.leftMargin: -Kirigami.Units.smallSpacing
+-        anchors.rightMargin: -Kirigami.Units.smallSpacing
+-        anchors.topMargin: -Kirigami.Units.smallSpacing * 2
+-        anchors.bottomMargin: -Kirigami.Units.smallSpacing * 2
++    // --- automatic brightness service ----------------------------------------
++    readonly property string autoService: "pl.s10plus.Autojasnosc"
++    property bool autoOn: false
++
++    DBus.DBusServiceWatcher {
++        id: autoWatcher
++        busType: DBus.BusType.Session
++        watchedService: root.autoService
++        onRegisteredChanged: root.fetchAuto()
++    }
+ 
+-        panelType: MobileShell.PanelBackground.PanelType.Base
+-        flatten:  root.brightnessPressedValue
++    function fetchAuto() {
++        if (!autoWatcher.registered) {
++            return;
++        }
++        DBus.SessionBus.asyncCall({
++            service: root.autoService, path: "/Autojasnosc",
++            iface: root.autoService, member: "Stan", arguments: []
++        }, reply => {
++            root.autoOn = (typeof reply === "boolean") ? reply : !!(reply && reply.value);
++        }, () => {});
++    }
+ 
+-        Kirigami.Theme.inherit: false
+-        Kirigami.Theme.colorSet: Kirigami.Theme.Window
++    function setAuto(on) {
++        root.autoOn = on;
++        DBus.SessionBus.asyncCall({
++            service: root.autoService, path: "/Autojasnosc",
++            iface: root.autoService, member: "Ustaw", arguments: [on]
++        }, () => {}, () => root.fetchAuto());
+     }
+ 
+-    RowLayout {
+-        id: brightnessRow
+-        spacing: Kirigami.Units.smallSpacing * 2
++    Component.onCompleted: fetchAuto()
++
++    // --- building blocks -----------------------------------------------------
++    component PillSlider: Item {
++        id: pill
++        property real from: 0
++        property real to: 1
++        property real value: 0
++        property string iconSource
++        property bool dimmed: false
++        readonly property bool pressed: area.pressed
++        signal moved(real value)
++
++        readonly property real fraction: to > from ? Math.max(0, Math.min(1, (value - from) / (to - from))) : 0
++
++        Layout.fillWidth: true
++        Layout.preferredHeight: root.rowHeight
++        opacity: dimmed ? 0.5 : 1
++
++        Rectangle {
++            id: track
++            anchors.fill: parent
++            radius: height / 2
++            color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                           Kirigami.Theme.textColor.b, 0.14)
++            clip: true
++
++            Rectangle {
++                // the fill never gets narrower than its own rounded end, so a
++                // low value still reads as a round pill around the icon
++                height: parent.height
++                width: Math.max(height, parent.width * pill.fraction)
++                radius: height / 2
++                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                               Kirigami.Theme.textColor.b, 0.85)
++                Behavior on width {
++                    enabled: !area.pressed
++                    NumberAnimation { duration: Kirigami.Units.shortDuration }
++                }
++            }
++        }
+ 
+-        anchors.left: parent.left
+-        anchors.right: parent.right
+-        anchors.top: parent.top
++        Kirigami.Icon {
++            anchors.verticalCenter: parent.verticalCenter
++            anchors.left: parent.left
++            anchors.leftMargin: (pill.height - width) / 2
++            width: Kirigami.Units.iconSizes.smallMedium
++            height: width
++            source: pill.iconSource
++            // sits on the fill, so it takes the background colour
++            color: Kirigami.Theme.backgroundColor
++            isMask: true
++        }
++
++        MouseArea {
++            id: area
++            anchors.fill: parent
++            preventStealing: true
++            function update(x) {
++                const f = Math.max(0, Math.min(1, x / width));
++                pill.moved(pill.from + f * (pill.to - pill.from));
++            }
++            onPressed: mouse => update(mouse.x)
++            onPositionChanged: mouse => update(mouse.x)
++        }
++    }
++
++    component RoundButton: Item {
++        id: button
++        property string iconSource
++        property bool checked: false
++        property string overlayText
++        signal clicked()
++
++        Layout.preferredWidth: root.rowHeight
++        Layout.preferredHeight: root.rowHeight
++
++        Rectangle {
++            anchors.fill: parent
++            radius: width / 2
++            color: button.checked
++                   ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                             Kirigami.Theme.textColor.b, 0.85)
++                   : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                             Kirigami.Theme.textColor.b, 0.14)
++            Behavior on color { ColorAnimation { duration: Kirigami.Units.shortDuration } }
++        }
+ 
+         Kirigami.Icon {
+-            Layout.alignment: Qt.AlignVCenter
+-            Layout.leftMargin: Kirigami.Units.smallSpacing
+-            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+-            Layout.preferredHeight: width
+-            source: "low-brightness"
++            id: buttonIcon
++            anchors.centerIn: parent
++            width: Kirigami.Units.iconSizes.smallMedium
++            height: width
++            source: button.iconSource
++            color: button.checked ? Kirigami.Theme.backgroundColor : Kirigami.Theme.textColor
++            isMask: true
+         }
+ 
+-        PC3.Slider {
++        Text {
++            visible: button.overlayText.length > 0
++            anchors.left: buttonIcon.right
++            anchors.leftMargin: -Kirigami.Units.smallSpacing
++            anchors.top: buttonIcon.verticalCenter
++            text: button.overlayText
++            font.bold: true
++            font.pixelSize: buttonIcon.height * 0.55
++            color: buttonIcon.color
++        }
++
++        MouseArea {
++            anchors.fill: parent
++            onClicked: button.clicked()
++        }
++    }
++
++    // --- brightness ------------------------------------------------------------
++    RowLayout {
++        Layout.fillWidth: true
++        spacing: Kirigami.Units.largeSpacing
++        visible: screenBrightness.brightnessAvailable
++
++        PillSlider {
+             id: brightnessSlider
+-            Layout.fillWidth: true
+             from: 1
+             to: screenBrightness.maxBrightness
+             value: screenBrightness.brightness
+-            onMoved: screenBrightness.brightness = value;
++            iconSource: "high-brightness"
++            onMoved: value => { screenBrightness.brightness = Math.round(value); }
+ 
+             onPressedChanged: {
+                 if (pressed) {
+                     brightnessPressedTimer.restart();
+-                } else{
++                } else {
+                     brightnessPressedTimer.stop();
+-                    brightnessPressedValue = 1;
++                    root.brightnessPressedValue = 1;
+                 }
+             }
+ 
+@@ -85,26 +216,51 @@
+                 repeat: false
+                 onTriggered: {
+                     if (brightnessSlider.pressed) {
+-                        brightnessPressedValue = 0;
++                        root.brightnessPressedValue = 0;
+                     }
+                 }
+             }
++        }
+ 
+-            // HACK: for some reason, the slider initial value doesn't set without being done after the component completes loading
+-            Timer {
+-                interval: 0
+-                running: true
+-                repeat: false
+-                onTriggered: brightnessSlider.value = Qt.binding(() => screenBrightness.brightness)
++        RoundButton {
++            visible: autoWatcher.registered
++            iconSource: "high-brightness"
++            overlayText: "A"
++            checked: root.autoOn
++            onClicked: root.setAuto(!root.autoOn)
++        }
++    }
++
++    // --- volume ----------------------------------------------------------------
++    RowLayout {
++        Layout.fillWidth: true
++        spacing: Kirigami.Units.largeSpacing
++        visible: !!PreferredDevice.sink
++
++        PillSlider {
++            from: 0
++            to: PulseAudio.NormalVolume
++            value: PreferredDevice.sink ? PreferredDevice.sink.volume : 0
++            dimmed: PreferredDevice.sink ? PreferredDevice.sink.muted : false
++            iconSource: "audio-volume-high"
++            onMoved: value => {
++                if (!PreferredDevice.sink) {
++                    return;
++                }
++                PreferredDevice.sink.volume = Math.round(value);
++                PreferredDevice.sink.muted = value <= 0;
+             }
+         }
+ 
+-        Kirigami.Icon {
+-            Layout.alignment: Qt.AlignVCenter
+-            Layout.rightMargin: Kirigami.Units.smallSpacing
+-            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+-            Layout.preferredHeight: width
+-            source: "high-brightness"
++        RoundButton {
++            iconSource: PreferredDevice.sink && PreferredDevice.sink.muted
++                        ? "audio-volume-muted" : MobileShell.AudioInfo.icon
++            checked: PreferredDevice.sink ? PreferredDevice.sink.muted : false
++            onClicked: {
++                if (PreferredDevice.sink) {
++                    PreferredDevice.sink.muted = !PreferredDevice.sink.muted;
++                }
++            }
+         }
+     }
+ }
+diff -ruN a/plasma-mobile-6.7.5/components/screenbrightnessplugin/screenbrightnessutil.cpp b/plasma-mobile-6.7.5/components/screenbrightnessplugin/screenbrightnessutil.cpp
+--- a/components/screenbrightnessplugin/screenbrightnessutil.cpp	2026-09-08 12:56:31.000000000 +0200
++++ b/components/screenbrightnessplugin/screenbrightnessutil.cpp	2026-09-27 19:09:53.868636900 +0200
+@@ -27,8 +27,10 @@
+     fetchBrightness();
+     fetchMaxBrightness();
+ 
+-    // watch for brightness interface
+-    m_brightnessInterfaceWatcher = new QDBusServiceWatcher(QStringLiteral("org.kde.Solid.PowerManagement.Actions.BrightnessControl"),
++    // Watch the bus name of the service, not the interface name: the shell
++    // often starts before PowerDevil, and a name that never appears on the bus
++    // left the brightness slider hidden for the whole session.
++    m_brightnessInterfaceWatcher = new QDBusServiceWatcher(QStringLiteral("org.kde.Solid.PowerManagement"),
+                                                            QDBusConnection::sessionBus(),
+                                                            QDBusServiceWatcher::WatchForOwnerChange,
+                                                            this);
+@@ -61,7 +63,9 @@
+ 
+ bool ScreenBrightnessUtil::brightnessAvailable() const
+ {
+-    return m_brightnessInterface->isValid();
++    // isValid() is decided when the interface object is created, which is
++    // before PowerDevil is up; a known maximum means the service answered.
++    return m_maxBrightness > 0;
+ }
+ 
+ void ScreenBrightnessUtil::fetchBrightness()
+@@ -93,6 +97,7 @@
+         } else if (m_maxBrightness != reply.value()) {
+             m_maxBrightness = reply.value();
+             Q_EMIT maxBrightnessChanged();
++            Q_EMIT brightnessAvailableChanged();
+         }
+         watcher->deleteLater();
+     });

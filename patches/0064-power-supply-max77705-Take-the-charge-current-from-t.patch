@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 20:25:00 +0200
+Subject: [PATCH] power: supply: max77705: Take the charge current from the
+ battery
+
+The chip comes up limiting the charge to 450 mA, which is a safe value for
+a cell nobody described and a needlessly slow one for a cell that is.  The
+driver already asks for the battery description and uses its end-of-charge
+voltage, so use the current from it as well; the limit of what the supply
+on the other end can deliver is a separate property and stays untouched.
+
+Measured on a Galaxy S10+, whose cell is described as taking 2850 mA: the
+charger reports 900 mA before this change and 2850 mA after it, without
+anyone writing to sysfs.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/power/supply/max77705_charger.c | 18 +++++++++++++++++-
+ 1 file changed, 17 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/power/supply/max77705_charger.c b/drivers/power/supply/max77705_charger.c
+index 63b0b4f0cd2..c7eff705a14 100644
+--- a/drivers/power/supply/max77705_charger.c
++++ b/drivers/power/supply/max77705_charger.c
+@@ -528,7 +528,23 @@ static int max77705_charger_initialize(struct max77705_charger_data *chg)
+ 	if (err)
+ 		goto err;
+ 
+-	/* charge current 450mA(default) */
++	/*
++	 * Charge current: the chip comes up at 450 mA, which is a safe value
++	 * for a cell nobody described and a needlessly slow one for a cell
++	 * that is.  The battery node states what the cell takes, so use it;
++	 * what the supply on the other end can deliver is a separate limit
++	 * and stays where it is.
++	 */
++	if (info->constant_charge_current_max_ua > 0) {
++		err = max77705_set_integer(chg, MAX77705_CHG_CC_LIM,
++					   MAX77705_CURRENT_CHGIN_MIN,
++					   MAX77705_CURRENT_CHGIN_MAX,
++					   MAX77705_CURRENT_CHG_STEP,
++					   info->constant_charge_current_max_ua);
++		if (err)
++			goto err;
++	}
++
+ 	/* otg current limit 900mA */
+ 	err = regmap_field_write(chg->rfield[MAX77705_OTG_ILIM], MAX77705_OTG_ILIM_900);
+ 	if (err)

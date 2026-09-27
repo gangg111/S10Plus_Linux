@@ -1,0 +1,162 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 23 Sep 2026 21:12:20 +0200
+Subject: [PATCH] PCI: exynos9820: Power the endpoint and bring the link up in
+ vendor order
+
+Three things stood between this driver and the Wi-Fi chip of the Galaxy
+S10+, found by reading the vendor sources before its first run on the
+phone.
+
+The chip is not powered.  Its Wi-Fi half comes up on a GPIO line of its
+own (WL_REG_ON), which the vendor Wi-Fi driver raises before it asks the
+PCIe driver to train the link.  Take it as the optional vpcie3v3 supply
+and switch it on in probe, while the endpoint is still held in reset.
+
+The endpoint left reset after the PHY was set up.  The vendor sequence,
+exynos_pcie_establish_link(), does it the other way round: core reset,
+PERST# released, 18 ms, the requests to leave L1 and to handle link down
+manually, and only then the PHY tables.  Follow that order.
+
+MSI would never arrive.  With PCI_MSI enabled the DesignWare core builds
+an iMSI-RX domain on its own, but nothing on this board wires the MSI
+output of the core to an interrupt, and the vendor runs its Wi-Fi on INTx
+(use-msi = "false").  An endpoint driver would get MSI vectors that never
+fire.  Provide an empty msi_init, so no domain is built, and ask for one
+through bridge->msi_domain, so the root bus is marked NO_MSI and endpoint
+drivers fall back to INTx, which the interrupt-map already routes.
+
+Measured on a Galaxy S10+: the link comes up at Gen1 x1 on the first
+try, 0.1 s after the probe, the BCM4375 enumerates as 14e4:4475 with
+both BARs assigned, brcmfmac runs the vendor firmware on it, and the
+chip interrupts arrive over INTx on the shared line.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/pci/controller/dwc/pcie-exynos9820.c | 67 ++++++++++++++------
+ 1 file changed, 48 insertions(+), 19 deletions(-)
+
+diff --git a/drivers/pci/controller/dwc/pcie-exynos9820.c b/drivers/pci/controller/dwc/pcie-exynos9820.c
+index f8c0d89772f..facecafb5ca 100644
+--- a/drivers/pci/controller/dwc/pcie-exynos9820.c
++++ b/drivers/pci/controller/dwc/pcie-exynos9820.c
+@@ -38,6 +38,7 @@
+ #include <linux/pci.h>
+ #include <linux/platform_device.h>
+ #include <linux/regmap.h>
++#include <linux/regulator/consumer.h>
+ 
+ #include "pcie-designware.h"
+ 
+@@ -341,23 +342,9 @@ static bool exynos9820_pcie_link_up(struct dw_pcie *pci)
+ 
+ static int exynos9820_pcie_start_link(struct dw_pcie *pci)
+ {
+-	struct exynos9820_pcie *ep = to_exynos9820_pcie(pci);
+ 	void __iomem *elbi = pci->elbi_base;
+ 
+-	/*
+-	 * The controller comes out of reset before the endpoint is allowed
+-	 * to answer, so the endpoint reset line is released here rather than
+-	 * in probe, and the eighteen milliseconds are the ones the vendor
+-	 * sequence waits for this chip.
+-	 */
+-	gpiod_set_value_cansleep(ep->reset_gpio, 1);
+-	usleep_range(18000, 20000);
+-
+-	exynos9820_pcie_writel(elbi, APP_REQ_EXIT_L1_MODE,
+-			       PCIE_APP_REQ_EXIT_L1_MODE);
+-	exynos9820_pcie_writel(elbi, PCIE_LINKDOWN_RST_MANUAL,
+-			       PCIE_LINKDOWN_RST_CTRL_SEL);
+-
++	/* The endpoint left reset in host_init, before the PHY was set up. */
+ 	exynos9820_pcie_update(elbi, PCIE_SW_WAKE, PCIE_BUS_EN, 0);
+ 	exynos9820_pcie_writel(elbi, PCIE_ELBI_LTSSM_ENABLE,
+ 			       PCIE_APP_LTSSM_ENABLE);
+@@ -424,9 +411,39 @@ static int exynos9820_pcie_host_init(struct dw_pcie_rp *pp)
+ 	usleep_range(20, 30);
+ 	exynos9820_pcie_writel(pci->elbi_base, 1, PCIE_SOFT_CORE_RESET);
+ 
++	/*
++	 * The endpoint leaves reset BEFORE the PHY is set up, which is the
++	 * order of exynos_pcie_establish_link() in the vendor driver, the one
++	 * sequence known to bring this chip up: core reset, PERST# released,
++	 * eighteen milliseconds, then the PHY tables and only then the link.
++	 */
++	gpiod_set_value_cansleep(ep->reset_gpio, 1);
++	usleep_range(18000, 20000);
++
++	exynos9820_pcie_writel(pci->elbi_base, APP_REQ_EXIT_L1_MODE,
++			       PCIE_APP_REQ_EXIT_L1_MODE);
++	exynos9820_pcie_writel(pci->elbi_base, PCIE_LINKDOWN_RST_MANUAL,
++			       PCIE_LINKDOWN_RST_CTRL_SEL);
++
+ 	exynos9820_pcie_phy_config(ep);
+ 	exynos9820_pcie_enable_irq_pulse(ep);
+ 
++	/*
++	 * No MSI reaches the CPU on this board: the vendor runs its Wi-Fi on
++	 * INTx (use-msi = "false"), and nothing wires the MSI output of the
++	 * DesignWare core to an interrupt.  Asking for an MSI domain and
++	 * finding none marks the root bus NO_MSI, so an endpoint driver that
++	 * tries MSI falls back to INTx instead of waiting on vectors that
++	 * never fire.
++	 */
++	pp->bridge->msi_domain = true;
++
++	return 0;
++}
++
++/* See the end of host_init: MSI is refused on purpose, INTx is used. */
++static int exynos9820_pcie_msi_init(struct dw_pcie_rp *pp)
++{
+ 	return 0;
+ }
+ 
+@@ -443,6 +460,7 @@ static void exynos9820_pcie_host_deinit(struct dw_pcie_rp *pp)
+ static const struct dw_pcie_host_ops exynos9820_pcie_host_ops = {
+ 	.init = exynos9820_pcie_host_init,
+ 	.deinit = exynos9820_pcie_host_deinit,
++	.msi_init = exynos9820_pcie_msi_init,
+ };
+ 
+ static const struct dw_pcie_ops dw_pcie_ops = {
+@@ -488,14 +506,27 @@ static int exynos9820_pcie_probe(struct platform_device *pdev)
+ 		return dev_err_probe(dev, ret, "failed to get the clocks\n");
+ 
+ 	/*
+-	 * The endpoint is held in reset until the link is started, which is
+-	 * why the line goes out low here and is raised in start_link.
++	 * The endpoint is held in reset until the controller is out of its
++	 * own, which is why the line goes out low here and is raised in
++	 * host_init.
+ 	 */
+ 	ep->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+ 	if (IS_ERR(ep->reset_gpio))
+ 		return dev_err_probe(dev, PTR_ERR(ep->reset_gpio),
+ 				     "failed to get the endpoint reset line\n");
+ 
++	/*
++	 * Power the endpoint while it is still held in reset.  On the
++	 * Galaxy S10+ this supply is the line that turns the Wi-Fi half of
++	 * the chip on (WL_REG_ON); the vendor driver raises it and waits
++	 * 100 ms before it lets the controller train the link, and the delay
++	 * lives with the regulator in the device tree.
++	 */
++	ret = devm_regulator_get_enable_optional(dev, "vpcie3v3");
++	if (ret && ret != -ENODEV)
++		return dev_err_probe(dev, ret,
++				     "failed to power the endpoint\n");
++
+ 	platform_set_drvdata(pdev, ep);
+ 
+ 	pp = &ep->pci.pp;
+@@ -509,8 +540,6 @@ static int exynos9820_pcie_probe(struct platform_device *pdev)
+ 		return dev_err_probe(dev, ret, "failed to request the irq\n");
+ 
+ 	pp->ops = &exynos9820_pcie_host_ops;
+-	/* This board wires no MSI: the one interrupt carries everything. */
+-	pp->msi_irq[0] = -ENODEV;
+ 
+ 	ret = dw_pcie_host_init(pp);
+ 	if (ret)

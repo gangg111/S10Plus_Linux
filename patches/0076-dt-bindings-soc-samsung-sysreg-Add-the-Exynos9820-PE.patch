@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 07:30:00 +0200
+Subject: [PATCH] dt-bindings: soc: samsung: sysreg: Add the Exynos9820 PERIC1
+
+The PERIC1 system register holds the mode register of the USI blocks of
+that domain, the same role its PERIC0 counterpart already has here.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../bindings/soc/samsung/samsung,exynos-sysreg.yaml           | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml b/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
+index 15afc884acc..823c992eee4 100644
+--- a/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
++++ b/Documentation/devicetree/bindings/soc/samsung/samsung,exynos-sysreg.yaml
+@@ -37,7 +37,9 @@ properties:
+               - samsung,exynos8895-peric1-sysreg
+               - samsung,exynos9820-dpu-sysreg
+               - samsung,exynos9820-fsys1-sysreg
++              - samsung,exynos9820-cmgp-sysreg
+               - samsung,exynos9820-peric0-sysreg
++              - samsung,exynos9820-peric1-sysreg
+               - samsung,exynos990-peric0-sysreg
+               - samsung,exynos990-peric1-sysreg
+               - samsung,exynosautov920-hsi2-sysreg
+@@ -110,7 +112,9 @@ allOf:
+               - samsung,exynos8895-peric0-sysreg
+               - samsung,exynos8895-peric1-sysreg
+               - samsung,exynos9820-fsys1-sysreg
++              - samsung,exynos9820-cmgp-sysreg
+               - samsung,exynos9820-peric0-sysreg
++              - samsung,exynos9820-peric1-sysreg
+               - samsung,exynos990-peric0-sysreg
+               - samsung,exynos990-peric1-sysreg
+     then:

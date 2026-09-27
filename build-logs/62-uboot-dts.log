@@ -1,0 +1,3 @@
+check-uboot-dts: kopia dts/upstream/src/arm64/exynos/exynos9820.dtsi rozjechala sie z arch/arm64/boot/dts/exynos/exynos9820.dtsi w wierszu 376
+  bootloader: 		 * A USI block is one piece of hardware that can be a UART, an SPI
+  jadro:      		 * The second full USI block of PERIC0, vendor usi_1, mode register

@@ -1,0 +1,23 @@
+palec:
+palec gotowy, czekam 4000 ms
+palec: 140 2756 na 120 ms
+palec: 140 2756 na 120 ms
+palec: 310 2756 na 120 ms
+palec: 310 2756 na 120 ms
+palec: 140 2756 na 120 ms
+palec: 310 2756 na 120 ms
+palec: 1304 2941 na 120 ms
+palec: 310 2756 na 120 ms
+palec: 310 2756 na 120 ms
+palec: 310 2756 na 120 ms
+palec: 1300 2756 na 900 ms
+palec: 135 2941 na 120 ms
+palec: 105 2571 na 120 ms
+palec: 135 2941 na 120 ms
+palec: 105 2386 na 120 ms
+palec: 1304 2941 na 120 ms
+== odebrano: [ZZz|@q|]
+== bajty:
+ 5a 5a 7a 0a 40 71 0a
+WYNIK: ZGODNE
+== klawiatura: active

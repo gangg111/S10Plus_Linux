@@ -1,0 +1,14 @@
+[Unit]
+Description=Jasnosc panelu S6E3HA9 (backlight dla PowerDevil i EDR w KWin)
+Before=plasma-mobile.service display-manager.service
+
+[Service]
+Type=oneshot
+# hbm=1: do 800 nitow.  Wymaga pelnej sekwencji jasnosci producenta (IRC, POC);
+# bez niej HBM dawal zazolcony obraz i czarny ekran do restartu.
+ExecStart=/sbin/modprobe s6e3ha9_jas tryb=1 hbm=1
+RemainAfterExit=yes
+TimeoutStartSec=30
+
+[Install]
+WantedBy=graphical.target

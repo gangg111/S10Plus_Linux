@@ -1,0 +1,17 @@
+== przed startem uslugi (ma byc pusto):
+0
+== usluga: active
+== po starcie uslugi (ma byc 1):
+1
+== ExecStartPre w dzienniku:
+Sep 16 00:53:48 pmos klawiatura[7137]: ekran 1440x3040, komorka konsoli 64 px, pas 1152 px od 1888, rzad 192 px
+Sep 16 00:53:48 pmos klawiatura[7137]: koniec, konsola przywrocona
+Sep 16 00:53:48 pmos systemd[1]: Stopping Klawiatura ekranowa dla konsoli...
+Sep 16 00:53:48 pmos klawiatura[7182]: konsola ma z powrotem 47 wierszy
+Sep 16 00:53:48 pmos systemd[1]: klawiatura.service: Deactivated successfully.
+Sep 16 00:53:48 pmos systemd[1]: Stopped Klawiatura ekranowa dla konsoli.
+Sep 16 00:53:53 pmos systemd[1]: Starting Klawiatura ekranowa dla konsoli...
+Sep 16 00:53:54 pmos systemd[1]: Started Klawiatura ekranowa dla konsoli.
+== wersja binarki:
+ae2dfac78224a23c4f9c151d29acf5572ad3f756b7576bbf05f53b049c472280  /usr/local/bin/klawiatura
+ae2dfac78224a23c4f9c151d29acf5572ad3f756b7576bbf05f53b049c472280  /tmp/klawiatura-nowa

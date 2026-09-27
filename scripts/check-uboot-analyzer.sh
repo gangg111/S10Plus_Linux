@@ -23,13 +23,20 @@
 # PROGI, a nie zero. Trzy klasy maja tlo, ktorego nie da sie usunac z poziomu
 # naszych plikow, wiec kazda ma osobny licznik i osobny pulap:
 #
-#   przestrzen adresowa  readl/writel i dev_read_addr_ptr. Zmierzone tlo U-Boota:
+#   przestrzen adresowa  readl/writel i dev_read_addr_ptr, liczone jako MIEJSCA
+#                        w kodzie (plik, wiersz, kolumna bez powtorzen), bo
+#                        sparse powtarza uwage raz na kazde wstawienie funkcji
+#                        i licznik surowy mierzyl liczbe odwolan do rejestrow.
+#                        Zmierzone tlo U-Boota:
 #                        upstreamowy phy-exynos-usbdrd.c ma 55 takich uwag, a sam
 #                        rdzen ufs-uclass.c ma 38. Upstream nie anotuje __iomem
 #                        konsekwentnie, wiec wymaganie zera od naszych plikow
 #                        byloby wymaganiem czegos, czego nie robi kod obok.
 #   zasieg symbolu       symbole _u_boot_list_2_driver_2_*, ktore tworzy makro
-#                        U_BOOT_DRIVER. Ma je KAZDY sterownik w tym drzewie.
+#                        U_BOOT_DRIVER. Ma je KAZDY sterownik w tym drzewie, wiec
+#                        ta klasa nie ma pulapu liczbowego, tylko niezmiennik:
+#                        uwag ma byc DOKLADNIE tyle, ile sterownikow. Dowolna
+#                        inna uwaga o zasiegu jest nasza i liczy sie poza tlem.
 #   ograniczenie sparse'a  sparse nie parsuje literalow UTF-16 (u"..."), a takiego
 #                        uzywa tablica fw_images w exynos-mobile.c:31, czyli
 #                        w kodzie plyty, ktorego NIE pisalismy. Stad trzy bledy,
@@ -84,9 +91,9 @@ drivers/phy/phy-exynos9820-ufs
 drivers/ufs/ufs-exynos
 board/samsung/exynos-mobile/exynos-mobile"
 
-# Pulapy zmierzone 19.09.2026 na naszym defconfigu.
-MAX_ADDRSPACE=32
-MAX_STATIC=6
+# Pulapy zmierzone 19.09.2026 na naszym defconfigu, przeliczone 21.09.2026
+# po zmianie sposobu liczenia uwag o przestrzeni adresowej (patrz nizej).
+MAX_ADDRSPACE=20
 MAX_SPARSE_BUG=3
 
 cd "$UB" || exit 2
@@ -97,6 +104,7 @@ export CROSS_COMPILE
 clang_total=0
 addr_total=0
 static_total=0
+drv_total=0
 bug_total=0
 inne_total=0
 plikow=0
@@ -135,14 +143,34 @@ for base in $PLIKI; do
 	s=$(make C=2 "$base.o" 2>&1 | grep -E 'warning:|error:')
 	printf '=== sparse %s ===\n%s\n' "$base.c" "$s" >> "$out"
 
-	a=$(licz "$s" 'address space')
-	st=$(licz "$s" 'Should it be static')
+	# Sparse zglasza uwage o przestrzeni adresowej w miejscu DEFINICJI, ale
+	# osobno dla KAZDEGO jej wstawienia. Jednolinijkowy pomocnik czytajacy
+	# rejestr daje ich tyle, ile ma wywolan: u nas jedna linia ufs-exynos.c
+	# dala 27 uwag z 95. Licznik surowy mierzyl wiec, ile razy sterownik
+	# siega do rejestrow, a nie w ilu miejscach kod gubi anotacje, i rosl od
+	# samego dopisania wywolania. Liczymy miejsca, bez powtorzen: plik,
+	# wiersz, kolumna.
+	a_raw=$(licz "$s" 'address space')
+	a=$(printf '%s\n' "$s" | grep 'address space' | cut -d' ' -f1 \
+		| sort -u | grep -c . )
+	# Symbol z makra U_BOOT_DRIVER ma KAZDY sterownik w tym drzewie, wiec ta
+	# klasa jest tlem jeden do jednego ze sterownikami i nie ma sensownego
+	# pulapu liczbowego: rosnie, gdy dochodzi sterownik. Pilnujemy za to
+	# rzeczy mocniejszej: ze kazda taka uwaga dotyczy WLASNIE tego symbolu.
+	# Uwaga o zasiegu czegokolwiek innego jest nasza i idzie do kubelka
+	# "poza znanymi klasami", gdzie pulap wynosi zero.
+	st=$(printf '%s\n' "$s" | grep 'Should it be static' \
+		| grep -c "_u_boot_list_2_driver_2_")
 	# Znane ograniczenie parsera sparse'a na literalach UTF-16.
 	bug=$(licz "$s" "undefined identifier 'u'\|Expected } at end of initializer\|got \"UBOOT_BOOT_PARTITION\"")
-	inne=$(( $(licz "$s" '.') - a - st - bug ))
+	# Odejmujemy surowa liczbe uwag o przestrzeni adresowej, a nie liczbe
+	# miejsc, bo tu chodzi o to, ile wierszy wyjscia zostalo nierozpoznanych.
+	# Od uwag o zasiegu odejmujemy TYLKO te z makra: reszta ma tu zostac.
+	inne=$(( $(licz "$s" '.') - a_raw - st - bug ))
 
 	addr_total=$((addr_total + a))
 	static_total=$((static_total + st))
+	drv_total=$((drv_total + $(grep -c '^U_BOOT_DRIVER(' "$src")))
 	bug_total=$((bug_total + bug))
 	inne_total=$((inne_total + inne))
 done
@@ -158,7 +186,11 @@ sprawdz() {	# $1 = nazwa, $2 = wynik, $3 = pulap
 sprawdz "clang, znalezisk sciezkowych" "$clang_total" 0
 sprawdz "sparse, uwagi poza znanymi klasami" "$inne_total" 0
 sprawdz "sparse, przestrzen adresowa" "$addr_total" "$MAX_ADDRSPACE"
-sprawdz "sparse, zasieg symbolu" "$static_total" "$MAX_STATIC"
+if [ "$static_total" != "$drv_total" ]; then
+	echo "check-uboot-analyzer: sparse, zasieg symbolu: uwag $static_total," \
+	     "a sterownikow U_BOOT_DRIVER $drv_total"
+	rc=1
+fi
 sprawdz "sparse, ograniczenie parsera" "$bug_total" "$MAX_SPARSE_BUG"
 
 if [ "$rc" != 0 ]; then
@@ -169,6 +201,6 @@ fi
 rm -f "$out"
 echo "check-uboot-analyzer: plikow $plikow, clang 0, sparse poza tlem 0" \
      "(tlo: przestrzen adresowa $addr_total/$MAX_ADDRSPACE," \
-     "zasieg symbolu $static_total/$MAX_STATIC," \
+     "zasieg symbolu $static_total przy $drv_total sterownikach," \
      "ograniczenie parsera $bug_total/$MAX_SPARSE_BUG)"
 exit 0

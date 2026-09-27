@@ -1,0 +1,126 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 21:00:00 +0200
+Subject: [PATCH] mailbox: exynos: Make the register offsets per-SoC
+
+The driver knows the register map of one SoC: it rings the doorbell at 0x40
+with the bare channel number and masks interrupts at 0x28.  Exynos9820 does
+both elsewhere, at 0x08 with the channel bits shifted up by 16, and at
+0x10.
+
+Writing a doorbell to the wrong offset is silent.  The write lands, nothing
+rejects it, and the firmware on the other side simply never answers, so
+every transfer ends in a timeout that looks like a protocol problem.
+Measured on a Galaxy S10+: with the offsets below the firmware's own log
+shows it receiving the message and its pending bits appear in the status
+register.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/mailbox/exynos-mailbox.c | 47 ++++++++++++++++++++++++++++++--
+ 1 file changed, 44 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/mailbox/exynos-mailbox.c b/drivers/mailbox/exynos-mailbox.c
+index fa02f18948c..8f57e5bc39e 100644
+--- a/drivers/mailbox/exynos-mailbox.c
++++ b/drivers/mailbox/exynos-mailbox.c
+@@ -13,17 +13,49 @@
+ #include <linux/mailbox/exynos-message.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/of_device.h>
+ #include <linux/platform_device.h>
+ #include <linux/slab.h>
+ 
+ #define EXYNOS_MBOX_INTMR0		0x28	/* Interrupt Mask Register 0 */
+ #define EXYNOS_MBOX_INTGR1		0x40	/* Interrupt Generation Register 1 */
+ 
++#define EXYNOS9820_MBOX_INTMR0		0x10	/* Interrupt Mask Register 0 */
++#define EXYNOS9820_MBOX_INTGR0		0x08	/* Interrupt Generation Register 0 */
++#define EXYNOS9820_MBOX_INTGR0_SHIFT	16
++
+ #define EXYNOS_MBOX_INTMR0_MASK		GENMASK(15, 0)
+ #define EXYNOS_MBOX_INTGR1_MASK		GENMASK(15, 0)
+ 
+ #define EXYNOS_MBOX_CHAN_COUNT		HWEIGHT32(EXYNOS_MBOX_INTGR1_MASK)
+ 
++/**
++ * struct exynos_mbox_variant - where this SoC keeps the two registers used.
++ * @intmr0:	offset of the register masking interrupts towards the CPU.
++ * @intgr:	offset of the register the CPU writes to ring the other side.
++ * @intgr_shift:	how far up in that register the channel bits start.
++ *
++ * The block is the same, its register map is not, and writing a doorbell to
++ * the wrong offset is silent: the firmware simply never answers.
++ */
++struct exynos_mbox_variant {
++	u32 intmr0;
++	u32 intgr;
++	u32 intgr_shift;
++};
++
++static const struct exynos_mbox_variant exynos_mbox_gs101 = {
++	.intmr0 = EXYNOS_MBOX_INTMR0,
++	.intgr = EXYNOS_MBOX_INTGR1,
++	.intgr_shift = 0,
++};
++
++static const struct exynos_mbox_variant exynos_mbox_exynos9820 = {
++	.intmr0 = EXYNOS9820_MBOX_INTMR0,
++	.intgr = EXYNOS9820_MBOX_INTGR0,
++	.intgr_shift = EXYNOS9820_MBOX_INTGR0_SHIFT,
++};
++
+ /**
+  * struct exynos_mbox - driver's private data.
+  * @regs:	mailbox registers base address.
+@@ -32,6 +64,7 @@
+ struct exynos_mbox {
+ 	void __iomem *regs;
+ 	struct mbox_controller *mbox;
++	const struct exynos_mbox_variant *variant;
+ };
+ 
+ static int exynos_mbox_send_data(struct mbox_chan *chan, void *data)
+@@ -50,7 +83,8 @@ static int exynos_mbox_send_data(struct mbox_chan *chan, void *data)
+ 		return -EINVAL;
+ 	}
+ 
+-	writel(BIT(msg->chan_id), exynos_mbox->regs + EXYNOS_MBOX_INTGR1);
++	writel(BIT(msg->chan_id) << exynos_mbox->variant->intgr_shift,
++	       exynos_mbox->regs + exynos_mbox->variant->intgr);
+ 
+ 	return 0;
+ }
+@@ -80,7 +114,9 @@ static struct mbox_chan *exynos_mbox_of_xlate(struct mbox_controller *mbox,
+ }
+ 
+ static const struct of_device_id exynos_mbox_match[] = {
+-	{ .compatible = "google,gs101-mbox" },
++	{ .compatible = "google,gs101-mbox", .data = &exynos_mbox_gs101 },
++	{ .compatible = "samsung,exynos9820-mbox",
++	  .data = &exynos_mbox_exynos9820 },
+ 	{},
+ };
+ MODULE_DEVICE_TABLE(of, exynos_mbox_match);
+@@ -106,6 +142,10 @@ static int exynos_mbox_probe(struct platform_device *pdev)
+ 	if (!chans)
+ 		return -ENOMEM;
+ 
++	exynos_mbox->variant = of_device_get_match_data(dev);
++	if (!exynos_mbox->variant)
++		return -EINVAL;
++
+ 	exynos_mbox->regs = devm_platform_ioremap_resource(pdev, 0);
+ 	if (IS_ERR(exynos_mbox->regs))
+ 		return PTR_ERR(exynos_mbox->regs);
+@@ -126,7 +166,8 @@ static int exynos_mbox_probe(struct platform_device *pdev)
+ 	platform_set_drvdata(pdev, exynos_mbox);
+ 
+ 	/* Mask out all interrupts. We support just polling channels for now. */
+-	writel(EXYNOS_MBOX_INTMR0_MASK, exynos_mbox->regs + EXYNOS_MBOX_INTMR0);
++	writel(EXYNOS_MBOX_INTMR0_MASK,
++	       exynos_mbox->regs + exynos_mbox->variant->intmr0);
+ 
+ 	return devm_mbox_controller_register(dev, mbox);
+ }

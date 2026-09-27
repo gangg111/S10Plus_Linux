@@ -1,0 +1,32 @@
+  /mnt/pmos-boot/initramfs                             11803128 B
+  /mnt/pmos-boot/initramfs.nowy                        9243421 B
+audyt czysty
+
+== firmware ukladu lacznosci ==
+
+== praca zdalna bez pytania o haslo ==
+
+== audyt: nic nie moze byc pominiete ani zle nadane ==
+  ok  700 10000:10000  home/user/.ssh
+  ok  600 10000:10000  home/user/.ssh/authorized_keys
+  ok  755 10000:10000  home/user/.local/bin/tok
+  ok  755 10000:10000  home/user/.local/bin/tok-ssh
+  ok  755 0:0  usr/local/bin/klawiatura
+  ok  644 0:0  usr/share/consolefonts/ter32x64.psf
+  ok  644 0:0  etc/systemd/system/klawiatura.service
+  ok  644 0:0  etc/systemd/system/czcionka-konsoli.service
+  ok  755 0:0  usr/local/bin/firmware-lacznosci.sh
+  ok  440 0:0  etc/sudoers.d/10-praca-zdalna
+  ok  wpiete  klawiatura.service
+  ok  wpiete  czcionka-konsoli.service
+
+  ok  hook klawiatury w initramfs
+
+== plik do wgrywania ==
+  /mnt/d/S10Plus-pmos/pmos-nasza-seria.img       1284505600 B
+  /mnt/d/S10Plus-pmos/pmos-nasza-seria.sparse.img 989677752 B
+  ok  obraz rzadki nowszy od surowego
+audyt czysty, obraz gotowy: /mnt/d/S10Plus-pmos/pmos-nasza-seria.img
+do wgrania:   fastboot flash userdata /mnt/d/S10Plus-pmos/pmos-nasza-seria.sparse.img
+
+[exited with code 0]

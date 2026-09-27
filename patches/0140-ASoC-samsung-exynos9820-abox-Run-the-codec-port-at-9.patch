@@ -1,0 +1,110 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 01:43:06 +0200
+Subject: [PATCH] ASoC: samsung: exynos9820-abox: Run the codec port at 96 and
+ 192 kHz
+
+Nothing on the ABOX path converts the sample rate: the SPUS input goes
+straight to its SIFS and UAIF pulls the samples at its bit clock, so a
+port runs at whatever rate its bit clock gives.  PLL_AUD0 divides down
+to the bit clocks of 96 and 192 kHz as well as 48 kHz (dividers 192 and
+96 for 16-bit stereo), while the 44.1 kHz family does not divide.
+
+Offer 96 and 192 kHz on UAIF0, the codec port, for high resolution
+playback and recording.  The amplifier port stays at 48 kHz, the rate
+its protection firmware is tuned for.
+
+Recording the digital microphones at 48, 96 and 192 kHz while the
+speakers play a 1 kHz tone gives the tone in the 1 kHz bin at the same
+level in all three recordings, each the length its rate calls for.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ sound/soc/samsung/exynos9820-abox.c | 48 ++++++++++++++++++-----------
+ 1 file changed, 30 insertions(+), 18 deletions(-)
+
+diff --git a/sound/soc/samsung/exynos9820-abox.c b/sound/soc/samsung/exynos9820-abox.c
+index 64f48a86b41..67523f53a23 100644
+--- a/sound/soc/samsung/exynos9820-abox.c
++++ b/sound/soc/samsung/exynos9820-abox.c
+@@ -100,6 +100,17 @@
+ /* bit clock tolerance as a fraction of the rate: 1/10000 is 100 ppm */
+ #define ABOX_BCLK_TOLERANCE	10000
+ 
++/*
++ * Nothing on the path converts the rate: UAIF pulls the samples at its bit
++ * clock, so a port runs at any rate whose bit clock divides from PLL_AUD0.
++ * The 48 kHz family does, the 44.1 kHz family does not.  The amplifier
++ * protection firmware is tuned for 48 kHz, so only the codec port goes
++ * higher.
++ */
++#define ABOX_RATES		SNDRV_PCM_RATE_48000
++#define ABOX_RATES_HIRES	(SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_96000 | \
++				 SNDRV_PCM_RATE_192000)
++
+ /*
+  * The fixed path of one serial port.  The SPUS output code picks the SIFS
+  * an input goes to: 0 is SIFS1, 2 is SIFS2 (SIFS0 is 1).  UAIF takes its
+@@ -256,9 +267,9 @@ static const struct snd_pcm_hardware abox_pcm_hardware = {
+ 	.info = SNDRV_PCM_INFO_INTERLEAVED | SNDRV_PCM_INFO_MMAP |
+ 		SNDRV_PCM_INFO_MMAP_VALID | SNDRV_PCM_INFO_BLOCK_TRANSFER,
+ 	.formats = SNDRV_PCM_FMTBIT_S16_LE,
+-	.rates = SNDRV_PCM_RATE_48000,
++	.rates = ABOX_RATES_HIRES,
+ 	.rate_min = 48000,
+-	.rate_max = 48000,
++	.rate_max = 192000,
+ 	.channels_min = 2,
+ 	.channels_max = 2,
+ 	.buffer_bytes_max = ABOX_BUFFER_MAX,
+@@ -575,24 +586,21 @@ static const struct snd_soc_dai_ops abox_uaif_ops = {
+ 	.hw_params = abox_uaif_hw_params,
+ };
+ 
++#define ABOX_UAIF_STREAM(_name, _rates)					\
++	{								\
++		.stream_name = _name,					\
++		.channels_min = 2,					\
++		.channels_max = 2,					\
++		.rates = _rates,					\
++		.formats = SNDRV_PCM_FMTBIT_S16_LE,			\
++	}
++
+ #define ABOX_UAIF_DAI(_id, _name, _playback, _capture)			\
+ 	{								\
+ 		.name = _name,						\
+ 		.id = _id,						\
+-		.playback = {						\
+-			.stream_name = _playback,			\
+-			.channels_min = 2,				\
+-			.channels_max = 2,				\
+-			.rates = SNDRV_PCM_RATE_48000,			\
+-			.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
+-		},							\
+-		.capture = {						\
+-			.stream_name = _capture,			\
+-			.channels_min = 2,				\
+-			.channels_max = 2,				\
+-			.rates = SNDRV_PCM_RATE_48000,			\
+-			.formats = SNDRV_PCM_FMTBIT_S16_LE,		\
+-		},							\
++		.playback = _playback,					\
++		.capture = _capture,					\
+ 		.ops = &abox_uaif_ops,					\
+ 		/* one port and one bit clock for both directions */	\
+ 		.symmetric_rate = 1,					\
+@@ -601,8 +609,12 @@ static const struct snd_soc_dai_ops abox_uaif_ops = {
+ 	}
+ 
+ static struct snd_soc_dai_driver abox_dais[] = {
+-	ABOX_UAIF_DAI(0, "UAIF0", "UAIF0 Playback", "UAIF0 Capture"),
+-	ABOX_UAIF_DAI(1, "UAIF1", "UAIF1 Playback", "UAIF1 Capture"),
++	ABOX_UAIF_DAI(0, "UAIF0",
++		      ABOX_UAIF_STREAM("UAIF0 Playback", ABOX_RATES_HIRES),
++		      ABOX_UAIF_STREAM("UAIF0 Capture", ABOX_RATES_HIRES)),
++	ABOX_UAIF_DAI(1, "UAIF1",
++		      ABOX_UAIF_STREAM("UAIF1 Playback", ABOX_RATES),
++		      ABOX_UAIF_STREAM("UAIF1 Capture", ABOX_RATES)),
+ };
+ 
+ static void abox_stop_all(void *data)

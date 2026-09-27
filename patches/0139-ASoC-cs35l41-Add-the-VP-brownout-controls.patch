@@ -1,0 +1,88 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 01:23:05 +0200
+Subject: [PATCH] ASoC: cs35l41: Add the VP brownout controls
+
+The amplifier can lower its volume on its own when the battery voltage
+(VP) sags under a threshold, so that a loud passage does not pull the
+supply of the rest of the phone down.  The driver leaves this off and
+offers no way to set it up.
+
+Add controls for the threshold, the attack and release behaviour and
+the maximum attenuation in VPBR_CFG, and a switch for the enable bit
+in PWR_CTRL3.  The Galaxy S10 enables the block from userspace with a
+2.687 V threshold, 1 dB steps every 2.5 us, at most 2 steps, a 10 ms
+wait and a 5 ms release; set that way both amplifiers read 0x02005206
+back from VPBR_CFG, keep it through playback and report no attenuation
+with a charged battery.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ sound/soc/codecs/cs35l41.c | 47 ++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 47 insertions(+)
+
+diff --git a/sound/soc/codecs/cs35l41.c b/sound/soc/codecs/cs35l41.c
+index 3739c248ddf..93e831d3a96 100644
+--- a/sound/soc/codecs/cs35l41.c
++++ b/sound/soc/codecs/cs35l41.c
+@@ -184,6 +184,46 @@ static SOC_ENUM_SINGLE_DECL(pcm_sft_ramp,
+ 			    CS35L41_AMP_DIG_VOL_CTRL, 0,
+ 			    cs35l41_pcm_sftramp_text);
+ 
++/* brownout protection against the battery (VP) voltage dropping */
++static const char * const cs35l41_vpbr_rel_rate_text[] = {
++	"5ms", "10ms", "25ms", "50ms", "100ms", "250ms", "500ms", "1000ms"
++};
++
++static SOC_ENUM_SINGLE_DECL(vpbr_rel_rate, CS35L41_VPBR_CFG, 21,
++			    cs35l41_vpbr_rel_rate_text);
++
++static const char * const cs35l41_vpbr_wait_text[] = {
++	"10ms", "100ms", "250ms", "500ms"
++};
++
++static SOC_ENUM_SINGLE_DECL(vpbr_wait, CS35L41_VPBR_CFG, 19,
++			    cs35l41_vpbr_wait_text);
++
++static const char * const cs35l41_vpbr_atk_rate_text[] = {
++	"2.5us", "5us", "10us", "25us", "50us", "100us", "250us", "500us"
++};
++
++static SOC_ENUM_SINGLE_DECL(vpbr_atk_rate, CS35L41_VPBR_CFG, 16,
++			    cs35l41_vpbr_atk_rate_text);
++
++static const char * const cs35l41_vpbr_atk_vol_text[] = {
++	"0.0625dB", "0.125dB", "0.25dB", "0.5dB",
++	"0.75dB", "1dB", "1.25dB", "1.5dB"
++};
++
++static SOC_ENUM_SINGLE_DECL(vpbr_atk_vol, CS35L41_VPBR_CFG, 12,
++			    cs35l41_vpbr_atk_vol_text);
++
++static const char * const cs35l41_vpbr_thld1_text[] = {
++	"2.402", "2.449", "2.497", "2.544", "2.592", "2.639", "2.687", "2.734",
++	"2.782", "2.829", "2.877", "2.924", "2.972", "3.019", "3.067", "3.114",
++	"3.162", "3.209", "3.257", "3.304", "3.352", "3.399", "3.447", "3.494",
++	"3.542", "3.589", "3.637", "3.684", "3.732", "3.779", "3.827", "3.874"
++};
++
++static SOC_ENUM_SINGLE_DECL(vpbr_thld1, CS35L41_VPBR_CFG, 0,
++			    cs35l41_vpbr_thld1_text);
++
+ static int cs35l41_dsp_preload_ev(struct snd_soc_dapm_widget *w,
+ 				  struct snd_kcontrol *kcontrol, int event)
+ {
+@@ -367,6 +407,13 @@ static const struct snd_kcontrol_new cs35l41_aud_controls[] = {
+ 		   CS35L41_AMP_INV_PCM_SHIFT, 1, 0),
+ 	SOC_SINGLE("Amp Gain ZC Switch", CS35L41_AMP_GAIN_CTRL,
+ 		   CS35L41_AMP_GAIN_ZC_SHIFT, 1, 0),
++	SOC_ENUM("VPBR Release Rate", vpbr_rel_rate),
++	SOC_ENUM("VPBR Wait", vpbr_wait),
++	SOC_ENUM("VPBR Attack Rate", vpbr_atk_rate),
++	SOC_ENUM("VPBR Attack Volume", vpbr_atk_vol),
++	SOC_SINGLE("VPBR Max Attenuation", CS35L41_VPBR_CFG, 8, 15, 0),
++	SOC_ENUM("VPBR Threshold 1", vpbr_thld1),
++	SOC_SINGLE("VPBR Switch", CS35L41_PWR_CTRL3, 12, 1, 0),
+ 	WM_ADSP2_PRELOAD_SWITCH("DSP1", 1),
+ 	WM_ADSP_FW_CONTROL("DSP1", 0),
+ };

@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 01:07:24 +0200
+Subject: [PATCH] drm/panfrost: Use the AARCH64_4K page table format on the
+ Exynos9820
+
+The Mali-G76 MP12 (r0p0) in the Exynos9820 is not IO coherent.  In the
+legacy (LPAE) page table mode every buffer is mapped outer write-allocate
+and outer shareable, and the table walker gets no memory attributes at
+all.  Busy multi-context clients (KWin and plasmashell) then hit a steady
+stream of job faults (DATA_INVALID_FAULT, IMPRECISE_FAULT, JOB_BUS_FAULT,
+INSTR_INVALID_ENC) and visible corruption, with the descriptor the job
+chain points at reading back as zeros.  Simple single-context programs
+run clean, and several Mesa releases behave the same, so this is not a
+userspace regression.
+
+The vendor kernel (Mali kbase bv_r32p1 in the Galaxy S10 sources) only
+ever runs this GPU with AARCH64_4K tables, and the Mali-G57 in the
+MT8188 needed the same switch for the same class of faults.  Match the
+SoC compatible and force that format.
+
+Measured on a Galaxy S10+: 202 job faults in the first 165 s after boot
+with the legacy format, none in 325 s with this change, including a
+full-CPU load and 1080p60 video playback.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/gpu/drm/panfrost/panfrost_drv.c | 14 ++++++++++++++
+ 1 file changed, 14 insertions(+)
+
+diff --git a/drivers/gpu/drm/panfrost/panfrost_drv.c b/drivers/gpu/drm/panfrost/panfrost_drv.c
+index 784e36d72c2..08790c84d92 100644
+--- a/drivers/gpu/drm/panfrost/panfrost_drv.c
++++ b/drivers/gpu/drm/panfrost/panfrost_drv.c
+@@ -1078,6 +1078,19 @@ static const struct panfrost_compatible default_data = {
+ 	.pm_domain_names = NULL,
+ };
+ 
++/*
++ * The Mali-G76 in the Exynos9820 is not IO coherent and faults at random in
++ * the legacy page table mode, like the Mali-G57 in the MT8188: jobs from
++ * busy multi-context clients read back descriptors as zeros.  The vendor
++ * kernel only ever runs it with AARCH64_4K tables.
++ */
++static const struct panfrost_compatible exynos9820_data = {
++	.num_supplies = ARRAY_SIZE(default_supplies) - 1,
++	.supply_names = default_supplies,
++	.num_pm_domains = 1, /* optional */
++	.gpu_quirks = BIT(GPU_QUIRK_FORCE_AARCH64_PGTABLE),
++};
++
+ static const struct panfrost_compatible default_pm_rt_data = {
+ 	.num_supplies = ARRAY_SIZE(default_supplies) - 1,
+ 	.supply_names = default_supplies,
+@@ -1178,6 +1191,7 @@ static const struct of_device_id dt_match[] = {
+ 	{ .compatible = "mediatek,mt8192-mali", .data = &mediatek_mt8192_data },
+ 	{ .compatible = "mediatek,mt8370-mali", .data = &mediatek_mt8370_data },
+ 	{ .compatible = "allwinner,sun50i-h616-mali", .data = &default_pm_rt_data },
++	{ .compatible = "samsung,exynos9820-mali", .data = &exynos9820_data },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(of, dt_match);

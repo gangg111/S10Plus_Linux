@@ -1,0 +1,60 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 01:00:25 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add CMU_FSYS1 and its system
+ registers
+
+The embedded storage of this SoC hangs off CMU_FSYS1, and the bits that
+decide whether its transfers are coherent live in the FSYS1 system
+register block beside it.  Neither is described yet, so add both.
+
+The clock controller takes the six inputs its binding asks for.  Two of
+them are the ones the storage will use: the bus clock the controller
+runs on, and the clock of the embedded link, whose rate every timing of
+that link is computed from.  Both are the same parents this node is
+given in the boot loader of this phone, where the link comes up at high
+speed gear three on two lanes.
+
+The system register block carries the shareability bits at offset 0x700.
+Describing it as a syscon lets the storage controller reach them through
+a phandle, which is how the driver expects to find them, rather than
+through a register window of its own.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 22 ++++++++++++++++++++++
+ 1 file changed, 22 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 825ff786249..c8af0abed79 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -364,6 +364,28 @@ pinctrl_fsys0: pinctrl@13030000 {
+ 			interrupts = <GIC_SPI 240 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		cmu_fsys1: clock-controller@13c00000 {
++			compatible = "samsung,exynos9820-cmu-fsys1";
++			reg = <0x13c00000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_GOUT_CMU_FSYS1_BUS>,
++				 <&cmu_top CLK_GOUT_CMU_FSYS1_MMC_CARD>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS1_PCIE>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS1_UFS_CARD>,
++				 <&cmu_top CLK_DOUT_CMU_FSYS1_UFS_EMBD>;
++			clock-names = "oscclk", "bus", "mmc_card", "pcie",
++				      "ufs_card", "ufs_embd";
++		};
++
++		sysreg_fsys1: syscon@13c10000 {
++			compatible = "samsung,exynos9820-fsys1-sysreg",
++				     "syscon";
++			reg = <0x13c10000 0x2000>;
++			clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_SYSREG_FSYS1_PCLK>;
++		};
++
+ 		pinctrl_fsys1: pinctrl@13c40000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x13c40000 0x1000>;

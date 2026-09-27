@@ -1,0 +1,36 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 04:50:08 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Run the Bluetooth
+ UART at 3 Mbaud
+
+Without max-speed the port stays at 115200 baud, which carries about
+92 kbit/s: less than one A2DP stream, and the firmware patch takes 18 s
+to load.
+
+Use 3 Mbaud, the target rate of the vendor userspace driver.  The 200 MHz
+port clock reaches it within 0.5 %.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 9be8afa51c0..abbad930765 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -575,6 +575,13 @@ bluetooth {
+ 		 * 00 02 00 01 01 before, 01 02 00 01 01 after.
+ 		 */
+ 		brcm,bt-pcm-int-params = [01 02 00 01 01];
++		/*
++		 * At the default 115200 baud the link carries about 92 kbit/s,
++		 * less than a single A2DP stream, and the 176 KiB patch takes
++		 * 18 s to load.  3 Mbaud is the target of the vendor userspace
++		 * driver; the 200 MHz port clock reaches it within 0.5 %.
++		 */
++		max-speed = <3000000>;
+ 	};
+ };
+ 

@@ -1,0 +1,537 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 16:45:18 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add CPU DVFS through ACPM
+
+Give each CPU its cluster clock from the ACPM firmware and an OPP table,
+so cpufreq-dt can scale the three clusters, and let the thermal zones of
+the clusters throttle them.
+
+The levels are the ones the DVFS firmware keeps in its SRAM, within the
+limits the vendor gives its cpufreq domains: 442 to 1950 MHz for the
+little cluster, 507 to 2210 MHz for the middle one and 520 to 2080 MHz
+for the big one.  The vendor allows 2314 and 2400 MHz on the middle
+cluster and anything from 2236 MHz on the big one only with the memory
+clock raised, and nothing in the kernel moves that clock, so those levels
+are left out.  The firmware sets the voltage of each level; the voltages
+in the tables are the ones it reports for this unit and only feed the
+energy model.
+
+Until now the clusters ran at whatever the bootloader left, 1053, 1222
+and 1378 MHz.  Raised by hand to the top of these tables with nothing to
+throttle them, the big cluster went from 45 to 99 C in about a minute
+under load and the critical trip powered the phone off.  Each cluster
+zone therefore gets a passive trip at 85 C, just above the 83 C at which
+the vendor starts throttling the big and middle clusters, polled every
+100 ms once it is crossed.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 368 ++++++++++++++++++++-
+ 1 file changed, 364 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 2f2a0145811..69826c4f3aa 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -22,9 +22,11 @@
+  * line.  Copying the vendor's unset type is not the fix.
+  */
+ 
++#include <dt-bindings/clock/samsung,exynos9820-acpm.h>
+ #include <dt-bindings/clock/samsung,exynos9820.h>
+ #include <dt-bindings/gpio/gpio.h>
+ #include <dt-bindings/interrupt-controller/arm-gic.h>
++#include <dt-bindings/thermal/thermal.h>
+ 
+ / {
+ 	compatible = "samsung,exynos9820";
+@@ -99,72 +101,96 @@ cpu0: cpu@0 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a55";
+ 			reg = <0x0>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL0>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <272>;
+ 			dynamic-power-coefficient = <160>;
++			operating-points-v2 = <&cpucl0_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu1: cpu@1 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a55";
+ 			reg = <0x1>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL0>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <272>;
+ 			dynamic-power-coefficient = <160>;
++			operating-points-v2 = <&cpucl0_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu2: cpu@2 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a55";
+ 			reg = <0x2>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL0>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <272>;
+ 			dynamic-power-coefficient = <160>;
++			operating-points-v2 = <&cpucl0_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu3: cpu@3 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a55";
+ 			reg = <0x3>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL0>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <272>;
+ 			dynamic-power-coefficient = <160>;
++			operating-points-v2 = <&cpucl0_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu4: cpu@4 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a75";
+ 			reg = <0x4>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL1>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <531>;
+ 			dynamic-power-coefficient = <320>;
++			operating-points-v2 = <&cpucl1_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu5: cpu@5 {
+ 			device_type = "cpu";
+ 			compatible = "arm,cortex-a75";
+ 			reg = <0x5>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL1>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <531>;
+ 			dynamic-power-coefficient = <320>;
++			operating-points-v2 = <&cpucl1_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu6: cpu@100 {
+ 			device_type = "cpu";
+ 			compatible = "samsung,mongoose-m4";
+ 			reg = <0x100>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL2>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <785>;
+ 			dynamic-power-coefficient = <760>;
++			operating-points-v2 = <&cpucl2_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		cpu7: cpu@101 {
+ 			device_type = "cpu";
+ 			compatible = "samsung,mongoose-m4";
+ 			reg = <0x101>;
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_CPUCL2>;
+ 			enable-method = "psci";
+ 			capacity-dmips-mhz = <785>;
+ 			dynamic-power-coefficient = <760>;
++			operating-points-v2 = <&cpucl2_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 	};
+ 
+@@ -1139,23 +1165,325 @@ acpm_ipc: power-management {
+ 	};
+ 
+ 	/*
+-	 * Nothing can be throttled yet: without cpufreq or cpuidle there is no
+-	 * cooling device.  What is left is a critical trip 15 C below the
+-	 * hardware trip of the TMU, so the kernel powers the phone off in order
+-	 * before the TMU removes the power.
++	 * The levels the DVFS firmware on the APM keeps for each cluster, within
++	 * the limits the vendor gives its cpufreq domains.  The firmware sets the
++	 * voltage of a level itself; the voltages here are the ones it reports
++	 * for this unit and only feed the energy model.  The levels the vendor
++	 * allows only with the memory clock raised are left out, because nothing
++	 * in the kernel moves that clock.  A request is acknowledged within 1 ms.
++	 */
++	cpucl0_opp_table: opp-table-0 {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp-442000000 {
++			opp-hz = /bits/ 64 <442000000>;
++			opp-microvolt = <568750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-546000000 {
++			opp-hz = /bits/ 64 <546000000>;
++			opp-microvolt = <587500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-650000000 {
++			opp-hz = /bits/ 64 <650000000>;
++			opp-microvolt = <612500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-806000000 {
++			opp-hz = /bits/ 64 <806000000>;
++			opp-microvolt = <656250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-949000000 {
++			opp-hz = /bits/ 64 <949000000>;
++			opp-microvolt = <687500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1053000000 {
++			opp-hz = /bits/ 64 <1053000000>;
++			opp-microvolt = <718750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1157000000 {
++			opp-hz = /bits/ 64 <1157000000>;
++			opp-microvolt = <750000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1300000000 {
++			opp-hz = /bits/ 64 <1300000000>;
++			opp-microvolt = <793750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1456000000 {
++			opp-hz = /bits/ 64 <1456000000>;
++			opp-microvolt = <837500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1586000000 {
++			opp-hz = /bits/ 64 <1586000000>;
++			opp-microvolt = <887500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1742000000 {
++			opp-hz = /bits/ 64 <1742000000>;
++			opp-microvolt = <968750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1846000000 {
++			opp-hz = /bits/ 64 <1846000000>;
++			opp-microvolt = <1018750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1950000000 {
++			opp-hz = /bits/ 64 <1950000000>;
++			opp-microvolt = <1062500>;
++			clock-latency-ns = <1000000>;
++		};
++	};
++
++	cpucl1_opp_table: opp-table-1 {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp-507000000 {
++			opp-hz = /bits/ 64 <507000000>;
++			opp-microvolt = <581250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-650000000 {
++			opp-hz = /bits/ 64 <650000000>;
++			opp-microvolt = <587500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-754000000 {
++			opp-hz = /bits/ 64 <754000000>;
++			opp-microvolt = <612500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-845000000 {
++			opp-hz = /bits/ 64 <845000000>;
++			opp-microvolt = <625000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-962000000 {
++			opp-hz = /bits/ 64 <962000000>;
++			opp-microvolt = <637500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1066000000 {
++			opp-hz = /bits/ 64 <1066000000>;
++			opp-microvolt = <662500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1222000000 {
++			opp-hz = /bits/ 64 <1222000000>;
++			opp-microvolt = <700000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1404000000 {
++			opp-hz = /bits/ 64 <1404000000>;
++			opp-microvolt = <731250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1508000000 {
++			opp-hz = /bits/ 64 <1508000000>;
++			opp-microvolt = <756250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1586000000 {
++			opp-hz = /bits/ 64 <1586000000>;
++			opp-microvolt = <768750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1690000000 {
++			opp-hz = /bits/ 64 <1690000000>;
++			opp-microvolt = <793750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1794000000 {
++			opp-hz = /bits/ 64 <1794000000>;
++			opp-microvolt = <831250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1898000000 {
++			opp-hz = /bits/ 64 <1898000000>;
++			opp-microvolt = <862500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-2002000000 {
++			opp-hz = /bits/ 64 <2002000000>;
++			opp-microvolt = <893750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-2106000000 {
++			opp-hz = /bits/ 64 <2106000000>;
++			opp-microvolt = <925000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-2210000000 {
++			opp-hz = /bits/ 64 <2210000000>;
++			opp-microvolt = <968750>;
++			clock-latency-ns = <1000000>;
++		};
++	};
++
++	cpucl2_opp_table: opp-table-2 {
++		compatible = "operating-points-v2";
++		opp-shared;
++
++		opp-520000000 {
++			opp-hz = /bits/ 64 <520000000>;
++			opp-microvolt = <581250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-624000000 {
++			opp-hz = /bits/ 64 <624000000>;
++			opp-microvolt = <587500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-728000000 {
++			opp-hz = /bits/ 64 <728000000>;
++			opp-microvolt = <593750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-819000000 {
++			opp-hz = /bits/ 64 <819000000>;
++			opp-microvolt = <600000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-936000000 {
++			opp-hz = /bits/ 64 <936000000>;
++			opp-microvolt = <618750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1040000000 {
++			opp-hz = /bits/ 64 <1040000000>;
++			opp-microvolt = <631250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1144000000 {
++			opp-hz = /bits/ 64 <1144000000>;
++			opp-microvolt = <662500>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1248000000 {
++			opp-hz = /bits/ 64 <1248000000>;
++			opp-microvolt = <668750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1378000000 {
++			opp-hz = /bits/ 64 <1378000000>;
++			opp-microvolt = <693750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1456000000 {
++			opp-hz = /bits/ 64 <1456000000>;
++			opp-microvolt = <706250>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1560000000 {
++			opp-hz = /bits/ 64 <1560000000>;
++			opp-microvolt = <725000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1664000000 {
++			opp-hz = /bits/ 64 <1664000000>;
++			opp-microvolt = <750000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1820000000 {
++			opp-hz = /bits/ 64 <1820000000>;
++			opp-microvolt = <775000>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-1976000000 {
++			opp-hz = /bits/ 64 <1976000000>;
++			opp-microvolt = <818750>;
++			clock-latency-ns = <1000000>;
++		};
++
++		opp-2080000000 {
++			opp-hz = /bits/ 64 <2080000000>;
++			opp-microvolt = <850000>;
++			clock-latency-ns = <1000000>;
++		};
++	};
++
++	/*
++	 * Each CPU cluster is throttled through cpufreq from 85 C on.  The
++	 * critical trip stays 15 C below the hardware trip of the TMU, so the
++	 * kernel powers the phone off in order before the TMU removes the power;
++	 * the GPU and ISP zones have nothing to throttle yet.
+ 	 */
+ 	thermal-zones {
+ 		big-thermal {
++			polling-delay-passive = <100>;
+ 			polling-delay = <1000>;
+ 			thermal-sensors = <&tmu_top 0>;
+ 
+ 			trips {
++				big_alert: big-alert {
++					temperature = <85000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				big-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&big_alert>;
++					cooling-device = <&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		gpu-thermal {
+@@ -1185,29 +1513,61 @@ isp-critical {
+ 		};
+ 
+ 		little-thermal {
++			polling-delay-passive = <100>;
+ 			polling-delay = <1000>;
+ 			thermal-sensors = <&tmu_top 2>;
+ 
+ 			trips {
++				little_alert: little-alert {
++					temperature = <85000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				little-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&little_alert>;
++					cooling-device = <&cpu0 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu1 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		mid-thermal {
++			polling-delay-passive = <100>;
+ 			polling-delay = <1000>;
+ 			thermal-sensors = <&tmu_top 1>;
+ 
+ 			trips {
++				mid_alert: mid-alert {
++					temperature = <85000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				mid-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&mid_alert>;
++					cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
++							 <&cpu5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 	};
+ 

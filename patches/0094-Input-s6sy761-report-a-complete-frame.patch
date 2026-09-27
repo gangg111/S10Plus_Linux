@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 23:05:32 +0200
+Subject: [PATCH] Input: s6sy761 - report a complete frame
+
+The driver synchronises after every single event and never closes a
+frame, so input_mt_sync_frame() is never reached and with it neither is
+the pointer emulation it calls.  BTN_TOUCH and the ABS_X, ABS_Y and
+ABS_PRESSURE axes are therefore advertised, because INPUT_MT_DIRECT sets
+them up, and never reported.  Measured on a Galaxy S10+: 457 packets of
+a finger moving across the panel carried not one BTN_TOUCH.
+
+Process the whole batch, then close the frame once.  The slots that this
+batch did not mention keep their state, which is what this controller
+needs: it sends changes of single touch points, not a full picture of
+every finger.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/input/touchscreen/s6sy761.c | 13 ++++++++-----
+ 1 file changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/input/touchscreen/s6sy761.c b/drivers/input/touchscreen/s6sy761.c
+index fcbb5d3f380..55ff56c88ef 100644
+--- a/drivers/input/touchscreen/s6sy761.c
++++ b/drivers/input/touchscreen/s6sy761.c
+@@ -180,8 +180,6 @@ static void s6sy761_report_coordinates(struct s6sy761_data *sdata,
+ 	input_report_abs(sdata->input, ABS_MT_TOUCH_MAJOR, major);
+ 	input_report_abs(sdata->input, ABS_MT_TOUCH_MINOR, minor);
+ 	input_report_abs(sdata->input, ABS_MT_PRESSURE, z);
+-
+-	input_sync(sdata->input);
+ }
+ 
+ static void s6sy761_report_release(struct s6sy761_data *sdata,
+@@ -189,8 +187,6 @@ static void s6sy761_report_release(struct s6sy761_data *sdata,
+ {
+ 	input_mt_slot(sdata->input, tid);
+ 	input_mt_report_slot_state(sdata->input, MT_TOOL_FINGER, false);
+-
+-	input_sync(sdata->input);
+ }
+ 
+ static void s6sy761_handle_coordinates(struct s6sy761_data *sdata, u8 *event)
+@@ -220,6 +216,7 @@ static void s6sy761_handle_coordinates(struct s6sy761_data *sdata, u8 *event)
+ 
+ static void s6sy761_handle_events(struct s6sy761_data *sdata, u8 n_events)
+ {
++	bool frame = false;
+ 	int i;
+ 
+ 	for (i = 0; i < n_events; i++) {
+@@ -227,12 +224,13 @@ static void s6sy761_handle_events(struct s6sy761_data *sdata, u8 n_events)
+ 		u8 event_id = event[0] & S6SY761_MASK_EID;
+ 
+ 		if (!event[0])
+-			return;
++			break;
+ 
+ 		switch (event_id) {
+ 
+ 		case S6SY761_EVENT_ID_COORDINATE:
+ 			s6sy761_handle_coordinates(sdata, event);
++			frame = true;
+ 			break;
+ 
+ 		case S6SY761_EVENT_ID_STATUS:
+@@ -242,6 +240,11 @@ static void s6sy761_handle_events(struct s6sy761_data *sdata, u8 n_events)
+ 			break;
+ 		}
+ 	}
++
++	if (frame) {
++		input_mt_sync_frame(sdata->input);
++		input_sync(sdata->input);
++	}
+ }
+ 
+ static irqreturn_t s6sy761_irq_handler(int irq, void *dev)

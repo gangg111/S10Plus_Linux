@@ -1,0 +1,68 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 16:13:10 +0200
+Subject: [PATCH] dt-bindings: clock: Add the Exynos9820 ACPM clock IDs
+
+The firmware on the APM of the Exynos9820 runs DVFS for fifteen domains
+and takes requests for them over ACPM, the same way as on gs101.  Add the
+domain numbers as the firmware messages carry them, for consumers of the
+clocks the ACPM interface provides.
+
+The numbering was read from the frequency and voltage tables the firmware
+keeps in its SRAM: the start level of each CPU domain matches, to the
+MHz, the clock measured on a Galaxy S10+ at boot.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                                   |  1 +
+ .../clock/samsung,exynos9820-acpm.h           | 29 +++++++++++++++++++
+ 2 files changed, 30 insertions(+)
+ create mode 100644 include/dt-bindings/clock/samsung,exynos9820-acpm.h
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 9809cf78d4a..b580c8c5efe 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24010,6 +24010,7 @@ F:	drivers/pci/controller/dwc/pcie-exynos9820.c
+ F:	drivers/phy/samsung/phy-exynos9820-ufs.c
+ F:	drivers/thermal/samsung/exynos9820-tmu.c
+ F:	drivers/video/backlight/exynos9820-dsim-lcd.c
++F:	include/dt-bindings/clock/samsung,exynos9820-acpm.h
+ F:	include/dt-bindings/clock/samsung,exynos9820.h
+ 
+ SAMSUNG EXYNOS ACPM MAILBOX PROTOCOL
+diff --git a/include/dt-bindings/clock/samsung,exynos9820-acpm.h b/include/dt-bindings/clock/samsung,exynos9820-acpm.h
+new file mode 100644
+index 00000000000..8ff1fdc6822
+--- /dev/null
++++ b/include/dt-bindings/clock/samsung,exynos9820-acpm.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause) */
++/*
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * Device Tree binding constants for the Exynos9820 ACPM clock controller:
++ * the DVFS domains of the firmware on the APM, numbered as its messages
++ * number them.
++ */
++
++#ifndef _DT_BINDINGS_CLOCK_SAMSUNG_EXYNOS9820_ACPM_H
++#define _DT_BINDINGS_CLOCK_SAMSUNG_EXYNOS9820_ACPM_H
++
++#define EXYNOS9820_CLK_ACPM_DVFS_MIF		0
++#define EXYNOS9820_CLK_ACPM_DVFS_INT		1
++#define EXYNOS9820_CLK_ACPM_DVFS_CPUCL0		2
++#define EXYNOS9820_CLK_ACPM_DVFS_CPUCL1		3
++#define EXYNOS9820_CLK_ACPM_DVFS_CPUCL2		4
++#define EXYNOS9820_CLK_ACPM_DVFS_NPU		5
++#define EXYNOS9820_CLK_ACPM_DVFS_DISP		6
++#define EXYNOS9820_CLK_ACPM_DVFS_SCORE		7
++#define EXYNOS9820_CLK_ACPM_DVFS_AUD		8
++#define EXYNOS9820_CLK_ACPM_DVFS_CP		9
++#define EXYNOS9820_CLK_ACPM_DVFS_G3D		10
++#define EXYNOS9820_CLK_ACPM_DVFS_INTCAM		11
++#define EXYNOS9820_CLK_ACPM_DVFS_CAM		12
++#define EXYNOS9820_CLK_ACPM_DVFS_IVA		13
++#define EXYNOS9820_CLK_ACPM_DVFS_MFC		14
++
++#endif /* _DT_BINDINGS_CLOCK_SAMSUNG_EXYNOS9820_ACPM_H */

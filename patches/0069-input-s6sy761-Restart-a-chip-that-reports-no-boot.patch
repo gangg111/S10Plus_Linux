@@ -1,0 +1,107 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 23:40:00 +0200
+Subject: [PATCH] input: s6sy761: Restart a chip that reports no boot
+
+The driver enables the two supplies and then expects to read the event the
+chip posts once it has booted.  That only works when enabling the supplies
+actually starts the chip.  Where the rails are always on, described in the
+device tree as fixed regulators because whatever drives them is not
+reachable yet, the enable changes nothing, the chip has been running since
+the bootloader, and the read returns whatever was left on its event stack.
+Probe then fails with -ENODEV on hardware that works.
+
+The chip can restart itself on command, and that ends in the same event.
+Measured on a Galaxy S10+: reading one event returns 1d 61 02 02 03 00 00
+1f, a stale vendor event, and probe gives up.  After a 0x12 written to the
+chip the same read returns 09 00 40 00 00 00 00 00, which is an info event
+carrying a boot-complete code.  Also measured: 20 ms after the command the
+chip NAKs, 50 ms is enough, so the delay already used after a power on is
+reused here.
+
+So ask for a restart when, and only when, the event is not the one
+expected. A chip whose rails really were switched answers the first read
+and never sees the command.
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/input/touchscreen/s6sy761.c | 46 ++++++++++++++++++++++-------
+ 1 file changed, 36 insertions(+), 10 deletions(-)
+
+diff --git a/drivers/input/touchscreen/s6sy761.c b/drivers/input/touchscreen/s6sy761.c
+index 0f24a9b7306..5072d3f67e7 100644
+--- a/drivers/input/touchscreen/s6sy761.c
++++ b/drivers/input/touchscreen/s6sy761.c
+@@ -18,6 +18,7 @@
+ /* commands */
+ #define S6SY761_SENSE_ON		0x10
+ #define S6SY761_SENSE_OFF		0x11
++#define S6SY761_SW_RESET		0x12
+ #define S6SY761_TOUCH_FUNCTION		0x30 /* R/W for get/set */
+ #define S6SY761_FIRMWARE_INTEGRITY	0x21
+ #define S6SY761_PANEL_INFO		0x23
+@@ -288,20 +289,12 @@ static struct attribute *s6sy761_sysfs_attrs[] = {
+ };
+ ATTRIBUTE_GROUPS(s6sy761_sysfs);
+ 
+-static int s6sy761_power_on(struct s6sy761_data *sdata)
++static int s6sy761_boot_event(struct s6sy761_data *sdata)
+ {
+ 	u8 buffer[S6SY761_EVENT_SIZE];
+ 	u8 event;
+ 	int ret;
+ 
+-	ret = regulator_bulk_enable(ARRAY_SIZE(sdata->regulators),
+-				    sdata->regulators);
+-	if (ret)
+-		return ret;
+-
+-	msleep(140);
+-
+-	/* double check whether the touch is functional */
+ 	ret = i2c_smbus_read_i2c_block_data(sdata->client,
+ 					    S6SY761_READ_ONE_EVENT,
+ 					    S6SY761_EVENT_SIZE,
+@@ -313,9 +306,42 @@ static int s6sy761_power_on(struct s6sy761_data *sdata)
+ 
+ 	if ((event != S6SY761_EVENT_INFO &&
+ 	     event != S6SY761_EVENT_VENDOR_INFO) ||
+-	    buffer[1] != S6SY761_INFO_BOOT_COMPLETE) {
++	    buffer[1] != S6SY761_INFO_BOOT_COMPLETE)
+ 		return -ENODEV;
++
++	return 0;
++}
++
++static int s6sy761_power_on(struct s6sy761_data *sdata)
++{
++	int ret;
++
++	ret = regulator_bulk_enable(ARRAY_SIZE(sdata->regulators),
++				    sdata->regulators);
++	if (ret)
++		return ret;
++
++	msleep(140);
++
++	/* double check whether the touch is functional */
++	ret = s6sy761_boot_event(sdata);
++	if (ret == -ENODEV) {
++		/*
++		 * The rails can be always on, and then the enable above
++		 * restarts nothing and there is no boot event to read, just
++		 * whatever was left on the event stack.  Ask the chip to
++		 * restart itself instead, which ends the same way.
++		 */
++		ret = i2c_smbus_write_byte(sdata->client, S6SY761_SW_RESET);
++		if (ret < 0)
++			return ret;
++
++		msleep(140);
++
++		ret = s6sy761_boot_event(sdata);
+ 	}
++	if (ret)
++		return ret;
+ 
+ 	ret = i2c_smbus_read_byte_data(sdata->client, S6SY761_BOOT_STATUS);
+ 	if (ret < 0)

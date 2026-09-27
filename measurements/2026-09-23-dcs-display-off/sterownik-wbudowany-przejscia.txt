@@ -1,0 +1,18 @@
+13:34:03 dpms=Off lcd_power=4
+13:35:03 dpms=On lcd_power=0
+13:35:05 dpms=Off lcd_power=4
+13:35:07 dpms=On lcd_power=0
+13:35:10 dpms=Off lcd_power=4
+13:35:12 dpms=On lcd_power=4
+13:35:12 dpms=On lcd_power=0
+13:35:15 dpms=Off lcd_power=4
+13:35:18 dpms=On lcd_power=0
+13:35:20 dpms=Off lcd_power=0
+13:35:21 dpms=Off lcd_power=4
+13:35:26 dpms=On lcd_power=0
+13:35:29 dpms=Off lcd_power=4
+13:35:29 dpms=On lcd_power=0
+13:35:59 dpms=Off lcd_power=4
+--- dmesg sterownika ---
+(brak komunikatow)
+

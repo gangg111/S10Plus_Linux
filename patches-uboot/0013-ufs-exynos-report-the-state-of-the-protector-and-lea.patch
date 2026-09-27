@@ -1,0 +1,554 @@
+From 01de0846fd911cc86f9432ee2b67c9402c8ffe18 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 13/40] ufs: exynos: report the state of the protector, and
+ leave it alone
+
+The fourth window of this controller is not only a hardware encryption
+unit. The same block holds the unit that decides what of memory the
+controller may reach, and with it shut the link comes up and then every
+transfer request times out, because the controller cannot fetch the request
+from memory.
+
+So the window is taken and the state of the region descriptors is printed,
+and nothing is written to them.  Reading them is enough to say whether the
+boot loader may use storage at all, and writing them is firmware's
+business: on this SoC the descriptors answer to EL3 and a write from here
+takes the whole system down with an external abort.
+
+The window that says whether the host snoops caches is taken here too.
+Those bits are cleared, because the boot loader maps everything uncached: a
+host that writes its completion status coherently has that write thrown
+away by the invalidate that follows.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../arm/dts/exynos9820-beyond2lte-u-boot.dtsi |  30 +-
+ drivers/ufs/ufs-exynos.c                      | 307 +++++++++++++++---
+ drivers/ufs/ufs-exynos.h                      |  19 ++
+ 3 files changed, 295 insertions(+), 61 deletions(-)
+
+diff --git a/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+index 3a0a8c43..9c220395 100644
+--- a/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
++++ b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+@@ -74,40 +74,32 @@
+ 		 * 3040, four bytes to a pixel.
+ 		 */
+ 		framebuffer@ca000000 {
+-			compatible = "simple-framebuffer";
++			compatible = "samsung,exynos9820-fb",
++				     "simple-framebuffer";
+ 			reg = <0x0 0xca000000 (1440 * 3040 * 4)>;
+ 			width = <1440>;
+ 			height = <3040>;
+ 			stride = <(1440 * 4)>;
+ 			format = "a8r8g8b8";
++
++			/*
++			 * The panel is a command mode one, so something has
++			 * to tell this controller to send each new frame or
++			 * nothing written above is ever seen.
++			 */
++			samsung,decon = <&decon0>;
+ 		};
+ 	};
+ };
+ 
+ &soc {
+-	/*
+-	 * The clock block the embedded storage hangs off.  Three of its gates
+-	 * matter: the controller clock, the clock of the link, whose rate every
+-	 * timing of that link is computed from, and the one for the encryption
+-	 * unit, which a boot loader does not use.
+-	 */
+-	cmu_fsys1: clock-controller@13c00000 {
+-		compatible = "samsung,exynos9820-cmu-fsys1";
+-		reg = <0x13c00000 0x8000>;
+-		#clock-cells = <1>;
+-
+-		clocks = <&oscclk>,
+-			 <&cmu_top CLK_GOUT_CMU_FSYS1_BUS>,
+-			 <&cmu_top CLK_DOUT_CMU_FSYS1_UFS_EMBD>;
+-		clock-names = "oscclk", "bus", "ufs_embd";
+-	};
+-
+ 	ufs: ufs@13d60000 {
+ 		compatible = "samsung,exynos9820-ufs";
+ 		reg = <0x13d60000 0x200>,	/* standard host controller */
+ 		      <0x13d61100 0x200>,	/* the vendor's own block   */
+ 		      <0x13d50000 0x8000>,	/* UniPro                   */
+-		      <0x13d70000 0x100>;	/* encryption unit, unused  */
++		      <0x13d70000 0x100>,	/* protector, what we may see */
++		      <0x13c10700 0x4>;		/* the cache coherency bits  */
+ 		interrupts = <GIC_SPI 249 IRQ_TYPE_LEVEL_HIGH>;
+ 
+ 		clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_UFS_EMBD_I_ACLK>,
+diff --git a/drivers/ufs/ufs-exynos.c b/drivers/ufs/ufs-exynos.c
+index f0d2cb3f..116c90c6 100644
+--- a/drivers/ufs/ufs-exynos.c
++++ b/drivers/ufs/ufs-exynos.c
+@@ -33,6 +33,7 @@
+ #include <linux/delay.h>
+ #include <linux/err.h>
+ #include <linux/kernel.h>
++#include <linux/log2.h>
+ 
+ #include "ufs.h"
+ #include "ufshci.h"
+@@ -179,17 +180,24 @@ static const struct exynos_ufs_cfg exynos9820_post_pwr_cfg[] = {
+  * @dev:	the host device
+  * @reg_hci:	the vendor's own register block
+  * @reg_unipro:	the UniPro register block
++ * @reg_ufsp:	the protector block, whose security unit gates memory
++ * @reg_iocc:	the one register that says whether the host snoops caches
+  * @phy:	the PHY of the link
+  * @clks:	every clock named on the node
+  * @clk_unipro:	the UniPro clock, whose rate the periods are computed from
+  * @mclk_rate:	that rate, in hertz
+  * @lane_cnt:	lanes the link offers, learnt before the link is started
+  */
++/* No UniPro reference on this family runs anywhere near this. */
++#define EXYNOS_UFS_MCLK_MAX	1000000000UL
++
+ struct exynos_ufs {
+ 	struct ufs_hba *hba;
+ 	struct udevice *dev;
+ 	void __iomem *reg_hci;
+ 	void __iomem *reg_unipro;
++	void __iomem *reg_ufsp;
++	void __iomem *reg_iocc;
+ 	struct phy phy;
+ 	struct clk_bulk clks;
+ 	struct clk clk_unipro;
+@@ -207,6 +215,16 @@ static inline u32 hci_readl(struct exynos_ufs *ufs, u32 reg)
+ 	return readl(ufs->reg_hci + reg);
+ }
+ 
++static inline void ufsp_writel(struct exynos_ufs *ufs, u32 val, u32 reg)
++{
++	writel(val, ufs->reg_ufsp + reg);
++}
++
++static inline u32 ufsp_readl(struct exynos_ufs *ufs, u32 reg)
++{
++	return readl(ufs->reg_ufsp + reg);
++}
++
+ static inline void hci_rmw(struct exynos_ufs *ufs, u32 reg, u32 clr, u32 set)
+ {
+ 	hci_writel(ufs, (hci_readl(ufs, reg) & ~clr) | set, reg);
+@@ -431,21 +449,6 @@ static void exynos_ufs_config_host(struct exynos_ufs *ufs)
+ 	hci_rmw(ufs, HCI_UFSHCI_V2P1_CTRL, 0, IA_TICK_SEL);
+ 	hci_writel(ufs, (ufs->mclk_rate / 1000000) & CNT_VAL_1US_MASK,
+ 		   HCI_1US_TO_CNT_VAL);
+-
+-	hci_writel(ufs, 0xa, HCI_DATA_REORDER);
+-
+-	/*
+-	 * Descriptor entries count bytes rather than blocks, which is what the
+-	 * matching quirk tells the core.  The two have to be set together.
+-	 */
+-	hci_writel(ufs, PRDT_PREFETCH_EN | PRDT_SET_SIZE(12),
+-		   HCI_TXPRDT_ENTRY_SIZE);
+-	hci_writel(ufs, PRDT_SET_SIZE(12), HCI_RXPRDT_ENTRY_SIZE);
+-
+-	hci_writel(ufs, 0xffffffff, HCI_UTRL_NEXUS_TYPE);
+-	hci_writel(ufs, 0xffffffff, HCI_UTMRL_NEXUS_TYPE);
+-
+-	hci_writel(ufs, WLU_EN | BURST_LEN(3), HCI_AXIDMA_RWDATA_BURST_LEN);
+ }
+ 
+ static int exynos_ufs_sw_reset(struct exynos_ufs *ufs)
+@@ -467,25 +470,77 @@ static int exynos_ufs_sw_reset(struct exynos_ufs *ufs)
+ 	return -ETIMEDOUT;
+ }
+ 
+-/*
+- * UNVERIFIED: the core resets the storage device before it asks for anything
+- * else, while the vendor's own driver programs the host first and resets the
+- * device after.  The pulse itself is the vendor's, and nothing it touches is
+- * configured by the block below it, so the two orders should come to the same
+- * thing; that reasoning has not been tried on the hardware yet.
+- */
+-static int exynos_ufs_device_reset(struct ufs_hba *hba)
++/* Bit 0 of this register is the reset pin of the storage device. */
++static void exynos_ufs_dev_hw_reset(struct exynos_ufs *ufs)
+ {
+-	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
+-
+-	/* Bit 0 is the reset pin of the storage device, ufs-exynos.c:446. */
+ 	hci_writel(ufs, 0, HCI_GPIO_OUT);
+ 	udelay(5);
+ 	hci_writel(ufs, 1, HCI_GPIO_OUT);
++}
++
++/*
++ * The core asks for this before it asks for anything else, which on this host
++ * is too early to be of any use: the software reset of the controller, done
++ * from the notifier below, clears the very register this pulse is made with.
++ * The pulse is therefore repeated there, once the host is configured, and the
++ * vendor driver does the same thing in the same order.
++ */
++static int exynos_ufs_device_reset(struct ufs_hba *hba)
++{
++	exynos_ufs_dev_hw_reset(dev_get_priv(hba->dev));
+ 
+ 	return 0;
+ }
+ 
++/* The two bits of the system register that make the host snoop the caches. */
++#define EXYNOS_UFS_IOCC_MASK	0x00c00000
++
++/*
++ * Take the host off the coherent path.
++ *
++ * This loader keeps its descriptors in ordinary cacheable memory and cleans
++ * and invalidates them around every request by hand, which is the arrangement
++ * for a host that does not snoop.  Whatever runs before us leaves the host
++ * snooping, because the system it starts is built the other way round, and the
++ * two arrangements do not mix: a host that writes its completion status
++ * coherently has that write thrown away by the invalidate that follows, and
++ * what is read back is the value this side wrote before the request.
++ *
++ * Upstream Linux draws the same line, disabling these bits whenever the device
++ * tree does not claim the controller is coherent.
++ */
++static void exynos_ufs_config_iocc(struct exynos_ufs *ufs)
++{
++	u32 reg = readl(ufs->reg_iocc);
++
++	writel(reg & ~EXYNOS_UFS_IOCC_MASK, ufs->reg_iocc);
++
++	dev_info(ufs->dev, "coherency: %08x -> %08x\n", reg,
++		 readl(ufs->reg_iocc));
++}
++
++/*
++ * Report the state of the protector, and leave it alone.
++ *
++ * The region descriptors of this block, which say what of memory the
++ * controller may reach, are not ours to write.  Measured on this phone: the
++ * security register at the bottom of the block reads and writes without
++ * complaint, and the first write to a region descriptor comes back as an
++ * SError, which is how a write the bus refuses arrives.  The window the
++ * vendor's device tree declares, a bare 0x100, is therefore not an
++ * understatement but an exact description of the part we may touch, and the
++ * vendor's own driver goes through firmware for the rest.
++ *
++ * Nothing here needs them opened anyway: whatever ran before us left the
++ * regions set the way it reads storage itself.
++ */
++static void exynos_ufs_report_smu(struct exynos_ufs *ufs)
++{
++	dev_dbg(ufs->dev, "protector: security %08x, region %08x..%08x\n",
++		ufsp_readl(ufs, UFSPRSECURITY), ufsp_readl(ufs, UFSPSBEGIN0),
++		ufsp_readl(ufs, UFSPSEND0));
++}
++
+ static int exynos_ufs_hce_enable_notify(struct ufs_hba *hba,
+ 					enum ufs_notify_change_status status)
+ {
+@@ -500,14 +555,73 @@ static int exynos_ufs_hce_enable_notify(struct ufs_hba *hba,
+ 		return err;
+ 
+ 	exynos_ufs_config_host(ufs);
++	exynos_ufs_report_smu(ufs);
++	exynos_ufs_config_iocc(ufs);
++
++	/*
++	 * Last, not first.  The software reset above clears the register this
++	 * pulse is made with, so a reset given where the core asks for one is
++	 * undone a moment later and the device stays held for the whole link
++	 * start-up.  The vendor driver resets the device at the end of its own
++	 * host reset, after the host is configured, which is what this is.
++	 *
++	 * Measured both ways on this phone: with the pulse the link comes up
++	 * and the device answers, without it the start-up ends with the
++	 * device-present bit clear and -ENXIO.  It is not optional, and the
++	 * unit attention it makes the device report afterwards is simply part
++	 * of the bargain.
++	 */
++	exynos_ufs_dev_hw_reset(ufs);
+ 
+ 	return 0;
+ }
+ 
++/*
++ * The settings the data path runs on, written once the link is up.
++ *
++ * They are not written earlier because the core enables the controller after
++ * it asks for the configuration before it, and taking the enable bit from
++ * zero to one resets the controller, which is where anything written before
++ * it goes.  Upstream Linux writes the same set in its own post-link step for
++ * the same reason.  What has to be in place before the link can come up at
++ * all, the clock gating and the microsecond counter, stays where it was.
++ */
++static void exynos_ufs_config_data_path(struct exynos_ufs *ufs)
++{
++	hci_writel(ufs, 0xa, HCI_DATA_REORDER);
++
++	/*
++	 * Descriptor entries count bytes rather than blocks, which is what the
++	 * matching quirk tells the core.  The two have to be set together.
++	 */
++	/*
++	 * The size here is the data unit the host counts in, as a power of
++	 * two: twelve is four kilobytes.
++	 *
++	 * Prefetching of the descriptor table is deliberately left off.  The
++	 * host only prefetches correctly when the hardware encryption unit is
++	 * in use, because that unit gives the table a wider entry than the
++	 * standard one, and a host prefetching wide entries out of a table
++	 * written with narrow ones finds no usable segment at all.  Upstream
++	 * Linux ties the bit to encryption being enabled for the same reason.
++	 * Nothing here enables encryption, and the descriptor type field of
++	 * the protector reads as zero on this phone, which is the narrow
++	 * entry, so the bit has to stay clear.
++	 */
++	hci_writel(ufs, PRDT_SET_SIZE(ilog2(DATA_UNIT_SIZE)), HCI_TXPRDT_ENTRY_SIZE);
++	hci_writel(ufs, PRDT_SET_SIZE(ilog2(DATA_UNIT_SIZE)), HCI_RXPRDT_ENTRY_SIZE);
++
++	hci_writel(ufs, 0xffffffff, HCI_UTRL_NEXUS_TYPE);
++	hci_writel(ufs, 0xffffffff, HCI_UTMRL_NEXUS_TYPE);
++
++	hci_writel(ufs, WLU_EN | BURST_LEN(3), HCI_AXIDMA_RWDATA_BURST_LEN);
++}
++
+ static int exynos_ufs_link_startup_notify(struct ufs_hba *hba,
+ 					  enum ufs_notify_change_status status)
+ {
+ 	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
++	u32 status_reg, val;
+ 	int err;
+ 
+ 	if (status == PRE_CHANGE) {
+@@ -522,10 +636,51 @@ static int exynos_ufs_link_startup_notify(struct ufs_hba *hba,
+ 		if (err)
+ 			return err;
+ 
+-		return exynos_ufs_calibrate(ufs, exynos9820_pre_link_cfg, 0);
++		err = exynos_ufs_calibrate(ufs, exynos9820_pre_link_cfg, 0);
++		if (err)
++			return err;
++
++		/*
++		 * The one reading that tells the two possible faults apart.
++		 * A timed out UIC command says only that the controller never
++		 * reported the command done; it does not say whether the
++		 * controller was ready to take one at all.  That is what the
++		 * ready bit below is: clear means this side is not running,
++		 * which is a clock or a reset, and set means the command was
++		 * taken and the fault lies further out, in the link, the PHY
++		 * or the device.
++		 */
++		status_reg = ufshcd_readl(hba, REG_CONTROLLER_STATUS);
++		dev_info(ufs->dev,
++			 "link start-up: status %08x, UIC ready %u, irq %08x, PA error %08x\n",
++			 status_reg, !!(status_reg & UIC_COMMAND_READY),
++			 ufshcd_readl(hba, REG_INTERRUPT_STATUS),
++			 ufshcd_readl(hba,
++				      REG_UIC_ERROR_CODE_PHY_ADAPTER_LAYER));
++
++		return 0;
+ 	}
+ 
+-	return exynos_ufs_calibrate(ufs, exynos9820_post_link_cfg, 0);
++	err = exynos_ufs_calibrate(ufs, exynos9820_post_link_cfg, 0);
++	if (err)
++		return err;
++
++	exynos_ufs_config_data_path(ufs);
++
++	/*
++	 * Whatever ran before this loader left the link free to put itself to
++	 * sleep after a spell of doing nothing, and there is nothing here that
++	 * would wake it again.  A request handed to a sleeping link is simply
++	 * not taken up: no error, no interrupt, and the slot stays claimed
++	 * until somebody takes it back.  The first request after the power
++	 * mode change still goes through, because the link has not had time to
++	 * drop off yet, which is exactly the shape of the fault seen here.
++	 */
++	val = ufshcd_readl(hba, REG_AUTO_HIBERNATE_IDLE_TIMER);
++	dev_info(ufs->dev, "idle timer %08x, switching it off\n", val);
++	ufshcd_writel(hba, 0, REG_AUTO_HIBERNATE_IDLE_TIMER);
++
++	return 0;
+ }
+ 
+ /*
+@@ -549,41 +704,97 @@ static int exynos_ufs_init(struct ufs_hba *hba)
+ 	ufs->hba = hba;
+ 
+ 	/*
+-	 * Descriptor entries of this controller count bytes.  The core reads
+-	 * this while it sets the controller up, which is after this call and
+-	 * before anything is transferred.
++	 * Descriptor offsets and lengths are counted in bytes here, and the
++	 * host reports a fatal error of its own on commands that the device
++	 * answered perfectly well.  Both are what upstream Linux marks on
++	 * every member of this family.  The core reads this while it sets the
++	 * controller up, which is after this call and before anything is
++	 * transferred.
++	 */
++	hba->quirks |= UFSHCD_QUIRK_PRDT_BYTE_GRAN |
++		       UFSHCD_QUIRK_BROKEN_OCS_FATAL_ERROR;
++
++	/*
++	 * This host counts a transfer in units of four kilobytes: the size of
++	 * a descriptor entry is given to it as a power of two and it works in
++	 * whole units of that.  So no entry may cover more than one unit, and
++	 * the buffer itself has to begin on a unit boundary.  Upstream Linux
++	 * states both, and says of the second that it follows directly from
++	 * the first.  A buffer that begins elsewhere is not refused: the host
++	 * keeps the slot, raises no interrupt, and the command never returns.
+ 	 */
+-	hba->quirks |= UFSHCD_QUIRK_PRDT_BYTE_GRAN;
++	hba->max_segment_size = DATA_UNIT_SIZE;
++	hba->dma_alignment = DATA_UNIT_SIZE;
+ 
+ 	return 0;
+ }
+ 
++/*
++ * Tell the host what kind of request is sitting in a slot.
++ *
++ * This register is not a one time setting.  A bit set marks its slot as
++ * carrying a command for a logical unit, a bit clear marks it as carrying a
++ * request for the device itself, and the host will not finish a request whose
++ * bit says the wrong thing.  Setting every bit once, which is what this driver
++ * did at first, therefore stops the very first request the core sends, a NOP
++ * OUT, which is a request of the second kind.  Measured on this phone: the
++ * link came up, the device-present bit was set, both lists reported ready and
++ * the descriptors sat in memory the controller could reach, and the NOP OUT
++ * still ran out of time.  The vendor driver rewrites this register for every
++ * request, which is what this does.
++ */
++static void exynos_ufs_setup_xfer_req(struct ufs_hba *hba, int tag,
++				      bool is_scsi_cmd)
++{
++	struct exynos_ufs *ufs = dev_get_priv(hba->dev);
++	u32 type;
++
++	type = hci_readl(ufs, HCI_UTRL_NEXUS_TYPE);
++
++	if (is_scsi_cmd)
++		type |= BIT(tag);
++	else
++		type &= ~BIT(tag);
++
++	hci_writel(ufs, type, HCI_UTRL_NEXUS_TYPE);
++}
++
+ static struct ufs_hba_ops exynos_ufs_hba_ops = {
+ 	.init			= exynos_ufs_init,
+ 	.device_reset		= exynos_ufs_device_reset,
+ 	.hce_enable_notify	= exynos_ufs_hce_enable_notify,
+ 	.link_startup_notify	= exynos_ufs_link_startup_notify,
+ 	.get_max_pwr_mode	= exynos_ufs_get_max_pwr_mode,
++	.setup_xfer_req		= exynos_ufs_setup_xfer_req,
+ };
+ 
+ static int exynos_ufs_probe(struct udevice *dev)
+ {
+ 	struct exynos_ufs *ufs = dev_get_priv(dev);
++	ulong rate;
+ 	int err;
+ 
+ 	ufs->dev = dev;
+ 
+ 	/*
+ 	 * The first window is the standard controller one and belongs to the
+-	 * UFS core, which takes it itself.  The two taken here are the
+-	 * vendor's own block and the UniPro block.  The fourth window of the
+-	 * vendor's node holds the hardware encryption unit, which a boot
+-	 * loader has no use for, so it is left alone.
++	 * UFS core, which takes it itself.  The other three are the vendor's
++	 * own block, the UniPro block and the protector.
++	 *
++	 * The protector was read here at first as nothing but a hardware
++	 * encryption unit, and left alone on the grounds that a boot loader
++	 * has no use for one.  That was wrong: the same block holds the unit
++	 * that decides what of memory the controller may reach, and with it
++	 * shut the link comes up and then every transfer request times out,
++	 * because the controller cannot fetch the request from memory.
+ 	 */
+ 	ufs->reg_hci = dev_read_addr_index_ptr(dev, 1);
+ 	ufs->reg_unipro = dev_read_addr_index_ptr(dev, 2);
+-	if (!ufs->reg_hci || !ufs->reg_unipro) {
+-		dev_err(dev, "the vendor and UniPro windows are not both there\n");
++	ufs->reg_ufsp = dev_read_addr_index_ptr(dev, 3);
++	ufs->reg_iocc = dev_read_addr_index_ptr(dev, 4);
++	if (!ufs->reg_hci || !ufs->reg_unipro || !ufs->reg_ufsp ||
++	    !ufs->reg_iocc) {
++		dev_err(dev, "not all four windows of the node are there\n");
+ 		return -EINVAL;
+ 	}
+ 
+@@ -610,12 +821,24 @@ static int exynos_ufs_probe(struct udevice *dev)
+ 		return err;
+ 	}
+ 
+-	ufs->mclk_rate = clk_get_rate(&ufs->clk_unipro);
+-	if (!ufs->mclk_rate) {
+-		dev_err(dev, "the UniPro clock reports no rate\n");
++	rate = clk_get_rate(&ufs->clk_unipro);
++
++	/*
++	 * Checked for being an error and not only for being zero: the rate
++	 * comes back as an unsigned long, so a failure arrives as a value
++	 * near the top of the range, which would otherwise be taken for a
++	 * frequency and quietly ruin every period computed from it.
++	 */
++	if (IS_ERR_VALUE(rate) || !rate || rate > EXYNOS_UFS_MCLK_MAX) {
++		dev_err(dev, "the UniPro clock has no usable rate: %#lx\n",
++			rate);
+ 		return -EINVAL;
+ 	}
+-	dev_info(dev, "UniPro clock at %u Hz\n", ufs->mclk_rate);
++
++	ufs->mclk_rate = rate;
++	dev_info(dev, "clocks: controller %lu Hz, UniPro %u Hz\n",
++		 ufs->clks.count ? clk_get_rate(&ufs->clks.clks[0]) : 0,
++		 ufs->mclk_rate);
+ 
+ 	err = generic_phy_get_by_name(dev, "ufs-phy", &ufs->phy);
+ 	if (err) {
+diff --git a/drivers/ufs/ufs-exynos.h b/drivers/ufs/ufs-exynos.h
+index 1f08f343..e07d51c6 100644
+--- a/drivers/ufs/ufs-exynos.h
++++ b/drivers/ufs/ufs-exynos.h
+@@ -24,6 +24,12 @@
+ #define PRDT_PREFETCH_EN		BIT(31)
+ #define PRDT_SET_SIZE(x)		((x) & 0x1f)
+ 
++/* The unit this host counts a transfer in, and so the boundary a buffer
++ * has to begin on.  Upstream Linux calls it DATA_UNIT_SIZE and uses it for
++ * both, the second following directly from the first.
++ */
++#define DATA_UNIT_SIZE			4096
++
+ #define HCI_1US_TO_CNT_VAL		0x0c
+ #define CNT_VAL_1US_MASK		0x3ff
+ 
+@@ -84,4 +90,17 @@
+ #define TX_LANE_0			0
+ #define RX_LANE_0			4
+ 
++/*
++ * The protector block.  Its security unit decides what of memory the
++ * controller may reach, and until region zero is opened it may reach none of
++ * it, so a transfer request is fetched from nowhere and never completes.
++ * Offsets are the vendor's own for this SoC.
++ */
++#define UFSPRSECURITY			0x010
++#define NSSMU				BIT(14)
++#define UFSPSBEGIN0			0x200
++#define UFSPSEND0			0x204
++#define UFSPSLUN0			0x208
++#define UFSPSCTRL0			0x20c
++
+ #endif /* __UFS_EXYNOS_H__ */
+-- 
+2.47.3
+

@@ -1,0 +1,90 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 07:20:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the APM mailbox and the
+ ACPM firmware
+
+The main PMIC of this SoC is not on any bus of the processor: it answers on
+a SPEEDY channel of the Active Power Manager, and the only way to it is the
+firmware running there.  Describe the three pieces that make that way: the
+shared memory the two sides pass messages through, the mailbox the
+processor rings to make the firmware look at it, and the firmware node
+itself.
+
+The drivers for both are already in this series; this is what they bind to.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 45 ++++++++++++++++++++++
+ 1 file changed, 45 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 1e7e1b2519d..46aaac77721 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -215,6 +215,20 @@ soc: soc@0 {
+ 		#size-cells = <1>;
+ 		ranges = <0x0 0x0 0x0 0x20000000>;
+ 
++		/*
++		 * The memory the firmware and the processor pass messages through.
++		 * Its size is the one the vendor states for this SoC; the channel
++		 * configuration sits at an offset inside it that the protocol driver
++		 * knows from the compatible.
++		 */
++		apm_sram: sram@2039000 {
++			compatible = "mmio-sram";
++			reg = <0x2039000 0x30000>;
++			#address-cells = <1>;
++			#size-cells = <1>;
++			ranges = <0x0 0x2039000 0x30000>;
++		};
++
+ 		chipid@10000000 {
+ 			compatible = "samsung,exynos9820-chipid",
+ 				     "samsung,exynos850-chipid";
+@@ -600,6 +614,20 @@ pd_dpu: power-domain@15861e00 {
+ 			label = "DPU";
+ 		};
+ 
++		/*
++		 * The doorbell the processor rings to make the firmware look at the
++		 * memory above.  It carries no payload of its own, which is why the
++		 * driver needs no channel number here.
++		 */
++		ap2apm_mailbox: mailbox@15900000 {
++			compatible = "samsung,exynos9820-mbox";
++			reg = <0x15900000 0x1000>;
++			interrupts = <GIC_SPI 40 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&cmu_apm CLK_GOUT_APM_MAILBOX_APM_AP_PCLK>;
++			clock-names = "pclk";
++			#mbox-cells = <0>;
++		};
++
+ 		cmu_cmgp: clock-controller@15c00000 {
+ 			compatible = "samsung,exynos9820-cmu-cmgp";
+ 			reg = <0x15c00000 0x8000>;
+@@ -925,6 +953,23 @@ cmu_top: clock-controller@1a240000 {
+ 		};
+ 	};
+ 
++	/*
++	 * The firmware on the Active Power Manager, and the only way to reach the
++	 * main PMIC of this board: it is not on a bus of the processor at all.
++	 * The vendor describes it as sitting on a SPEEDY channel of this firmware
++	 * rather than of the CPU, and leaves the SPEEDY controllers disabled.
++	 * Everything the board powers, the touchscreen rails among it, hangs off
++	 * the other end of this mailbox.
++	 */
++	firmware {
++		acpm_ipc: power-management {
++			compatible = "samsung,exynos9820-acpm-ipc";
++			#clock-cells = <1>;
++			mboxes = <&ap2apm_mailbox>;
++			shmem = <&apm_sram>;
++		};
++	};
++
+ 	timer {
+ 		compatible = "arm,armv8-timer";
+ 

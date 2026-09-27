@@ -1,0 +1,92 @@
+#!/bin/sh
+# Ponowne zgloszenie urzadzenia USB komputerowi po restarcie telefonu.
+#
+# Objaw: po restarcie komputer nie widzi ani karty sieciowej, ani portu
+# szeregowego, dopoki nie wyjmie sie i nie wlozy kabla.
+#
+# Co zmierzone, po kolei:
+#   - Telefon jest gotowy: gadzet wstaje, dostaje adres sprzetowy, usluga
+#     adresowa rusza.  Brakuje tylko linii "carrier: link connected", ktora
+#     pojawia sie dopiero w chwili ruszenia kabla.
+#   - Host nie widzi urzadzenia W OGOLE: wszystkie jego interfejsy stoja
+#     w Windows jako nieobecne, nie jako bledne.
+#   - Stan kontrolera po restarcie to "not attached", czyli kontroler uwaza,
+#     ze nic nie jest podlaczone.  Sterownik warstwy fizycznej zglasza przy
+#     starcie "supply vbus not found", bo obsluga zlacza Type-C jest swiadomie
+#     pominieta, a bez niej nic nie mowi kontrolerowi o kablu.
+#   - Odpiecie gadzetu przy wylaczaniu tego nie naprawia.
+#   - Samo opuszczenie i podniesienie linii danych (soft_connect) tez nie:
+#     stan zostaje "not attached".
+#
+# Dziala PELNE przeladowanie sterownika kontrolera: unbind i bind stawiaja go
+# od zera razem z warstwa fizyczna.  Sprawdzone na zywo: polaczenie wrocilo po
+# 27 sekundach, a stan sam wrocil do "configured".  Gadzet podpina sie przy
+# tym SAM, wiec podpinanie go recznie zwraca blad i nie jest potrzebne.
+#
+# Kolejnosc jest od najlzejszego do najciezszego, zeby nie ruszac niczego bez
+# potrzeby.
+set -u
+
+UDC=$(ls /sys/class/udc 2>/dev/null | head -1)
+[ -n "$UDC" ] || exit 0
+
+STAN=/sys/class/udc/$UDC/state
+PRZELACZNIK=/sys/class/udc/$UDC/soft_connect
+STEROWNIK=/sys/bus/platform/drivers/dwc3
+
+czy_gotowe() {
+	[ "$(cat "$STAN" 2>/dev/null || true)" = "configured" ]
+}
+
+czekaj_na_hosta() {
+	i=0
+	while [ $i -lt "$1" ]; do
+		czy_gotowe && return 0
+		sleep 1
+		i=$((i + 1))
+	done
+	return 1
+}
+
+# Krok zerowy: moze host poradzil sobie sam.
+if czekaj_na_hosta 15; then
+	echo "usb-przelacz: host wyliczyl urzadzenie sam, nie ruszam"
+	exit 0
+fi
+
+# Krok pierwszy, lekki: opuscic i podniesc linie danych.
+if [ -w "$PRZELACZNIK" ]; then
+	echo "usb-przelacz: stan to $(cat "$STAN" 2>/dev/null || echo brak), podnosze linie danych"
+	echo disconnect > "$PRZELACZNIK" 2>/dev/null || true
+	sleep 2
+	echo connect > "$PRZELACZNIK" 2>/dev/null || true
+	if czekaj_na_hosta 10; then
+		echo "usb-przelacz: host wyliczyl urzadzenie po podniesieniu linii"
+		exit 0
+	fi
+fi
+
+# Krok drugi, ciezki: postawic kontroler od zera.
+if [ ! -w "$STEROWNIK/unbind" ]; then
+	echo "usb-przelacz: nie moge przeladowac sterownika, koncze"
+	exit 0
+fi
+
+echo "usb-przelacz: stan to $(cat "$STAN" 2>/dev/null || echo brak), przeladowuje sterownik kontrolera"
+if ! printf "%s" "$UDC" > "$STEROWNIK/unbind" 2>/dev/null; then
+	echo "usb-przelacz: unbind sie nie udal, zostawiam jak jest"
+	exit 0
+fi
+sleep 3
+if ! printf "%s" "$UDC" > "$STEROWNIK/bind" 2>/dev/null; then
+	echo "usb-przelacz: BIND SIE NIE UDAL, kontroler zostal bez sterownika"
+	exit 1
+fi
+
+if czekaj_na_hosta 20; then
+	echo "usb-przelacz: host wyliczyl urzadzenie po przeladowaniu sterownika"
+	exit 0
+fi
+
+echo "usb-przelacz: po wszystkim stan to $(cat "$STAN" 2>/dev/null || echo brak)"
+exit 0

@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 09:40:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the CPU interrupt
+ generator
+
+Describe the block the firmware needs lifted before a core starts, and
+point the PMU at it.  Both the address and the role come from the vendor
+power sequences, which write to this block in the first step of starting
+every one of the eight cores.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 42e6ae887a9..95d5fba7009 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -647,6 +647,7 @@ pmu_system_controller: system-controller@15860000 {
+ 				     "samsung,exynos7-pmu",
+ 				     "syscon";
+ 			reg = <0x15860000 0x10000>;
++			samsung,pmu-intr-gen-syscon = <&pmu_intr_gen>;
+ 
+ 			poweroff: syscon-poweroff {
+ 				compatible = "syscon-poweroff";
+@@ -681,6 +682,18 @@ pd_dpu: power-domain@15861e00 {
+ 			label = "DPU";
+ 		};
+ 
++		/*
++		 * Where the per-core interrupt block sits.  The firmware does not
++		 * bring a core up on the PSCI call alone: the host has to lift the
++		 * block of that core here first, which is what the vendor power
++		 * sequences do before every core they start.
++		 */
++		pmu_intr_gen: syscon@15870000 {
++			compatible = "samsung,exynos9820-pmu-intr-gen",
++				     "syscon";
++			reg = <0x15870000 0x10000>;
++		};
++
+ 		/*
+ 		 * The doorbell the processor rings to make the firmware look at the
+ 		 * memory above.  It carries no payload of its own, which is why the

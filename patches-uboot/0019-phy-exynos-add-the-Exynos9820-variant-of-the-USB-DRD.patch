@@ -1,0 +1,215 @@
+From 395ebe3b9b2887122e41ad84f7664b24bd8e8e97 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 19/40] phy: exynos: add the Exynos9820 variant of the USB DRD
+ PHY
+
+The PHY itself matches the one the 850 has, register for register.  What is
+not the same is the word in the power management block that lifts its
+isolation: this SoC keeps it at 0x72c, where the two SoCs the driver
+already knows keep it somewhere else, and reading the wrong word leaves the
+PHY isolated with nothing in the log to say why.
+
+So the offset becomes a property of the variant rather than a constant.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/phy/phy-exynos-usbdrd.c | 84 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 83 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/phy/phy-exynos-usbdrd.c b/drivers/phy/phy-exynos-usbdrd.c
+index c5eed29a..13c3eeef 100644
+--- a/drivers/phy/phy-exynos-usbdrd.c
++++ b/drivers/phy/phy-exynos-usbdrd.c
+@@ -20,6 +20,14 @@
+ 
+ /* Offset of PMU register controlling USB PHY output isolation */
+ #define EXYNOS_USBDRD_PHY_CONTROL		0x0704
++/*
++ * Exynos9820 keeps the switch for this PHY somewhere else than the two SoCs
++ * above it: 0x704 on that SoC is the DisplayPort side of the same combined
++ * block, and writing the USB bit there would leave the PHY isolated while
++ * the driver reports success.  The vendor tree names both offsets, one as
++ * pmu_offset and the other as pmu_offset_dp, which is what settles it.
++ */
++#define EXYNOS9820_USBDRD_PHY_CONTROL	0x072c
+ #define EXYNOS_PHY_ENABLE			BIT(0)
+ #define EXYNOS7870_PHY_ENABLE			BIT(1)
+ 
+@@ -57,6 +65,23 @@
+ 
+ #define EXYNOS5_DRD_PHYCLKRST			0x10
+ #define PHYCLKRST_EN_UTMISUSPEND		BIT(31)
++
++/*
++ * Rejestry i bity uzywane tylko wtedy, gdy uklad ma porty SuperSpeed.
++ * Wartosci przepisane z jadra tego projektu (phy-exynos5-usbdrd.c), gdzie ta
++ * sama warstwa fizyczna dziala: pod Linuksem telefon zglasza sie po kablu,
++ * pod bootloaderem nie, a te trzy kroki byly jedyna roznica.
++ */
++#define EXYNOS850_DRD_LINKPORT			0x08
++#define LINKPORT_HOST_NUM_U3			GENMASK(19, 16)
++#define CLKRST_PHY20_SW_POR			BIT(13)
++#define CLKRST_PHY20_SW_POR_SEL			BIT(12)
++#define CLKRST_PHY_RESET_SEL			BIT(2)
++#define LINKCTRL_FORCE_PIPE_EN			BIT(16)
++#define LINKCTRL_FORCE_PHYSTATUS		BIT(17)
++#define LINKCTRL_FORCE_RXELECIDLE		BIT(18)
++#define EXYNOS850_DRD_SECPMACTL			0x48
++#define SECPMACTL_PMA_LOW_PWR			BIT(4)
+ #define PHYCLKRST_SSC_REFCLKSEL			GENMASK(30, 23)
+ #define PHYCLKRST_SSC_RANGE			GENMASK(22, 21)
+ #define PHYCLKRST_SSC_EN			BIT(20)
+@@ -152,6 +177,7 @@
+ enum exynos_usbdrd_phy_variant {
+ 	EXYNOS7870_USBDRD_PHY,
+ 	EXYNOS850_USBDRD_PHY,
++	EXYNOS9820_USBDRD_PHY,
+ };
+ 
+ /**
+@@ -162,6 +188,7 @@ enum exynos_usbdrd_phy_variant {
+  * @reg_pmu: regmap for PMU block
+  * @extrefclk: frequency select settings when using 'separate reference clocks'
+  * @variant: ID to uniquely distinguish USB PHY variant
++ * @pmu_offset: offset of this PHY's switch inside the power management block
+  */
+ struct exynos_usbdrd_phy {
+ 	void __iomem *reg_phy;
+@@ -170,6 +197,7 @@ struct exynos_usbdrd_phy {
+ 	struct regmap *reg_pmu;
+ 	u32 extrefclk;
+ 	enum exynos_usbdrd_phy_variant variant;
++	u32 pmu_offset;
+ };
+ 
+ static void exynos_usbdrd_phy_isol(struct exynos_usbdrd_phy *phy_drd,
+@@ -184,7 +212,7 @@ static void exynos_usbdrd_phy_isol(struct exynos_usbdrd_phy *phy_drd,
+ 		mask = EXYNOS7870_PHY_ENABLE;
+ 
+ 	val = isolate ? 0 : mask;
+-	regmap_update_bits(phy_drd->reg_pmu, EXYNOS_USBDRD_PHY_CONTROL,
++	regmap_update_bits(phy_drd->reg_pmu, phy_drd->pmu_offset,
+ 			   mask, val);
+ }
+ 
+@@ -331,11 +359,34 @@ static void exynos7870_usbdrd_utmi_init(struct phy *phy)
+ 	writel(reg, regs_base + EXYNOS5_DRD_PHYPARAM0);
+ }
+ 
++/*
++ * Uklad z portami SuperSpeed trzyma lacze w potoku pipe3.  Bez wymuszenia tego
++ * potoku i uspienia bloku analogowego SuperSpeed warstwa fizyczna nie zglasza
++ * podlaczenia, co wyglada tak, jakby kabla nie bylo.
++ */
++static void exynos5_usbdrd_usb_v3p1_pipe_override(struct exynos_usbdrd_phy *phy_drd)
++{
++	void __iomem *regs_base = phy_drd->reg_phy;
++	u32 reg;
++
++	/* force pipe3 signal for link */
++	reg = readl(regs_base + EXYNOS850_DRD_LINKCTRL);
++	reg &= ~LINKCTRL_FORCE_PHYSTATUS;
++	reg |= LINKCTRL_FORCE_PIPE_EN | LINKCTRL_FORCE_RXELECIDLE;
++	writel(reg, regs_base + EXYNOS850_DRD_LINKCTRL);
++
++	/* PMA disable */
++	reg = readl(regs_base + EXYNOS850_DRD_SECPMACTL);
++	reg |= SECPMACTL_PMA_LOW_PWR;
++	writel(reg, regs_base + EXYNOS850_DRD_SECPMACTL);
++}
++
+ static void exynos850_usbdrd_utmi_init(struct phy *phy)
+ {
+ 	struct exynos_usbdrd_phy *phy_drd = dev_get_priv(phy->dev);
+ 	void __iomem *regs_base = phy_drd->reg_phy;
+ 	u32 reg;
++	u32 ss_ports;
+ 
+ 	/*
+ 	 * Disable HWACG (hardware auto clock gating control). This will force
+@@ -346,8 +397,16 @@ static void exynos850_usbdrd_utmi_init(struct phy *phy)
+ 	reg |= LINKCTRL_FORCE_QACT;
+ 	writel(reg, regs_base + EXYNOS850_DRD_LINKCTRL);
+ 
++	reg = readl(regs_base + EXYNOS850_DRD_LINKPORT);
++	ss_ports = FIELD_GET(LINKPORT_HOST_NUM_U3, reg);
++
+ 	/* Start PHY Reset (POR=high) */
+ 	reg = readl(regs_base + EXYNOS850_DRD_CLKRST);
++	if (ss_ports) {
++		reg |= CLKRST_PHY20_SW_POR;
++		reg |= CLKRST_PHY20_SW_POR_SEL;
++		reg |= CLKRST_PHY_RESET_SEL;
++	}
+ 	reg |= CLKRST_PHY_SW_RST;
+ 	writel(reg, regs_base + EXYNOS850_DRD_CLKRST);
+ 
+@@ -408,6 +467,10 @@ static void exynos850_usbdrd_utmi_init(struct phy *phy)
+ 	/* Finish PHY reset (POR=low) */
+ 	udelay(10); /* required before doing POR=low */
+ 	reg = readl(regs_base + EXYNOS850_DRD_CLKRST);
++	if (ss_ports) {
++		reg |= CLKRST_PHY20_SW_POR_SEL;
++		reg &= ~CLKRST_PHY20_SW_POR;
++	}
+ 	reg &= ~(CLKRST_PHY_SW_RST | CLKRST_PORT_RST);
+ 	writel(reg, regs_base + EXYNOS850_DRD_CLKRST);
+ 	udelay(75); /* required after POR=low for guaranteed PHY clock */
+@@ -416,6 +479,9 @@ static void exynos850_usbdrd_utmi_init(struct phy *phy)
+ 	reg = readl(regs_base + EXYNOS850_DRD_HSP);
+ 	reg &= ~HSP_FSV_OUT_EN;
+ 	writel(reg, regs_base + EXYNOS850_DRD_HSP);
++
++	if (ss_ports)
++		exynos5_usbdrd_usb_v3p1_pipe_override(phy_drd);
+ }
+ 
+ static void exynos7870_usbdrd_utmi_exit(struct phy *phy)
+@@ -485,6 +551,7 @@ static int exynos_usbdrd_phy_init(struct phy *phy)
+ 		exynos7870_usbdrd_utmi_init(phy);
+ 		break;
+ 	case EXYNOS850_USBDRD_PHY:
++	case EXYNOS9820_USBDRD_PHY:
+ 		exynos850_usbdrd_utmi_init(phy);
+ 		break;
+ 	default:
+@@ -510,6 +577,7 @@ static int exynos_usbdrd_phy_exit(struct phy *phy)
+ 		exynos7870_usbdrd_utmi_exit(phy);
+ 		break;
+ 	case EXYNOS850_USBDRD_PHY:
++	case EXYNOS9820_USBDRD_PHY:
+ 		exynos850_usbdrd_utmi_exit(phy);
+ 		break;
+ 	default:
+@@ -604,6 +672,9 @@ static int exynos_usbdrd_phy_probe(struct udevice *dev)
+ 	}
+ 
+ 	phy_drd->variant = dev_get_driver_data(dev);
++	phy_drd->pmu_offset = phy_drd->variant == EXYNOS9820_USBDRD_PHY ?
++			      EXYNOS9820_USBDRD_PHY_CONTROL :
++			      EXYNOS_USBDRD_PHY_CONTROL;
+ 
+ 	return 0;
+ }
+@@ -623,6 +694,17 @@ static const struct udevice_id exynos_usbdrd_phy_of_match[] = {
+ 	{
+ 		.compatible = "samsung,exynos850-usbdrd-phy",
+ 		.data = EXYNOS850_USBDRD_PHY,
++	}, {
++		/*
++		 * The start-up sequence here is inherited from the SoC above
++		 * rather than written from a source of its own: the vendor names
++		 * the same PHY version for both, and the kernel drives the next
++		 * SoC of this family with that sequence as well.  What is taken
++		 * from a source is the offset of the switch; the sequence is an
++		 * inheritance, and a cable settles it either way.
++		 */
++		.compatible = "samsung,exynos9820-usbdrd-phy",
++		.data = EXYNOS9820_USBDRD_PHY,
+ 	},
+ 	{ }
+ };
+-- 
+2.47.3
+

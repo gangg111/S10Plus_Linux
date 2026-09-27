@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 07:30:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Enable Bluetooth
+
+Turn on the serial port the BCM4375 answers on and describe the chip below
+it: the line it powers up from, the line the host pokes to wake it, and the
+line it pokes to wake the host.  All three are read from the vendor tree of
+this board.
+
+The last one is an interrupt, so it is described as one rather than as the
+gpio property the binding marks deprecated.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 28 +++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 8149c96b1f0..a4d11f3c02e 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -466,6 +466,28 @@ &serial0 {
+ 	status = "okay";
+ };
+ 
++/*
++ * The Bluetooth controller answers on the serial port of the PERIC1 USI
++ * block.  Three lines go with the port: the one the chip powers up from, the
++ * one the host pokes to wake the controller, and the one the controller pokes
++ * to wake the host.  The last one is an interrupt, so it is described as one
++ * rather than as the deprecated gpio property.
++ */
++&serial1 {
++	status = "okay";
++
++	bluetooth {
++		compatible = "brcm,bcm4375-bt";
++		pinctrl-names = "default";
++		pinctrl-0 = <&bt_en_pins>, <&bt_btwake_pins>,
++			    <&bt_hostwake_pins>;
++		shutdown-gpios = <&gpm8 0 GPIO_ACTIVE_HIGH>;
++		device-wakeup-gpios = <&gpg2 0 GPIO_ACTIVE_HIGH>;
++		interrupts-extended = <&gpa2 3 IRQ_TYPE_EDGE_RISING>;
++		interrupt-names = "host-wakeup";
++	};
++};
++
+ &ufs_0 {
+ 	status = "okay";
+ };
+@@ -536,3 +558,9 @@ &usi_cmgp3 {
+ 	samsung,mode = <USI_V2_I2C>;
+ 	status = "okay";
+ };
++
++/* This USI instance is wired as the serial port the Bluetooth chip uses. */
++&usi_uart_bt {
++	samsung,mode = <USI_V2_UART>;
++	status = "okay";
++};

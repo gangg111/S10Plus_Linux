@@ -1,0 +1,440 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 08:23:59 +0200
+Subject: [PATCH] ASoC: samsung: Add the Galaxy S10 audio driver
+
+Tie the two speaker amplifiers to UAIF1 of the ABOX: I2S with the SoC
+providing both clocks, the amplifier PLLs referenced to the bit clock,
+and each amplifier on the channel its position in the codec list gives.
+The earpiece takes the left channel and the bottom speaker the right
+one, which the voltage and current monitors of both amplifiers confirm:
+a 1 kHz tone on the left channel and a 500 Hz tone on the right come back
+from the earpiece and the bottom speaker respectively, with no trace of
+the other tone.
+
+ASPTX2 of both amplifiers comes out of reset fed by IMON and placed in
+slot 1. With two slots on the port that puts three transmitters on the
+shared SDOUT line as soon as the port records, which shows up as a slot
+full of zeros and half values. The card sets the ASPTX2 source mux to
+Zero, which leaves the channel unpowered. That has to go through the mux
+control, since DAPM keeps the path it read from the register when the
+routes went in, and the control only exists once the card is bound, so
+it is done right after the card is registered.
+
+The CS47L93 codec is the second link, on UAIF0 with the codec as the
+clock consumer. The 26 MHz MCLK1 the vendor feeds the codec comes from
+the PMU clock output, which has no driver, so FLL1 locks to the bit
+clock of the port instead and SYSCLK runs at 98.304 MHz from it. ABOX
+starts the bit clock when a stream is prepared, before DAPM powers the
+codec, so the card starts FLL1 on the way into the prepare bias level of
+the codec and stops it on the way out. With a 1 kHz tone on the earpiece
+and 500 Hz on the bottom speaker, the microphone on IN3 records the
+bottom speaker (500 Hz at 36.1 against 1.4 at 1 kHz) and the one on IN4
+the earpiece (1 kHz at 23.6 against 1.3 at 500 Hz).
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                      |   1 +
+ sound/soc/samsung/Kconfig        |  14 ++
+ sound/soc/samsung/Makefile       |   2 +
+ sound/soc/samsung/beyond-audio.c | 339 +++++++++++++++++++++++++++++++
+ 4 files changed, 356 insertions(+)
+ create mode 100644 sound/soc/samsung/beyond-audio.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 23fe045c62b..8a5be10c03f 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24014,6 +24014,7 @@ F:	drivers/thermal/samsung/exynos9820-tmu.c
+ F:	drivers/video/backlight/exynos9820-dsim-lcd.c
+ F:	include/dt-bindings/clock/samsung,exynos9820-acpm.h
+ F:	include/dt-bindings/clock/samsung,exynos9820.h
++F:	sound/soc/samsung/beyond-audio.c
+ F:	sound/soc/samsung/exynos9820-abox.c
+ 
+ SAMSUNG EXYNOS ACPM MAILBOX PROTOCOL
+diff --git a/sound/soc/samsung/Kconfig b/sound/soc/samsung/Kconfig
+index e22f53fe193..7bba19c530c 100644
+--- a/sound/soc/samsung/Kconfig
++++ b/sound/soc/samsung/Kconfig
+@@ -158,4 +158,18 @@ config SND_SOC_SAMSUNG_MIDAS_WM1811
+ 	help
+ 	  Say Y if you want to add support for SoC audio on the Midas boards.
+ 
++config SND_SOC_SAMSUNG_BEYOND
++	tristate "Audio support for the Galaxy S10 family"
++	depends on SND_SOC_SAMSUNG && I2C
++	select SND_SOC_SAMSUNG_EXYNOS9820_ABOX
++	select SND_SOC_CS35L41_I2C
++	select SND_SOC_CS47L92 if MFD_CS47L92
++	help
++	  Say Y if you want the speaker amplifiers of the Samsung Galaxy S10,
++	  S10e and S10+ (Exynos9820): two CS35L40 on one I2S port of the
++	  ABOX, the earpiece on the left channel and the bottom speaker on
++	  the right, with their voltage and current monitors available for
++	  capture on the same port, and the CS47L93 codec with the
++	  microphones and the headset jack on a second port.
++
+ endif #SND_SOC_SAMSUNG
+diff --git a/sound/soc/samsung/Makefile b/sound/soc/samsung/Makefile
+index 0658d01ebe7..6a182ce33b9 100644
+--- a/sound/soc/samsung/Makefile
++++ b/sound/soc/samsung/Makefile
+@@ -29,6 +29,7 @@ snd-soc-arndale-y := arndale.o
+ snd-soc-tm2-wm5110-y := tm2_wm5110.o
+ snd-soc-aries-wm8994-y := aries_wm8994.o
+ snd-soc-midas-wm1811-y := midas_wm1811.o
++snd-soc-beyond-audio-y := beyond-audio.o
+ 
+ obj-$(CONFIG_SND_SOC_SAMSUNG_SMDK_WM8994) += snd-soc-smdk-wm8994.o
+ obj-$(CONFIG_SND_SOC_SNOW) += snd-soc-snow.o
+@@ -44,3 +45,4 @@ obj-$(CONFIG_SND_SOC_ARNDALE) += snd-soc-arndale.o
+ obj-$(CONFIG_SND_SOC_SAMSUNG_TM2_WM5110) += snd-soc-tm2-wm5110.o
+ obj-$(CONFIG_SND_SOC_SAMSUNG_ARIES_WM8994) += snd-soc-aries-wm8994.o
+ obj-$(CONFIG_SND_SOC_SAMSUNG_MIDAS_WM1811) += snd-soc-midas-wm1811.o
++obj-$(CONFIG_SND_SOC_SAMSUNG_BEYOND) += snd-soc-beyond-audio.o
+diff --git a/sound/soc/samsung/beyond-audio.c b/sound/soc/samsung/beyond-audio.c
+new file mode 100644
+index 00000000000..857e34185ae
+--- /dev/null
++++ b/sound/soc/samsung/beyond-audio.c
+@@ -0,0 +1,339 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Galaxy S10 family audio on the Exynos9820 ABOX
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * Two CS35L40 amplifiers hang off one I2S port, UAIF1.  Each takes the
++ * channel given by its position in the codec list of the device tree node,
++ * and hands its monitor data back in the slot of the same channel.
++ *
++ * The CS47L93 codec, with the microphones and the headset jack, sits on
++ * UAIF0.  Its system clock runs from FLL1, which locks to the bit clock of
++ * the port: the 26 MHz MCLK1 the vendor uses comes from the PMU clock
++ * output, which has no driver here.  ABOX starts the bit clock when a
++ * stream is prepared, before DAPM powers the codec, so the FLL is started
++ * on the way into the prepare bias level and stopped on the way out.
++ */
++
++#include <linux/interrupt.h>	/* for sound/cs35l41.h */
++#include <linux/mfd/madera/core.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++#include <sound/cs35l41.h>
++#include <sound/pcm_params.h>
++#include <sound/soc.h>
++
++#include "../codecs/madera.h"
++
++#define BEYOND_MAX_AMPS		2
++#define BEYOND_SYSCLK_RATE	98304000
++
++enum {
++	BEYOND_LINK_SPEAKERS,
++	BEYOND_LINK_CODEC,
++	BEYOND_NUM_LINKS,
++};
++
++struct beyond_priv {
++	struct snd_soc_card card;
++	struct snd_soc_dai_link link[BEYOND_NUM_LINKS];
++	struct snd_soc_dai_link_component platform[BEYOND_NUM_LINKS];
++	struct snd_soc_component *codec;
++	unsigned int codec_bclk;
++};
++
++/* receive slots per amplifier position: RX1 takes its own channel */
++static const unsigned int beyond_rx_slots[BEYOND_MAX_AMPS][2] = {
++	{ 0, 1 },
++	{ 1, 0 },
++};
++
++/* transmit slot of ASPTX1 per amplifier position */
++static const unsigned int beyond_tx_slot[BEYOND_MAX_AMPS] = { 0, 1 };
++
++static unsigned int beyond_bclk(struct snd_pcm_hw_params *params)
++{
++	return params_rate(params) * params_channels(params) *
++	       params_physical_width(params);
++}
++
++static int beyond_amp_hw_params(struct snd_pcm_substream *substream,
++				struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	unsigned int bclk = beyond_bclk(params);
++	struct snd_soc_dai *dai;
++	int i, ret;
++
++	for_each_rtd_codec_dais(rtd, i, dai) {
++		/* the amplifier PLL takes its reference from the bit clock */
++		ret = snd_soc_dai_set_sysclk(dai, CS35L41_CLKID_SCLK, bclk,
++					     SND_SOC_CLOCK_IN);
++		if (ret < 0)
++			return ret;
++		ret = snd_soc_component_set_sysclk(dai->component,
++						   CS35L41_CLKID_SCLK, 0, bclk,
++						   SND_SOC_CLOCK_IN);
++		if (ret < 0)
++			return ret;
++		ret = snd_soc_dai_set_channel_map(dai, 1, &beyond_tx_slot[i],
++						  2, beyond_rx_slots[i]);
++		if (ret < 0)
++			return ret;
++	}
++	return 0;
++}
++
++static const struct snd_soc_ops beyond_amp_ops = {
++	.hw_params = beyond_amp_hw_params,
++};
++
++static int beyond_codec_hw_params(struct snd_pcm_substream *substream,
++				  struct snd_pcm_hw_params *params)
++{
++	struct snd_soc_pcm_runtime *rtd = snd_soc_substream_to_rtd(substream);
++	struct beyond_priv *priv = snd_soc_card_get_drvdata(rtd->card);
++
++	priv->codec_bclk = beyond_bclk(params);
++	return 0;
++}
++
++static const struct snd_soc_ops beyond_codec_ops = {
++	.hw_params = beyond_codec_hw_params,
++};
++
++static int beyond_codec_init(struct snd_soc_pcm_runtime *rtd)
++{
++	struct beyond_priv *priv = snd_soc_card_get_drvdata(rtd->card);
++	struct snd_soc_dai *dai = snd_soc_rtd_to_codec(rtd, 0);
++	int ret;
++
++	priv->codec = dai->component;
++	ret = snd_soc_component_set_sysclk(priv->codec, MADERA_CLK_SYSCLK_1,
++					   MADERA_CLK_SRC_FLL1,
++					   BEYOND_SYSCLK_RATE,
++					   SND_SOC_CLOCK_IN);
++	if (ret)
++		return ret;
++	return snd_soc_dai_set_sysclk(dai, MADERA_CLK_SYSCLK_1, 0, 0);
++}
++
++static int beyond_set_bias_level(struct snd_soc_card *card,
++				 struct snd_soc_dapm_context *dapm,
++				 enum snd_soc_bias_level level)
++{
++	struct beyond_priv *priv = snd_soc_card_get_drvdata(card);
++	enum snd_soc_bias_level cur = snd_soc_dapm_get_bias_level(dapm);
++
++	if (!priv->codec || dapm != snd_soc_component_to_dapm(priv->codec))
++		return 0;
++
++	if (level == SND_SOC_BIAS_PREPARE && cur == SND_SOC_BIAS_STANDBY) {
++		if (!priv->codec_bclk) {
++			dev_err(card->dev, "no bit clock rate for the codec FLL\n");
++			return -EINVAL;
++		}
++		return snd_soc_component_set_pll(priv->codec, MADERA_FLL1_REFCLK,
++						 MADERA_FLL_SRC_AIF1BCLK,
++						 priv->codec_bclk,
++						 BEYOND_SYSCLK_RATE);
++	}
++	if (level == SND_SOC_BIAS_STANDBY && cur == SND_SOC_BIAS_PREPARE)
++		return snd_soc_component_set_pll(priv->codec, MADERA_FLL1_REFCLK,
++						 0, 0, 0);
++	return 0;
++}
++
++/*
++ * With two slots on the port, each amplifier may transmit in one of them
++ * only.  ASPTX2 comes out of reset fed by IMON and placed in slot 1 on both
++ * parts, which puts three transmitters on the shared SDOUT line as soon as
++ * the port records.  Take it off the line through its source mux, so that
++ * DAPM leaves the channel unpowered.  Writing the register underneath would
++ * not do, as DAPM keeps the path it read when the routes went in, and the
++ * mux controls exist only once the card is bound, so this runs after the
++ * card is registered rather than from late_probe.
++ */
++static int beyond_quiet_asptx2(struct beyond_priv *priv)
++{
++	struct snd_soc_card *card = &priv->card;
++	struct snd_soc_pcm_runtime *rtd;
++	struct snd_ctl_elem_value *value;
++	const char *prefix;
++	struct snd_kcontrol *kctl;
++	struct snd_soc_dai *dai;
++	char name[SNDRV_CTL_ELEM_ID_NAME_MAXLEN];
++	int i, ret = 0;
++
++	value = kzalloc_obj(*value);
++	if (!value)
++		return -ENOMEM;
++
++	for_each_card_rtds(card, rtd) {
++		if (rtd->dai_link != &priv->link[BEYOND_LINK_SPEAKERS])
++			continue;
++		for_each_rtd_codec_dais(rtd, i, dai) {
++			prefix = dai->component->name_prefix;
++			snprintf(name, sizeof(name), "%s%sASP TX2 Source",
++				 prefix ?: "", prefix ? " " : "");
++			kctl = snd_soc_card_get_kcontrol(card, name);
++			if (!kctl) {
++				dev_err(card->dev, "no control '%s'\n", name);
++				ret = -ENOENT;
++				goto out;
++			}
++			memset(value, 0, sizeof(*value));
++			value->value.enumerated.item[0] = 0;	/* "Zero" */
++			ret = kctl->put(kctl, value);
++			if (ret < 0)
++				goto out;
++			ret = 0;
++		}
++	}
++out:
++	kfree(value);
++	return ret;
++}
++
++static void beyond_put_link(void *data)
++{
++	struct snd_soc_dai_link *link = data;
++
++	snd_soc_of_put_dai_link_codecs(link);
++	snd_soc_of_put_dai_link_cpus(link);
++}
++
++/* cpu and codec subnodes of np into link, with ABOX as the PCM */
++static int beyond_parse_link(struct device *dev, struct device_node *np,
++			     struct snd_soc_dai_link *link,
++			     struct snd_soc_dai_link_component *platform)
++{
++	struct device_node *cpu, *codec;
++	int ret;
++
++	cpu = of_get_child_by_name(np, "cpu");
++	if (!cpu)
++		return dev_err_probe(dev, -EINVAL, "%pOF: no cpu node\n", np);
++	ret = snd_soc_of_get_dai_link_cpus(dev, cpu, link);
++	of_node_put(cpu);
++	if (ret)
++		return dev_err_probe(dev, ret, "%pOF: cannot get the cpu DAI\n", np);
++
++	codec = of_get_child_by_name(np, "codec");
++	if (!codec) {
++		snd_soc_of_put_dai_link_cpus(link);
++		return dev_err_probe(dev, -EINVAL, "%pOF: no codec node\n", np);
++	}
++	ret = snd_soc_of_get_dai_link_codecs(dev, codec, link);
++	of_node_put(codec);
++	if (ret) {
++		snd_soc_of_put_dai_link_cpus(link);
++		return dev_err_probe(dev, ret, "%pOF: cannot get the codec DAIs\n", np);
++	}
++
++	/* the ABOX component is both the port and the PCM */
++	platform->of_node = link->cpus[0].of_node;
++	link->platforms = platform;
++	link->num_platforms = 1;
++
++	/* added before the card, so it runs after the card is gone */
++	return devm_add_action_or_reset(dev, beyond_put_link, link);
++}
++
++static const struct snd_soc_dapm_widget beyond_widgets[] = {
++	SND_SOC_DAPM_SPK("Receiver", NULL),
++	SND_SOC_DAPM_SPK("Speaker", NULL),
++	SND_SOC_DAPM_HP("Headphone", NULL),
++	SND_SOC_DAPM_MIC("Headset Mic", NULL),
++	SND_SOC_DAPM_MIC("DMIC1", NULL),
++	SND_SOC_DAPM_MIC("DMIC2", NULL),
++};
++
++static int beyond_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct snd_soc_dai_link *link;
++	struct device_node *np;
++	struct beyond_priv *priv;
++	struct snd_soc_card *card;
++	int ret;
++
++	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
++	if (!priv)
++		return -ENOMEM;
++	card = &priv->card;
++
++	card->dev = dev;
++	card->owner = THIS_MODULE;
++	card->driver_name = "beyond-audio";
++	card->dapm_widgets = beyond_widgets;
++	card->num_dapm_widgets = ARRAY_SIZE(beyond_widgets);
++	card->set_bias_level = beyond_set_bias_level;
++	card->dai_link = priv->link;
++	card->num_links = 1;
++	snd_soc_card_set_drvdata(card, priv);
++
++	ret = snd_soc_of_parse_card_name(card, "model");
++	if (ret)
++		return ret;
++	ret = snd_soc_of_parse_audio_routing(card, "audio-routing");
++	if (ret)
++		return ret;
++
++	link = &priv->link[BEYOND_LINK_SPEAKERS];
++	link->name = "Speakers";
++	link->stream_name = "Speakers";
++	link->dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++			SND_SOC_DAIFMT_CBC_CFC;
++	link->ops = &beyond_amp_ops;
++	ret = beyond_parse_link(dev, dev->of_node, link,
++				&priv->platform[BEYOND_LINK_SPEAKERS]);
++	if (ret)
++		return ret;
++	if (link->num_codecs > BEYOND_MAX_AMPS)
++		return dev_err_probe(dev, -EINVAL, "at most %d amplifiers\n",
++				     BEYOND_MAX_AMPS);
++
++	np = of_get_child_by_name(dev->of_node, "codec-link");
++	if (np) {
++		link = &priv->link[BEYOND_LINK_CODEC];
++		link->name = "Codec";
++		link->stream_name = "Codec";
++		link->dai_fmt = SND_SOC_DAIFMT_I2S | SND_SOC_DAIFMT_NB_NF |
++				SND_SOC_DAIFMT_CBC_CFC;
++		link->ops = &beyond_codec_ops;
++		link->init = beyond_codec_init;
++		ret = beyond_parse_link(dev, np, link,
++					&priv->platform[BEYOND_LINK_CODEC]);
++		of_node_put(np);
++		if (ret)
++			return ret;
++		card->num_links++;
++	}
++
++	ret = devm_snd_soc_register_card(dev, card);
++	if (ret)
++		return dev_err_probe(dev, ret, "cannot register the card\n");
++	return beyond_quiet_asptx2(priv);
++}
++
++static const struct of_device_id beyond_of_match[] = {
++	{ .compatible = "samsung,beyond-audio" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, beyond_of_match);
++
++static struct platform_driver beyond_driver = {
++	.probe = beyond_probe,
++	.driver = {
++		.name = "beyond-audio",
++		.of_match_table = beyond_of_match,
++	},
++};
++module_platform_driver(beyond_driver);
++
++MODULE_AUTHOR("Artur Szafraniec <ganggg111@gmail.com>");
++MODULE_DESCRIPTION("Galaxy S10 family audio on the Exynos9820 ABOX");
++MODULE_LICENSE("GPL");

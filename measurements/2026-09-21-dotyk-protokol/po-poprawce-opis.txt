@@ -1,0 +1,22 @@
+urzadzenie: s6sy761
+wlasciwosci: INPUT_PROP_DIRECT 
+rodzaje zdarzen: EV_SYN EV_KEY EV_ABS 
+klawisze: BTN_TOUCH 
+
+osie (zakres, ziarno, martwa strefa, ROZDZIELCZOSC):
+  ABS_X                    0 .. 4096   fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_Y                    0 .. 4096   fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_PRESSURE             0 .. 255    fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_MT_SLOT              0 .. 16     fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  slotow razem         17
+  ABS_MT_TOUCH_MAJOR       0 .. 255    fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_MT_TOUCH_MINOR       0 .. 255    fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_MT_POSITION_X        0 .. 4096   fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_MT_POSITION_Y        0 .. 4096   fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_MT_TRACKING_ID       0 .. 65535  fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+  ABS_MT_PRESSURE          0 .. 255    fuzz=0 flat=0  res=0  <-- BRAK, milimetry nieliczalne
+
+identyfikatory sladu w slotach (-1 = slot wolny):
+  0:-1 1:-1 2:-1 3:-1 4:-1 5:-1
+  6:-1 7:-1 8:-1 9:-1 10:-1 11:-1
+  12:-1 13:-1 14:-1 15:-1 16:-1

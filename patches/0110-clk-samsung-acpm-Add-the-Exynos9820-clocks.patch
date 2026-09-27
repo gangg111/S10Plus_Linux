@@ -1,0 +1,214 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 16:14:11 +0200
+Subject: [PATCH] clk: samsung: acpm: Add the Exynos9820 clocks
+
+The ACPM firmware of the Exynos9820 runs DVFS for fifteen domains and
+takes the same FREQ_REQ message as the gs101 one, so the driver only
+needs the data of a second SoC.  Pick the clock list and the channel from
+the platform device ID instead of the gs101 tables.
+
+Two things differ from gs101.  The requests go to channel 1: the polled
+queue the vendor DVFS manager uses.  The channel the vendor tree gives its
+DVFS node is interrupt driven, a mode this driver does not support, and
+channels 0, 1 and that one lead to the same handler in the firmware.
+And the firmware does not report the current rate: FREQ_GET is answered
+with a zero rate on both polled channels.  For such firmware the clock
+reports the rate the firmware starts the domain at until a rate is set
+on it, and the last rate set after that.  Zero is not an option:
+cpufreq refuses a policy whose clock reads zero, and with it
+cpufreq-dt failed to register ("->get() failed" on every CPU, then
+-ENODEV).  The start levels are the ones the firmware keeps in its
+frequency and voltage tables; for the CPU clusters they match, to the
+MHz, the clocks a timing loop measures at boot: 1053, 1222 and
+1378 MHz.
+
+Measured on a Galaxy S10+ with messages sent by hand before this driver:
+a FREQ_REQ of 1560 MHz for the big cluster on channel 1 is acknowledged
+within 1 ms and a timing loop on those cores reads 1560 MHz, up from the
+1378 MHz the bootloader leaves; the other clusters stay where they were.
+The same request with a millisecond timestamp in the fourth word, as the
+mainline DVFS helper sends it, is accepted the same way.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/clk/samsung/clk-acpm.c | 90 +++++++++++++++++++++++++++++++---
+ 1 file changed, 83 insertions(+), 7 deletions(-)
+
+diff --git a/drivers/clk/samsung/clk-acpm.c b/drivers/clk/samsung/clk-acpm.c
+index 953ca8d5720..dc60a567cf3 100644
+--- a/drivers/clk/samsung/clk-acpm.c
++++ b/drivers/clk/samsung/clk-acpm.c
+@@ -15,22 +15,42 @@
+ #include <linux/module.h>
+ #include <linux/platform_device.h>
+ #include <linux/types.h>
++#include <linux/units.h>
+ 
+ struct acpm_clk {
+ 	u32 id;
+ 	struct clk_hw hw;
+ 	unsigned int mbox_chan_id;
+ 	struct acpm_handle *handle;
++	bool no_rate_readback;
++	unsigned long rate;
+ };
+ 
++/**
++ * struct acpm_clk_variant - one clock the ACPM firmware provides
++ * @name:		name of the clock
++ * @boot_rate:		rate the firmware starts the domain at, for firmware
++ *			that does not report the current rate
++ */
+ struct acpm_clk_variant {
+ 	const char *name;
++	unsigned long boot_rate;
+ };
+ 
++/**
++ * struct acpm_clk_driver_data - clocks the ACPM firmware of a SoC provides
++ * @clks:		the clocks, in the order of their firmware IDs
++ * @nr_clks:		number of clocks
++ * @mbox_chan_id:	ACPM channel the DVFS requests go to
++ * @no_rate_readback:	the firmware does not report the current rate, so
++ *			the clock reports its boot rate until a rate is set
++ *			on it, and the last rate set after that
++ */
+ struct acpm_clk_driver_data {
+ 	const struct acpm_clk_variant *clks;
+ 	unsigned int nr_clks;
+ 	unsigned int mbox_chan_id;
++	bool no_rate_readback;
+ };
+ 
+ #define to_acpm_clk(clk) container_of(clk, struct acpm_clk, hw)
+@@ -40,6 +60,12 @@ struct acpm_clk_driver_data {
+ 		.name		= cname,		\
+ 	}
+ 
++#define ACPM_CLK_BOOT(cname, khz)			\
++	{						\
++		.name		= cname,		\
++		.boot_rate	= (khz) * HZ_PER_KHZ,	\
++	}
++
+ static const struct acpm_clk_variant gs101_acpm_clks[] = {
+ 	ACPM_CLK("mif"),
+ 	ACPM_CLK("int"),
+@@ -63,11 +89,50 @@ static const struct acpm_clk_driver_data acpm_clk_gs101 = {
+ 	.mbox_chan_id = 0,
+ };
+ 
++/*
++ * The boot rates are the start levels the firmware keeps in its frequency
++ * and voltage tables; for the CPU clusters they match the clocks measured
++ * on a Galaxy S10+ at boot.
++ */
++static const struct acpm_clk_variant exynos9820_acpm_clks[] = {
++	ACPM_CLK_BOOT("mif", 2093000),
++	ACPM_CLK_BOOT("int", 534000),
++	ACPM_CLK_BOOT("cpucl0", 1053000),
++	ACPM_CLK_BOOT("cpucl1", 1222000),
++	ACPM_CLK_BOOT("cpucl2", 1378000),
++	ACPM_CLK_BOOT("npu", 167000),
++	ACPM_CLK_BOOT("disp", 534000),
++	ACPM_CLK_BOOT("score", 25000),
++	ACPM_CLK_BOOT("aud", 295000),
++	ACPM_CLK_BOOT("cp", 1066000),
++	ACPM_CLK_BOOT("g3d", 156000),
++	ACPM_CLK_BOOT("intcam", 630000),
++	ACPM_CLK_BOOT("cam", 650000),
++	ACPM_CLK_BOOT("iva", 56000),
++	ACPM_CLK_BOOT("mfc", 134000),
++};
++
++/*
++ * Channel 1 is the polled queue the vendor DVFS manager talks to; the
++ * channel the vendor tree gives its DVFS node is interrupt driven.  The
++ * firmware acknowledges FREQ_GET on both with a zero rate, and cpufreq
++ * refuses a policy whose clock reads zero, hence the boot rates.
++ */
++static const struct acpm_clk_driver_data acpm_clk_exynos9820 = {
++	.clks = exynos9820_acpm_clks,
++	.nr_clks = ARRAY_SIZE(exynos9820_acpm_clks),
++	.mbox_chan_id = 1,
++	.no_rate_readback = true,
++};
++
+ static unsigned long acpm_clk_recalc_rate(struct clk_hw *hw,
+ 					  unsigned long parent_rate)
+ {
+ 	struct acpm_clk *clk = to_acpm_clk(hw);
+ 
++	if (clk->no_rate_readback)
++		return clk->rate;
++
+ 	return clk->handle->ops->dvfs.get_rate(clk->handle, clk->mbox_chan_id,
+ 					       clk->id);
+ }
+@@ -88,9 +153,14 @@ static int acpm_clk_set_rate(struct clk_hw *hw, unsigned long rate,
+ 			     unsigned long parent_rate)
+ {
+ 	struct acpm_clk *clk = to_acpm_clk(hw);
++	int ret;
+ 
+-	return clk->handle->ops->dvfs.set_rate(clk->handle, clk->mbox_chan_id,
+-					       clk->id, rate);
++	ret = clk->handle->ops->dvfs.set_rate(clk->handle, clk->mbox_chan_id,
++					      clk->id, rate);
++	if (!ret)
++		clk->rate = rate;
++
++	return ret;
+ }
+ 
+ static const struct clk_ops acpm_clk_ops = {
+@@ -117,17 +187,21 @@ static int acpm_clk_probe(struct platform_device *pdev)
+ 	struct clk_hw_onecell_data *clk_data;
+ 	struct clk_hw **hws;
+ 	struct device *dev = &pdev->dev;
++	const struct acpm_clk_driver_data *data;
+ 	struct acpm_clk *aclks;
+ 	unsigned int mbox_chan_id;
+ 	int i, err, count;
+ 
++	data = (const struct acpm_clk_driver_data *)
++		platform_get_device_id(pdev)->driver_data;
++
+ 	acpm_handle = devm_acpm_get_by_node(dev, dev->parent->of_node);
+ 	if (IS_ERR(acpm_handle))
+ 		return dev_err_probe(dev, PTR_ERR(acpm_handle),
+ 				     "Failed to get acpm handle\n");
+ 
+-	count = acpm_clk_gs101.nr_clks;
+-	mbox_chan_id = acpm_clk_gs101.mbox_chan_id;
++	count = data->nr_clks;
++	mbox_chan_id = data->mbox_chan_id;
+ 
+ 	clk_data = devm_kzalloc(dev, struct_size(clk_data, hws, count),
+ 				GFP_KERNEL);
+@@ -151,11 +225,12 @@ static int acpm_clk_probe(struct platform_device *pdev)
+ 		aclk->id = i;
+ 		aclk->handle = acpm_handle;
+ 		aclk->mbox_chan_id = mbox_chan_id;
++		aclk->no_rate_readback = data->no_rate_readback;
++		aclk->rate = data->clks[i].boot_rate;
+ 
+ 		hws[i] = &aclk->hw;
+ 
+-		err = acpm_clk_register(dev, aclk,
+-					acpm_clk_gs101.clks[i].name);
++		err = acpm_clk_register(dev, aclk, data->clks[i].name);
+ 		if (err)
+ 			return dev_err_probe(dev, err,
+ 					     "Failed to register clock\n");
+@@ -166,7 +241,8 @@ static int acpm_clk_probe(struct platform_device *pdev)
+ }
+ 
+ static const struct platform_device_id acpm_clk_id[] = {
+-	{ "gs101-acpm-clk" },
++	{ "gs101-acpm-clk", (kernel_ulong_t)&acpm_clk_gs101 },
++	{ "exynos9820-acpm-clk", (kernel_ulong_t)&acpm_clk_exynos9820 },
+ 	{}
+ };
+ MODULE_DEVICE_TABLE(platform, acpm_clk_id);

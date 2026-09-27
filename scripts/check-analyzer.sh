@@ -47,7 +47,10 @@ drivers/gpu/drm/panel/panel-samsung-s6e3ha9-main.c
 drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming.c
 drivers/gpu/drm/exynos/exynos9820_drm_decon.c
 drivers/phy/samsung/phy-exynos9820-dsim.c
-drivers/gpu/drm/bridge/samsung-dsim.c"
+drivers/gpu/drm/bridge/samsung-dsim.c
+drivers/video/backlight/exynos9820-dsim-lcd.c
+drivers/thermal/samsung/exynos9820-tmu.c
+drivers/clk/samsung/clk-acpm.c"
 
 ANALIZA="--analyze -Xclang -analyzer-output=text \
 -Xclang -analyzer-disable-checker -Xclang deadcode.DeadStores"

@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 23:05:32 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Describe the whole
+ panel
+
+The boot framebuffer was described 32 pixels narrower on each side, because
+the text console cannot offset its own area and its outermost columns
+landed on the curve of this panel.
+
+What runs on this phone now is an on-screen keyboard, and it wants the
+opposite: its background should reach the curved edges so that no black
+stripe is left there, while the keys themselves stay clear of them.  A
+program cannot paint outside the buffer this node describes, so the node
+describes the panel as it physically is and the program keeps its own
+margin.
+
+The memory does not change; only the window on it does.  The start moves
+back to where the first boot loader puts it, the width becomes the one the
+line length already said.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 21 +++++++++++--------
+ 1 file changed, 12 insertions(+), 9 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 6f81f18c2c3..457a133006a 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -70,18 +70,21 @@ chosen {
+ 		 * the boot loader itself passes on this phone: the vendor kernel
+ 		 * receives "s3cfb.bootloaderfb=0xca000000" on its command line.
+ 		 */
+-		framebuffer0: framebuffer@ca000080 {
++		framebuffer0: framebuffer@ca000000 {
+ 			compatible = "simple-framebuffer";
+ 			/*
+-			 * The panel curves along both long edges, so the outermost
+-			 * columns are distorted and hard to hit with a finger.  The
+-			 * text console cannot offset its own area, so the buffer is
+-			 * described 32 pixels narrower on each side instead: the
+-			 * start moves by that many pixels and the line length stays
+-			 * as the hardware has it.
++			 * The panel curves along both long edges.  The buffer used to
++			 * be described 32 pixels narrower on each side, because the
++			 * text console cannot offset its own area and its outermost
++			 * columns landed on the curve.  What runs on this phone now is
++			 * an on-screen keyboard that wants the opposite: it fills the
++			 * curved edges with its own background and keeps the keys
++			 * themselves clear of them.  A program cannot paint outside
++			 * the buffer this node describes, so the node describes the
++			 * panel as it physically is.
+ 			 */
+-			reg = <0x0 0xca000080 ((1440 * 3040 - 32) * 4)>;
+-			width = <1376>;
++			reg = <0x0 0xca000000 (1440 * 3040 * 4)>;
++			width = <1440>;
+ 			height = <3040>;
+ 			stride = <(1440 * 4)>;
+ 			format = "a8r8g8b8";

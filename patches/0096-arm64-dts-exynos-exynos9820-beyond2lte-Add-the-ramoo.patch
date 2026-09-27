@@ -1,0 +1,61 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 06:19:11 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the ramoops
+ region
+
+Bringing a secondary CPU online wedges this phone hard: the write to
+/sys/devices/system/cpu/cpu1/online never returns, the USB link goes down
+in the same second and the machine has to be forced off by holding the
+buttons.  Measured on 22 September 2026 on kernel #39, which already
+carries the CPU interrupt generator this port added for that call.
+
+The problem is not that it hangs, it is that it hangs without a word.  The
+kernel ring buffer dies with the machine, there is no serial console on
+this board and the USB gadget that carries the log goes down with the hang
+too, so every attempt costs one manual flash and yields nothing.
+
+The vendor solves this with its own debug snapshot: a region of DRAM the
+firmware does not clear across a warm reset.  This phone is known to keep
+it, because the vendor kernel left an oops in it that this port read back
+from /sys/fs/pstore after a reboot.  Take the same region, at the address
+and size the vendor reserves for "debug-snapshot,log_kernel", and give it
+to ramoops with a console buffer, so the last lines before a hang are
+still there after the phone comes back.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 20 +++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 457a133006a..df360473eac 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -207,6 +207,26 @@ cp_ram_logging@fb900000 {
+ 			no-map;
+ 		};
+ 
++		/*
++		 * A kernel log that survives a reset.  The vendor reserves this
++		 * region for "debug-snapshot,log_kernel" and its kernel keeps a
++		 * ramoops buffer in it, so this memory is known to outlive a warm
++		 * reset on this phone: the oops this port read back from
++		 * /sys/fs/pstore after a reboot came from here.
++		 *
++		 * Without it a hang leaves nothing behind.  Bringing a secondary
++		 * CPU online wedges this phone hard enough to take the USB link
++		 * with it, and the console buffer below is the only way to see
++		 * what the kernel printed last.
++		 */
++		ramoops@fd910000 {
++			compatible = "ramoops";
++			reg = <0x0 0xfd910000 0x200000>;
++			console-size = <0x100000>;
++			record-size = <0x20000>;
++			pmsg-size = <0x20000>;
++		};
++
+ 		el2_earlymem@9fd800000 {
+ 			reg = <0x9 0xfd800000 0x2800000>;
+ 			no-map;

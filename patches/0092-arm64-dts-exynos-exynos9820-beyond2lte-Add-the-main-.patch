@@ -1,0 +1,130 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 21:58:10 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the main PMIC
+
+The two rails of the touchscreen were described as fixed supplies, with a
+comment saying they really come from LDO19M and LDO27M of the S2MPS19 and
+that mainline could not reach that chip.  It can now, so they are named
+for what they are and the placeholders go away.
+
+The node sits under the ACPM firmware because that is where the chip
+answers.  Its interrupt is gpa0-1, level low: the vendor device tree of
+this board names that pin group "m-pmic-irq" with a pull up, and the
+vendor driver asks for IRQF_TRIGGER_LOW.  (The interrupts property of the
+vendor node reads <2 0 0>, which would be pin 2 under a two cell reading,
+but that node declares three interrupt cells and both the pin group and
+the irq-gpio property of the same node say pin 1.)
+
+Only the two rails the touchscreen needs get constraints.  The rest of the
+chip carries the rails the CPU, the memory and the modem run from, and
+leaving them without constraints is deliberate: nothing in the kernel can
+then be asked to change them.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 70 ++++++++++++-------
+ 1 file changed, 45 insertions(+), 25 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index a4d11f3c02e..6f81f18c2c3 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -126,29 +126,6 @@ key-power {
+ 		};
+ 	};
+ 
+-	/*
+-	 * The touchscreen rails really come from two LDOs of the main PMIC
+-	 * (LDO19M and LDO27M of the S2MPS19), which mainline cannot reach yet:
+-	 * that PMIC is behind the ACPM mailbox.  They are on when the bootloader
+-	 * hands over, so they are described as fixed supplies until the real
+-	 * regulators can be named.
+-	 */
+-	reg_tsp_io: regulator-tsp-io {
+-		compatible = "regulator-fixed";
+-		regulator-name = "tsp_io";
+-		regulator-min-microvolt = <1800000>;
+-		regulator-max-microvolt = <1800000>;
+-		regulator-always-on;
+-	};
+-
+-	reg_tsp_avdd: regulator-tsp-avdd {
+-		compatible = "regulator-fixed";
+-		regulator-name = "tsp_avdd";
+-		regulator-min-microvolt = <3000000>;
+-		regulator-max-microvolt = <3000000>;
+-		regulator-always-on;
+-	};
+-
+ 	/*
+ 	 * Memory the kernel must not hand out.  Every region below is taken
+ 	 * from a tree that describes this board, not from a calculation: the
+@@ -234,6 +211,40 @@ el2_earlymem@9fd800000 {
+ 	};
+ };
+ 
++/*
++ * The main PMIC of this board.  It does not answer on any bus of the CPU: it
++ * hangs off a SPEEDY link of the power management firmware, so the node sits
++ * under that firmware and every register access travels as an ACPM command.
++ *
++ * Only the two rails the touchscreen needs are described.  The rest of the
++ * chip carries the rails the CPU, the memory and the modem run from, and they
++ * are left without constraints on purpose, so that nothing in the kernel can
++ * be asked to change them.
++ */
++&acpm_ipc {
++	pmic-1 {
++		compatible = "samsung,s2mps19-pmic";
++		interrupts-extended = <&gpa0 1 IRQ_TYPE_LEVEL_LOW>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&main_pmic_irq>;
++		wakeup-source;
++
++		regulators {
++			ldo19m: LDO19M {
++				regulator-name = "tsp_io";
++				regulator-min-microvolt = <1800000>;
++				regulator-max-microvolt = <1800000>;
++			};
++
++			ldo27m: LDO27M {
++				regulator-name = "tsp_avdd";
++				regulator-min-microvolt = <3000000>;
++				regulator-max-microvolt = <3000000>;
++			};
++		};
++	};
++};
++
+ /*
+  * The cell, described because the charger has to be told what it is
+  * charging.  Every number here is read from the vendor tree of this exact
+@@ -298,8 +309,8 @@ touchscreen@48 {
+ 		compatible = "samsung,s6sy771";
+ 		reg = <0x48>;
+ 
+-		avdd-supply = <&reg_tsp_avdd>;
+-		vdd-supply = <&reg_tsp_io>;
++		avdd-supply = <&ldo27m>;
++		vdd-supply = <&ldo19m>;
+ 
+ 		interrupts-extended = <&gpa1 0 IRQ_TYPE_LEVEL_LOW>;
+ 
+@@ -446,6 +457,15 @@ ts_int: ts-int-pins {
+ 	};
+ };
+ 
++&pinctrl_alive {
++	main_pmic_irq: main-pmic-irq-pins {
++		samsung,pins = "gpa0-1";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV4>;
++	};
++};
++
+ &pinctrl_alive {
+ 	pmic_irq: pmic-irq-pins {
+ 		samsung,pins = "gpa1-6";

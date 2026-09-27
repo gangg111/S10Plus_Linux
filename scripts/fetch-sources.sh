@@ -44,6 +44,14 @@ CH=https://raw.githubusercontent.com/chiffathefox/exynos-9820-mainline-linux/0ae
 
 for f in arch/arm64/boot/dts/exynos/exynos9820.dts \
 	 arch/arm64/configs/exynos9820-beyond2lte_defconfig \
+	 drivers/soc/samsung/cal-if/pmucal_cpu.c \
+	 drivers/soc/samsung/cal-if/pmucal_cpu.h \
+	 drivers/soc/samsung/cal-if/pmucal_rae.c \
+	 drivers/soc/samsung/cal-if/pmucal_powermode.c \
+	 drivers/soc/samsung/cal-if/pmucal_powermode.h \
+	 drivers/soc/samsung/cal-if/cal-if.c \
+	 drivers/soc/samsung/cal-if/pmucal_common.h \
+	 drivers/soc/samsung/exynos-cpupm.c \
 	 drivers/pinctrl/samsung/pinctrl-exynos-arm64.c \
 	 drivers/pinctrl/samsung/pinctrl-exynos.h \
 	 drivers/video/fbdev/exynos/panel/panel_drv.c \
@@ -75,8 +83,28 @@ for f in arch/arm64/boot/dts/exynos/exynos9820.dts \
 	 drivers/soc/samsung/cal-if/exynos9820/cmucal-sfr.h \
 	 drivers/soc/samsung/cal-if/exynos9820/cmucal-node.c \
 	 drivers/soc/samsung/cal-if/exynos9820/flexpmu_cal_local_exynos9820.h \
+	 drivers/soc/samsung/cal-if/exynos9820/flexpmu_cal_cpu_exynos9820.h \
+	 drivers/soc/samsung/cal-if/exynos9820/flexpmu_cal_powermode_exynos9820.h \
+	 drivers/pci/dwc/pcie-exynos-host-v0.c \
+	 drivers/pci/dwc/pcie-exynos-host-v0.h \
+	 drivers/pci/dwc/pci-exynos9820_cal.c \
 	 arch/arm64/boot/dts/samsung/exynos9820-beyond2lte_eur_open_26.dts \
-	 drivers/input/touchscreen/sec_ts/y771/sec_ts.c; do
+	 drivers/input/touchscreen/sec_ts/y771/sec_ts.c \
+	 drivers/input/touchscreen/sec_ts/y771/sec_ts.h \
+	 drivers/input/touchscreen/sec_ts/y771/sec_ts_fn.c \
+	 sound/soc/samsung/abox/abox_soc.h \
+	 sound/soc/samsung/abox/abox_rdma.c \
+	 sound/soc/samsung/abox/abox_wdma.c \
+	 sound/soc/samsung/abox/abox.c \
+	 sound/soc/samsung/abox/abox.h \
+	 sound/soc/samsung/abox/abox_soc.c \
+	 sound/soc/samsung/abox/abox_if.c \
+	 sound/soc/samsung/abox/abox_cmpnt_v20.c \
+	 sound/soc/samsung/beyond_madera.c \
+	 sound/soc/codecs/cs35l41.c \
+	 drivers/extcon/extcon-madera.c \
+	 drivers/mmc/host/dw_mmc-exynos.c \
+	 drivers/mmc/host/dw_mmc-exynos.h; do
 	curl -sSfL "$DS/$f" -o "$ds/$(basename "$f")"
 done
 
@@ -112,7 +140,76 @@ curl -sSfL "$UF/ufs-cal-9820.h" -o "$ds/ufs-cal-9820.h"
 curl -sSfL "$UF/ufs-exynos.c"   -o "$ds/ufs-exynos.c"
 curl -sSfL "$UF/ufs-exynos.h"   -o "$ds/ufs-exynos.h"
 
+# Interfejs procesora komunikacyjnego (modem s5000ap). Stad pochodza: mapa
+# rejestrow skrzynki pocztowej AP<->CP, sekwencje wlaczania domeny CP w PMU,
+# uklad pamieci dzielonej z kolejkami SBD, stale protokolu ramkowania oraz
+# wywolania do firmware bezpieczenstwa, ktore sprawdza podpis obrazu modemu.
+# Bez tych plikow ani jedna liczba zebrana przy rozpoznaniu modemu nie daje
+# sie zacytowac w serii, bo bramka cytatow wymaga pliku lezacego lokalnie.
+MI=$DS/drivers/misc
+curl -sSfL "$MI/mcu_ipc/regs-mcu_ipc.h"        -o "$ds/regs-mcu_ipc.h"
+curl -sSfL "$MI/mcu_ipc/mcu_ipc.c"             -o "$ds/mcu_ipc.c"
+curl -sSfL "$MI/mcu_ipc/shm_ipc.c"             -o "$ds/shm_ipc.c"
+curl -sSfL "$MI/modem_v1/modem_ctrl_s5000ap.c" -o "$ds/modem_ctrl_s5000ap.c"
+curl -sSfL "$MI/modem_v1/link_device_shmem.c"  -o "$ds/link_device_shmem.c"
+curl -sSfL "$MI/modem_v1/link_device_memory.h" -o "$ds/link_device_memory.h"
+curl -sSfL "$MI/modem_v1/modem_prj.h"          -o "$ds/modem_prj.h"
+curl -sSfL "$MI/modem_v1/modem_v1.h"           -o "$ds/modem_v1.h"
+curl -sSfL "$MI/modem_v1/include/sbd.h"        -o "$ds/sbd.h"
+curl -sSfL "$MI/modem_v1/include/sipc5.h"      -o "$ds/sipc5.h"
+curl -sSfL "$DS/drivers/soc/samsung/cal-if/exynos9820/pmucal_cp_exynos9820.h" \
+	-o "$ds/pmucal_cp_exynos9820.h"
+
+# Glowny uklad zasilania S2MPS19. Siedzi za firmware APM, nie na magistrali,
+# wiec jego rejestry czyta sie wywolaniem do ACPM, a nie przez i2c. Stad
+# pochodza: mapa rejestrow (adresy wlacznikow i pol napiecia), opisy wszystkich
+# szyn wraz z krokiem i zakresem napiec oraz kanal ACPM, ktorym sterownik
+# rozmawia z ukladem. Szyny dotyku (LDO19M, LDO27M) sa w tym samym pliku.
+MF=$DS/drivers/mfd
+curl -sSfL "$DS/include/linux/mfd/samsung/s2mps19.h"           -o "$ds/s2mps19.h"
+curl -sSfL "$DS/include/linux/mfd/samsung/s2mps19-regulator.h" -o "$ds/s2mps19-regulator.h"
+curl -sSfL "$MF/s2mps19_core.c"                                -o "$ds/s2mps19_core.c"
+curl -sSfL "$DS/drivers/regulator/s2mps19_regulator.c"         -o "$ds/s2mps19_regulator.c"
+curl -sSfL "$DS/drivers/soc/samsung/acpm/acpm_ipc.c"           -o "$ds/acpm_ipc.c"
+curl -sSfL "$DS/drivers/soc/samsung/acpm/acpm_ipc.h"           -o "$ds/acpm_ipc.h"
+curl -sSfL "$DS/drivers/soc/samsung/acpm/acpm.c"               -o "$ds/acpm.c"
+# Kalibracja glosnikow: skad biora sie wartosci z /efs/cirrus i do ktorych
+# pol firmware ochrony trafiaja po jego zaladowaniu.
+curl -sSfL "$MF/cirrus-cal.c"                                  -o "$ds/cirrus-cal.c"
+
 curl -sSfL "$CH/drivers/clk/samsung/clk-exynos9820.c" -o "$ds/clk-exynos9820.c"
 curl -sSfL "$CH/include/dt-bindings/clock/exynos9820.h" -o "$ds/exynos9820-clk.h"
+
+# Czcionka klawiatury ekranowej.  Telefon rozwiazuje "Sans" wlasnie na ten
+# plik (`fc-match Sans` na urzadzeniu), wiec nasza klawiatura pisze tym samym
+# krojem, co reszta systemu.  Bierzemy go z paczki postmarketOS, a nie
+# z telefonu, zeby budowa byla powtarzalna bez podlaczonego urzadzenia.
+mkdir -p "$src/fonts"
+if [ ! -f "$src/fonts/DroidSans.ttf" ]; then
+	tmp=$(mktemp -d)
+	curl -sSfL "https://dl-cdn.alpinelinux.org/alpine/edge/community/aarch64/font-droid-20200215-r5.apk" 		-o "$tmp/font-droid.apk"
+	tar xzf "$tmp/font-droid.apk" -C "$tmp" ./usr/share/fonts/droid/DroidSans.ttf
+	cp "$tmp/usr/share/fonts/droid/DroidSans.ttf" "$src/fonts/DroidSans.ttf"
+	rm -rf "$tmp"
+fi
+
+# Czcionka konsoli.  Terminus 16x32 jest wbudowany w jadro, ale tam ma 256
+# glifow i ZADNEJ tablicy Unicode, wiec konsola zbija polskie litery do liter
+# bazowych: klawiatura wysyla `ż`, a na ekranie stoi `z` (zmierzone,
+# measurements/2026-09-22-ogonki-przytrzymanie).  Ta sama czcionka z paczki ma
+# 512 glifow i tablice Unicode z kompletem ogonkow.  Wersja przypieta do tej,
+# ktora siedzi w obrazie telefonu (`apk info -v` mowi font-terminus-4.49.1-r4).
+if [ ! -f "$src/fonts/ter-v32n.psf" ]; then
+	tmp=$(mktemp -d)
+	curl -sSfL "https://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/font-terminus-4.49.1-r4.apk" \
+		-o "$tmp/font-terminus.apk"
+	# Ta paczka trzyma sciezki BEZ przedrostka "./", inaczej niz font-droid
+	# wyzej; podanie zlej formy konczy sie "Not found in archive".
+	tar xzf "$tmp/font-terminus.apk" -C "$tmp" \
+		usr/share/consolefonts/ter-v32n.psf.gz 2>/dev/null
+	gzip -dc "$tmp/usr/share/consolefonts/ter-v32n.psf.gz" \
+		> "$src/fonts/ter-v32n.psf"
+	rm -rf "$tmp"
+fi
 
 echo "OK: źródła w $src"

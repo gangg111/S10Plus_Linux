@@ -65,12 +65,61 @@ zamiast CON3, czyli czytalo rejestr sterujacy zamiast wspolczynnikow M/P/S. Napr
 w `patches/0013`, pilnuje `scripts/check-pll-con3.py`. Szczegoly w `docs/00-summary.md`.
 Cudzy fork ma ten sam blad, wiec wziecie go zakonserwowaloby usterke.
 
-**Port jest kompletny.** Osiem patchy, razem 1740 linii kodu i konfiguracji
-plus 1719 linii drzewa urzadzen przeniesionego z serii jadra. Cala seria ma
-zero bledow checkpatcha `--strict`, stosuje sie 8/8 na przypieta baze,
-a obraz `u-boot.bin` dla tej plyty buduje sie z wlasnego defconfiga.
-Nic z tego nie bylo uruchomione na sprzecie. Szacunki linii pochodza z pomiaru forka i sluza za skale
-zadania, nie za wzorzec do przepisania.
+**Pierwszy etap portu, czyli rozruch z pamieci masowej, zamknal sie w osmiu
+patchach**: 1740 linii kodu i konfiguracji plus 1719 linii drzewa urzadzen
+przeniesionego z serii jadra. Szacunki linii pochodza z pomiaru forka i sluza
+za skale zadania, nie za wzorzec do przepisania.
+
+## Stan serii: 28 patchy (22.09.2026)
+
+Osiem patchy wyzej to **nie jest** cala seria. Po uruchomieniu bootloadera na
+telefonie doszlo dwanascie kolejnych, ktore przez pewien czas zyly poza seria:
+jeden commit opisany jako WIP oraz 2391 linii, ktorych zaden commit nie obejmowal.
+Ten akapit istnieje, bo przez caly ten czas README twierdzil, ze port jest
+kompletny w osmiu patchach, a zadna bramka tego nie widziala: wszystkie czytaja
+drzewo robocze, a nie patche.
+
+| patch | co wnosi |
+|---|---|
+| 0009 | kopie drzew urzadzen zsynchronizowane z seria jadra |
+| 0010 | pozostale piec CMU: FSYS0A, PERIS, APM, CMGP, DPU |
+| 0011 | dzielniki CMU_PERIC0 rejestrowane po swoich bramkach |
+| 0012 | bufory transferu UFS niewyrownane do DMA ida przez bufor posredni |
+| 0013 | odczyt stanu protektora pamieci masowej i spojnosc pamieci podrecznej |
+| 0014 | ochrona dzielnika konsoli przed niedorzeczna czestotliwoscia |
+| 0015 | czcionka 32x64 z polskimi literami |
+| 0016 | przejecie framebuffera zostawionego przez S-Boota |
+| 0017 | `bootmenu` z rysowaniem po stronie plyty |
+| 0018 | menu BEYOND BOOT w czterech jezykach |
+| 0019 | wariant Exynos9820 w PHY USB |
+| 0020 | fastboot po kablu |
+| 0021 | sterta na tyle duza, zeby fastboot przyjal caly obraz |
+| 0022 | drzewo telefonu zsynchronizowane z glownym ukladem zasilania |
+| 0023 | opis calego panelu przeniesiony z serii jadra |
+| 0024 | obszar ramoops wziety z drzewa jadra |
+| 0025 | sterownik trybu rozruchu trzymanego w kontrolerze systemowym |
+| 0026 | plyta czyta ten tryb i przy bootloader wchodzi w fastboot |
+| 0027 | czyszczenie jednego pola bloku sterujacego z poziomu kodu |
+| 0028 | plyta czyta tez blok z partycji misc, i tedy to dziala |
+
+Cala seria: zero bledow checkpatcha `--strict`, stosuje sie 28/28 na przypieta
+baze, a **kazdy z dwunastu nowych punktow buduje sie osobno**, z wlasna
+konfiguracja z defconfiga, wiec serie da sie przepolowic przy szukaniu usterki.
+Pilnuje tego `scripts/check-uboot-seria.sh`, wpiety w `scripts/verify.sh`:
+sprawdza, ze seria stosuje sie na baze, ze daje DOKLADNIE to drzewo, ktore
+czytaja pozostale bramki, ze poza seria nie lezy nic, i ze checkpatch nie
+przybiera. Bramka ma przetestowane negatywnie trzy sposoby zepsucia: plik
+zmieniony poza seria, latka rozjechana z drzewem i plik nieznany gitowi.
+
+Rozruch, menu i fastboot byly uruchomione na telefonie. Wejscie w fastboot
+na zadanie z dzialajacego systemu **jest potwierdzone na sprzecie**
+(`measurements/2026-09-22-tryb-rozruchu`): dziala przez blok na partycji
+`misc` (patch 0028), natomiast przez rejestr jednostki zasilania (patche
+0025 i 0026) **dzialac nie moze**, bo pierwszy stopien rozruchu czyta ten
+rejestr wczesniej i zabiera slowo dla siebie; to tez jest zmierzone. Nie
+byly na telefonie uruchomione:
+poprawka kolejnosci zegarow (patch 0011, pozycja HW-45), fastboot ani sciezka
+USB.
 
 ## Zasady (te same co przy jadrze)
 
@@ -507,3 +556,30 @@ edytowac drzewo z poziomu WSL.
 
 Druga, drobniejsza: `~/.uboot-docs` to katalog UKRYTY, wiec `ls ~/*venv*` go nie
 znajduje i latwo postawic drugie, zbedne srodowisko Sphinksa obok istniejacego.
+
+### Pulap ostrzezen podniesiony do 21 (22.09.2026)
+
+Latka 0029 liczy sufit pamieci w `board_get_usable_ram_top()`, czyli w chwili,
+gdy nie istnieje jeszcze zadne urzadzenie modelu sterownikow. Czyta wiec plaskie
+drzewo (`fdt_path_offset`, `fdtdec_get_addr_size_auto_parent`), a checkpatch
+prosi w tym miejscu o `dev_read_...`. To jest falszywe trafienie, bo ten
+interfejs wymaga `udevice`, ktorego tam z definicji nie ma. Poprzednia wartosc
+lezy obok, w `scripts/golden/checkpatch-uboot-warnings.max.przed-rdzeniami`.
+
+### Pulap ostrzezen podniesiony do 22 (22.09.2026)
+
+Latka 0031 wnosi polecenie `spinner`, a checkpatch na kazde nowe polecenie
+mowi "make sure you add a test". Testow polecen U-Boot uruchamia pod sandboxem
+i tylko dla polecen wbudowanych w ten obraz; `spinner` jest poleceniem PLYTY,
+kompilowanym wylacznie dla `exynos-mobile`, i robi jedna rzecz: maluje po
+framebufferze opisanym w drzewie tego telefonu. Sandbox ani tego polecenia nie
+ma, ani nie ma czego nim sprawdzic. Poprzednia wartosc lezy obok, w
+`scripts/golden/checkpatch-uboot-warnings.max.przed-obrecza`.
+
+Pozostale piec ostrzezen z tej rundy ZNIKNELO zamiast trafic pod pulap: odczyty
+drzewa w `exynos_fb_get()` i `exynos_decon_trigger()` przepisane sa na `ofnode`
+(to samo dziala przed modelem sterownikow, bo `CONFIG_OF_LIVE` jest wylaczone),
+a warunek kompilacji paskow rozruchu z latki 0032 to `if (IS_ENABLED(...))`
+w srodku funkcji, nie `#if` wokol niej. Dowod, ze to naprawde wypada z obrazu:
+`nm u-boot | grep exynos_mark_colour` nie znajduje nic, a obraz jest o 288 B
+mniejszy.

@@ -1,0 +1,36 @@
+#!/bin/sh
+# Odpiecie gadzetu USB od kontrolera przy wylaczaniu telefonu.
+#
+# Objaw, ktory to naprawia: po restarcie komputer nie widzi ani karty
+# sieciowej, ani portu szeregowego, dopoki nie wyjmie sie i nie wlozy kabla.
+#
+# Przyczyna: przy restarcie kontroler nie zglasza hostowi odlaczenia. Host
+# trzyma stary opis urzadzenia, ktore przestalo odpowiadac, i nie wylicza go
+# od nowa, choc po drugiej stronie kabla wstal juz nowy gadzet.
+#
+# Poprawka: zrobic to odlaczenie samemu, ZANIM telefon zgasnie. Wyczyszczenie
+# pliku UDC odpina gadzet od kontrolera, czyli opuszcza linie danych, co dla
+# hosta wyglada jak wyjecie kabla. Po starcie initramfs podpina gadzet na nowo
+# i host wylicza go jak swieze urzadzenie.
+#
+# Dlaczego przy WYLACZANIU, a nie przy starcie: przepinanie w trakcie startu
+# trafia w srodek wyliczania. Zostalo sprawdzone i skonczylo sie tym, ze
+# podpiecie z powrotem zwrocilo blad, gadzet zostal odpiety, a telefon byl
+# niewidoczny az do recznego wyjecia kabla.
+G=/sys/kernel/config/usb_gadget/g1
+[ -d "$G" ] || exit 0
+
+if printf "" > "$G/UDC" 2>/dev/null; then
+	echo "usb-odepnij: gadzet odpiety od kontrolera"
+else
+	echo "usb-odepnij: nie udalo sie odpiac, zostawiam jak jest"
+	exit 0
+fi
+
+# Samo odpiecie nie wystarcza: host potrzebuje WIDOCZNEJ przerwy, a telefon
+# gasnie zaraz potem. Zmierzone: przy odpieciu tuz przed zgaszeniem komputer
+# nadal nie wyliczal urzadzenia i trzeba bylo ruszac kabel. Trzy sekundy to
+# margines na debounce portu po stronie hosta.
+sleep 3
+echo "usb-odepnij: odczekane, telefon moze gasnac"
+exit 0

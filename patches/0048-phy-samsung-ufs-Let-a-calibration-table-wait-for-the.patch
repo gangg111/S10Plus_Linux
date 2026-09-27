@@ -1,0 +1,87 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 00:36:12 +0200
+Subject: [PATCH] phy: samsung-ufs: Let a calibration table wait for the
+ hardware to settle
+
+A calibration sequence can need time to pass part way through a table,
+between two writes that both belong to that table.  There is nowhere to
+put that today: the PHY is powered on, and with it calibrated for the
+first point, from inside the host's own link setup, so a settle time
+that belongs between two of those writes cannot be moved out to either
+side of the call.
+
+Give a table an entry that only lets time pass.  It takes its turn like
+any other entry, so the order stays the order the table is written in,
+and it is not repeated per lane because time is not per lane.
+
+Nothing uses it yet, so no SoC changes behaviour.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/phy/samsung/phy-samsung-ufs.c | 10 ++++++++++
+ drivers/phy/samsung/phy-samsung-ufs.h | 16 ++++++++++++++++
+ 2 files changed, 26 insertions(+)
+
+diff --git a/drivers/phy/samsung/phy-samsung-ufs.c b/drivers/phy/samsung/phy-samsung-ufs.c
+index b5c0ba515fe..8ea818105d1 100644
+--- a/drivers/phy/samsung/phy-samsung-ufs.c
++++ b/drivers/phy/samsung/phy-samsung-ufs.c
+@@ -144,6 +144,11 @@ static int samsung_ufs_phy_calibrate(struct phy *phy)
+ 		if (!samsung_ufs_phy_cfg_applies(ufs_phy, cfg))
+ 			continue;
+ 
++		if (cfg->id == PHY_DELAY_BLK) {
++			udelay(cfg->val);
++			continue;
++		}
++
+ 		for_each_phy_lane(ufs_phy, i) {
+ 			samsung_ufs_phy_config(ufs_phy, cfg, i);
+ 		}
+@@ -293,6 +298,11 @@ static int samsung_ufs_phy_notify_state(struct phy *phy,
+ 		if (!samsung_ufs_phy_cfg_applies(ufs_phy, cfg))
+ 			continue;
+ 
++		if (cfg->id == PHY_DELAY_BLK) {
++			udelay(cfg->val);
++			continue;
++		}
++
+ 		for_each_phy_lane(ufs_phy, i) {
+ 			samsung_ufs_phy_config(ufs_phy, cfg, i);
+ 		}
+diff --git a/drivers/phy/samsung/phy-samsung-ufs.h b/drivers/phy/samsung/phy-samsung-ufs.h
+index 94b28724000..77d2905b58f 100644
+--- a/drivers/phy/samsung/phy-samsung-ufs.h
++++ b/drivers/phy/samsung/phy-samsung-ufs.h
+@@ -15,6 +15,13 @@
+ 
+ #define PHY_COMN_BLK	1
+ #define PHY_TRSV_BLK	2
++/*
++ * An entry that only lets time pass.  A calibration sequence can need the
++ * hardware to settle part way through a table, between two writes that both
++ * belong to that table, which is a place no hook called around the table can
++ * reach.
++ */
++#define PHY_DELAY_BLK	3
+ #define END_UFS_PHY_CFG { 0 }
+ #define PHY_TRSV_CH_OFFSET	0x30
+ #define PHY_APB_ADDR(off)	((off) << 2)
+@@ -38,6 +45,15 @@
+ #define PHY_TRSV_REG_CFG(o, v, d)	\
+ 	PHY_TRSV_REG_CFG_OFFSET(o, v, d, PHY_TRSV_CH_OFFSET)
+ 
++/* Let "u" microseconds pass before the rest of the table is written. */
++#define PHY_DELAY_CFG(u) {	\
++	.off_0 = 0,		\
++	.off_1 = 0,		\
++	.val = (u),		\
++	.desc = PWR_MODE_ANY,	\
++	.id = PHY_DELAY_BLK,	\
++}
++
+ /* UFS PHY registers */
+ #define PHY_PLL_LOCK_STATUS	0x1e
+ 

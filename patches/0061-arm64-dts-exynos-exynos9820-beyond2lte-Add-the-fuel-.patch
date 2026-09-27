@@ -1,0 +1,155 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 07:19:20 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the fuel gauge
+
+The part of the companion chip that answers how much charge is left.  The
+driver for it is already in the tree and needs nothing but a node.
+
+The charger half of the same chip is left out on purpose: it needs a
+description of the cell and a working way to stop charging, and getting
+either wrong costs more than not having the function at all.
+
+The address is taken from the only other board in the tree carrying this
+chip.  The vendor sources for this phone never put the fuel gauge on a bus:
+they hang it in the root of the tree with no address and bind it to the
+battery by name, so there is nothing there to copy.  The annotation says
+so.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 103 ++++++++++++++++++
+ 1 file changed, 103 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 00a421b3009..8149c96b1f0 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -234,6 +234,37 @@ el2_earlymem@9fd800000 {
+ 	};
+ };
+ 
++/*
++ * The cell, described because the charger has to be told what it is
++ * charging.  Every number here is read from the vendor tree of this exact
++ * phone rather than from a datasheet of a similar one: the end of charge
++ * voltage is battery,chg_float_voltage, the capacity is
++ * battery,battery_full_capacity, the charge current is
++ * battery,max_charging_current and the current at which the charge counts
++ * as finished is full_check_current_1st.
++ *
++ * The cell itself agrees: an EB-BG975ABU is labelled 4000 mAh rated,
++ * 3.85 V nominal, and a charging limit of 4.40 V.  The limit is what the
++ * cell survives, not what it is charged to, and the vendor stops at 4.35 V;
++ * that margin is where the life of the cell comes from, so the lower number
++ * is the one described here and it is not a rounding to fix later.
++ *
++ * voltage-min-design-microvolt is left out.  The vendor tree never states a
++ * cutoff as a voltage, and a number invented here would be the one thing in
++ * this node that nothing measured.
++ */
++/ {
++	battery: battery {
++		compatible = "simple-battery";
++		device-chemistry = "lithium-ion";
++		charge-full-design-microamp-hours = <4000000>;
++		voltage-max-design-microvolt = <4350000>;
++		constant-charge-voltage-max-microvolt = <4350000>;
++		constant-charge-current-max-microamp = <2850000>;
++		charge-term-current-microamp = <400000>;
++	};
++};
++
+ &decon0 {
+ 	status = "okay";
+ };
+@@ -321,6 +352,59 @@ panel_vci: ldo4 {
+ 	};
+ };
+ 
++/*
++ * The companion chip of the main PMIC: the fuel gauge, which answers how
++ * much charge is left, and the charger, which puts it back.  The charger
++ * needs a cell to charge against, so it points at the battery node above,
++ * whose numbers come from the vendor tree of this phone.
++ *
++ * The address of the fuel gauge started out as an analogy with the only
++ * other board in mainline carrying this chip, a Galaxy S9, because the
++ * vendor sources for this phone never put the fuel gauge on a bus at all:
++ * they hang it in the root of the tree with no address and bind it to the
++ * battery by name.  It has since been measured on the phone, by driving
++ * this bus by hand over its own pins: 0x36 answers, and so do 0x66 for the
++ * companion chip and 0x69 beside them.  The analogy held.
++ *
++ * maxim,rsns-microohm is not guessed either, it is derived from what the
++ * gauge itself reports.  The vendor gives the resistor as a plain index
++ * rather than as a resistance, so the value comes from the measurement:
++ * with the driver default of 10 mohm the gauge reported a design capacity
++ * of 1979 mAh for a cell labelled 4000 mAh, and that ratio is the resistor.
++ * Half the assumed resistance gives twice the reported capacity, so 5 mohm
++ * it is, and the reported capacity then lands on the printed one.
++ */
++&hsi2c45 {
++	status = "okay";
++
++	max77705: pmic@66 {
++		compatible = "maxim,max77705";
++		reg = <0x66>;
++		interrupt-parent = <&gpa1>;
++		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
++		interrupt-controller;
++		#interrupt-cells = <1>;
++		pinctrl-0 = <&pmic_irq>;
++		pinctrl-names = "default";
++	};
++
++	fuel-gauge@36 {
++		compatible = "maxim,max77705-battery";
++		reg = <0x36>;
++		maxim,rsns-microohm = <5000>;
++		interrupt-parent = <&max77705>;
++		interrupts = <2>;
++	};
++
++	charger@69 {
++		compatible = "maxim,max77705-charger";
++		reg = <0x69>;
++		monitored-battery = <&battery>;
++		interrupt-parent = <&max77705>;
++		interrupts = <0>;
++	};
++};
++
+ &oscclk {
+ 	clock-frequency = <26000000>;
+ };
+@@ -362,6 +446,15 @@ ts_int: ts-int-pins {
+ 	};
+ };
+ 
++&pinctrl_alive {
++	pmic_irq: pmic-irq-pins {
++		samsung,pins = "gpa1-6";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_EINT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++};
++
+ / {
+ 	reg_usb_dummy: regulator-usb-dummy {
+ 		compatible = "regulator-fixed";
+@@ -433,3 +526,13 @@ &usi_cmgp2 {
+ 	samsung,mode = <USI_V2_I2C>;
+ 	status = "okay";
+ };
++
++/*
++ * This USI instance is wired as the I2C master the main PMIC's companion
++ * answers on.  Picking the mode here is also what releases the block from
++ * reset, so the bus below cannot work without it.
++ */
++&usi_cmgp3 {
++	samsung,mode = <USI_V2_I2C>;
++	status = "okay";
++};

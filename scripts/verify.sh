@@ -151,6 +151,16 @@ fi
 # lezacy w drzewie roboczym, a nieobjety zadnym patchem, jest dla niego
 # niewidzialny. To jest dokladnie ta awaria, ktorej reszta projektu sie boi:
 # u autora sie kompiluje, bo naglowek lezy na dysku, a u odbiorcy go nie ma.
+#
+# Falszywy alarm, ktory ta bramka potrafi zglosic: drzewo jadra ma 99 dowiazan
+# symbolicznych (Documentation/Changes, komplet scripts/dtc/include-prefixes/*,
+# katalogi w tools/), a narzedzie bez prawa do ich zakladania zostawia w ich
+# miejscu zwykla tresc. Wtedy status pokazuje 87 zmian typu i 12 "usuniec",
+# ktore nie maja nic wspolnego z seria. NIE odsiewac ich w bramce, tylko
+# odtworzyc dowiazania; dotyczy ich dokladnie tyle, ile zwraca pierwsza linia:
+#   git -C sources/linux ls-files -s | awk '$1=="120000"{sub(/^[^\t]*\t/,"");print}' > /tmp/lnk
+#   while read -r p; do rm -rf "$p"; done < /tmp/lnk
+#   git -C sources/linux checkout -- $(tr '\n' ' ' < /tmp/lnk)
 brud=$(git -C "$lin" status --porcelain 2>/dev/null)
 if [ -z "$brud" ]; then
 	ok "drzewo robocze nie ma nic poza seria"
@@ -232,8 +242,13 @@ if have perl && [ -f "$lin/scripts/checkpatch.pl" ]; then
 	# dostaje kazdy plik w drzewie, ktory tego makra uzywa; sprawdzone
 	# na clk-exynos990.c.  Odsiewamy to jedno trafienie, reszta checkow
 	# nadal musi byc zerem.
+	# Tak samo nazwy rejestrow MAX17042_* z include/linux/power/
+	# max17042_battery.h: niezmieniony max17042_battery.c dostaje od
+	# checkpatcha -f 47 takich CHECK-ow, bo enum w naglowku nosi nazwy
+	# z noty katalogowej (RepSOC, MiscCFG).  Latka 0105 tylko ich uzywa.
 	cp_chk=$(grep "^CHECK:" "$log/05-checkpatch.log" 2>/dev/null \
-		| grep -v "Avoid CamelCase: <nMUX" | wc -l | tr -d " ")
+		| grep -v "Avoid CamelCase: <nMUX" \
+		| grep -v "Avoid CamelCase: <MAX17042_" | wc -l | tr -d " ")
 	cp_chk=${cp_chk:-0}
 	# Warningi ida do DWOCH kubelkow, kazdy z wlasnym limitem.  Sterownik
 	# zegarow trzyma nazwy rejestrow producenta w jednej linii i przez to
@@ -402,7 +417,10 @@ if [ -f "$lin/include/generated/autoconf.h" ] && have clang; then
 		 drivers/gpu/drm/panel/panel-samsung-s6e3ha9-dimming.c \
 		 drivers/gpu/drm/exynos/exynos9820_drm_decon.c \
 		 drivers/phy/samsung/phy-exynos9820-dsim.c \
-		 drivers/gpu/drm/bridge/samsung-dsim.c ; do
+		 drivers/gpu/drm/bridge/samsung-dsim.c \
+		 drivers/video/backlight/exynos9820-dsim-lcd.c \
+		 drivers/thermal/samsung/exynos9820-tmu.c \
+		 drivers/clk/samsung/clk-acpm.c ; do
 		if [ ! -f "$lin/$f" ]; then
 			bad "kompilacja $f" "pliku nie ma w drzewie"
 			continue
@@ -610,6 +628,63 @@ if have python3 && [ -d "$ds" ]; then
 		;;
 	esac
 
+	# Te same tablice producenta przepisane po raz drugi, tym razem do jadra.
+	# Osobna bramka, bo przy przepisaniu zmienil sie dialekt makr i ksztalt
+	# sekwencji (dwa oczekiwania wyszly z tablic do hakow), wiec porownanie
+	# jednego sterownika z drugim niczego nie dowodzi: obie wersje musza
+	# zgadzac sie z producentem osobno.
+	python3 "$root/scripts/check-ufs-phy-kernel.py" > "$log/65-ufs-phy-kernel.log" 2>&1
+	case $? in
+	0)
+		ok "PHY UFS jadra wobec producenta: $(grep -o 'wpisow zgodnych z producentem [0-9]*' "$log/65-ufs-phy-kernel.log")"
+		rm -f "$log/65-ufs-phy-kernel.log"
+		;;
+	2)
+		skip "PHY UFS jadra wobec producenta" "$(tail -1 "$log/65-ufs-phy-kernel.log")"
+		rm -f "$log/65-ufs-phy-kernel.log"
+		;;
+	*)
+		bad "PHY UFS jadra wobec producenta" "patrz build-logs/65-ufs-phy-kernel.log"
+		;;
+	esac
+
+	# Warstwy hosta w jadrze. Mainline nie zna zadnej struktury tablicowej,
+	# wiec te same zapisy sa tam jawnymi wywolaniami w hakach i bramka
+	# porownuje ZBIORY par (atrybut, wartosc, rodzaj), a nie wpis po wpisie.
+	python3 "$root/scripts/check-ufs-host-kernel.py" > "$log/66-ufs-host-kernel.log" 2>&1
+	case $? in
+	0)
+		ok "host UFS jadra wobec producenta: $(grep -o 'wpisow zgodnych z producentem [0-9]*' "$log/66-ufs-host-kernel.log")"
+		rm -f "$log/66-ufs-host-kernel.log"
+		;;
+	2)
+		skip "host UFS jadra wobec producenta" "$(tail -1 "$log/66-ufs-host-kernel.log")"
+		rm -f "$log/66-ufs-host-kernel.log"
+		;;
+	*)
+		bad "host UFS jadra wobec producenta" "patrz build-logs/66-ufs-host-kernel.log"
+		;;
+	esac
+
+	# Wezel UFS w drzewie urzadzen. dt-validate sprawdza KSZTALT, nie TRESC:
+	# adres przepisany o cyfre obok, przerwanie sasiedniego bloku albo nazwy
+	# zegarow z bootloadera przechodza walidacje bez slowa, a ta ostatnia
+	# pozycja konczy probe sterownika bledem.
+	python3 "$root/scripts/check-ufs-dts.py" > "$log/67-ufs-dts.log" 2>&1
+	case $? in
+	0)
+		ok "wezel UFS wobec producenta: $(grep -o 'sprawdzonych zgodnosci z producentem [0-9]*' "$log/67-ufs-dts.log")"
+		rm -f "$log/67-ufs-dts.log"
+		;;
+	2)
+		skip "wezel UFS wobec producenta" "$(tail -1 "$log/67-ufs-dts.log")"
+		rm -f "$log/67-ufs-dts.log"
+		;;
+	*)
+		bad "wezel UFS wobec producenta" "patrz build-logs/67-ufs-dts.log"
+		;;
+	esac
+
 	# Drzewo urzadzen bootloadera. Trzy pliki w dts/upstream to KOPIE plikow
 	# serii jadra, a kopia rozjezdza sie po cichu. Do tego numer aliasu
 	# pinctrl wybiera tablice bankow w sterowniku, wiec rozjazd tych dwoch
@@ -626,6 +701,26 @@ if have python3 && [ -d "$ds" ]; then
 		;;
 	*)
 		bad "DT bootloadera" "patrz build-logs/62-uboot-dts.log"
+		;;
+	esac
+
+	# Seria bootloadera kontra jego drzewo robocze. Odpowiednik punktu 1 dla
+	# serii jadra, ktorego strona bootloadera nie miala wcale: 21.09.2026
+	# poza seria lezalo 2391 linii plus commit opisany jako WIP, a README
+	# katalogu twierdzil, ze port jest kompletny w osmiu patchach. Zadna
+	# z pozostalych bramek tego nie widziala, bo wszystkie czytaja drzewo.
+	sh "$root/scripts/check-uboot-seria.sh" > "$log/79-uboot-seria.log" 2>&1
+	case $? in
+	0)
+		ok "seria bootloadera: $(grep -o 'latek [0-9]*, wszystko w normie' "$log/79-uboot-seria.log")"
+		rm -f "$log/79-uboot-seria.log"
+		;;
+	2)
+		skip "seria bootloadera" "$(tail -1 "$log/79-uboot-seria.log")"
+		rm -f "$log/79-uboot-seria.log"
+		;;
+	*)
+		bad "seria bootloadera" "patrz build-logs/79-uboot-seria.log"
 		;;
 	esac
 
@@ -771,7 +866,7 @@ if have python3; then
 	python3 "$root/scripts/check-gen-dts.py" > "$log/57-gen-dts.log" 2>&1
 	case $? in
 	0)
-		ok "oba pliki DT zgodne ze swoimi generatorami (4 + 2 etapy)"
+		ok "oba pliki DT zgodne ze swoimi generatorami (10 + 6 etapow)"
 		rm -f "$log/57-gen-dts.log"
 		;;
 	2)
@@ -782,8 +877,121 @@ if have python3; then
 		bad "oba pliki DT zgodne ze swoimi generatorami" "patrz build-logs/57-gen-dts.log"
 		;;
 	esac
+
+	# Stan koncowy KAZDEGO generowanego pliku, takze tych bez etapow.
+	if python3 "$root/scripts/check-generatory.py" > "$log/58-generatory.log" 2>&1; then
+		ok "pliki generowane zgodne z generatorami: $(tail -1 "$log/58-generatory.log")"
+		rm -f "$log/58-generatory.log"
+	else
+		bad "pliki generowane zgodne z generatorami" "patrz build-logs/58-generatory.log"
+	fi
+
+	# Latki serii: arytmetyka naglowkow fragmentow i brak zjedzonych spacji.
+	if python3 "$root/scripts/check-latki.py" > "$log/59-latki.log" 2>&1; then
+		ok "latki serii poprawnie zbudowane: $(tail -1 "$log/59-latki.log")"
+		rm -f "$log/59-latki.log"
+	else
+		bad "latki serii poprawnie zbudowane" "patrz build-logs/59-latki.log"
+	fi
+
+	# Czy latki niosa to, co dzis wypisuja generatory.
+	if python3 "$root/scripts/odswiez-latki.py" > "$log/60-latki-generatory.log" 2>&1; then
+		ok "latki plikow generowanych zgodne z generatorami"
+		rm -f "$log/60-latki-generatory.log"
+	else
+		bad "latki plikow generowanych zgodne z generatorami" "uruchom scripts/odswiez-latki.py --zapisz"
+	fi
 else
 	skip "oba pliki DT zgodne ze swoimi generatorami" "brak python3"
+fi
+
+# Naglowek czcionki klawiatury ma 16384 bajty przepisane z jadra; recznej zmiany
+# w takim pliku nie widac ani w kodzie, ani w kompilacji, a psuje obraz na ekranie.
+if have python3; then
+	python3 "$root/scripts/check-font-klawiatury.py" > "$log/58-font-klawiatury.log" 2>&1
+	case $? in
+	0)
+		ok "czcionka klawiatury zgodna z generatorem"
+		rm -f "$log/58-font-klawiatury.log"
+		;;
+	2)
+		skip "czcionka klawiatury zgodna z generatorem" "$(tail -1 "$log/58-font-klawiatury.log")"
+		rm -f "$log/58-font-klawiatury.log"
+		;;
+	*)
+		bad "czcionka klawiatury zgodna z generatorem" "patrz build-logs/58-font-klawiatury.log"
+		;;
+	esac
+else
+	skip "czcionka klawiatury zgodna z generatorem" "brak python3"
+fi
+
+# Druga czcionka klawiatury: Droid Sans wrasteryzowany z pliku TTF.  Ta sama
+# zasada, co wyzej, tylko wartosci nie sa przepisane z jadra, lecz wyliczone
+# z krzywych, wiec zaleza takze od wersji biblioteki rasteryzujacej.
+if have python3; then
+	python3 "$root/scripts/check-font-sans.py" > "$log/63-font-sans.log" 2>&1
+	case $? in
+	0)
+		ok "czcionka proporcjonalna zgodna z generatorem"
+		rm -f "$log/63-font-sans.log"
+		;;
+	2)
+		skip "czcionka proporcjonalna zgodna z generatorem" "$(tail -1 "$log/63-font-sans.log")"
+		rm -f "$log/63-font-sans.log"
+		;;
+	*)
+		bad "czcionka proporcjonalna zgodna z generatorem" "patrz build-logs/63-font-sans.log"
+		;;
+	esac
+else
+	skip "czcionka proporcjonalna zgodna z generatorem" "brak python3"
+fi
+
+# Czcionka konsoli nie jest trzymana w drzewie, tylko generowana przy wszywaniu
+# do obrazu, wiec nie ma z czym porownac jej tresci.  Bramka sprawdza wiec
+# WLASNOSCI wyniku: 512 glifow i tablice Unicode.  Bez tablicy klawiatura
+# wysyla poprawne bajty, a konsola rysuje "z" zamiast "ż" (zmierzone).
+if have python3; then
+	python3 "$root/scripts/check-psf-konsoli.py" > "$log/64-psf-konsoli.log" 2>&1
+	case $? in
+	0)
+		ok "czcionka konsoli ma tablice Unicode i polskie litery"
+		rm -f "$log/64-psf-konsoli.log"
+		;;
+	2)
+		skip "czcionka konsoli ma tablice Unicode" "$(tail -1 "$log/64-psf-konsoli.log")"
+		rm -f "$log/64-psf-konsoli.log"
+		;;
+	*)
+		bad "czcionka konsoli ma tablice Unicode" "patrz build-logs/64-psf-konsoli.log"
+		;;
+	esac
+else
+	skip "czcionka konsoli ma tablice Unicode" "brak python3"
+fi
+
+# Szerokosci klawiszy sa wagami rzedu, a caly uklad jest przeniesiony
+# z klawiatury Qt uzytkownika.  Rozjazd ze wzorcem kompiluje sie bez slowa,
+# a widac go dopiero na telefonie: klawisz w innym miejscu albo taki, ktorego
+# we wzorcu nie ma.
+if have python3; then
+	python3 "$root/scripts/check-uklad-klawiatury.py" > "$log/59-uklad-klawiatury.log" 2>&1
+	case $? in
+	0)
+		ok "uklad klawiatury zgodny ze wzorcem QML"
+		rm -f "$log/59-uklad-klawiatury.log"
+		;;
+	2)
+		skip "uklad klawiatury zgodny ze wzorcem QML" "$(tail -1 "$log/59-uklad-klawiatury.log")"
+		rm -f "$log/59-uklad-klawiatury.log"
+		;;
+	*)
+		bad "uklad klawiatury zgodny ze wzorcem QML" "patrz build-logs/59-uklad-klawiatury.log"
+		;;
+	esac
+else
+	skip "uklad klawiatury zgodny ze wzorcem QML" "brak python3"
 fi
 
 # Mapa RAM-u, trzy obszary EL2/KASLR i adres framebuffera przestaly byc zgadywane
@@ -869,7 +1077,7 @@ if have python3; then
 	python3 "$root/scripts/check-pll-con3.py" > "$log/61-pll-con3.log" 2>&1
 	case $? in
 	0)
-		ok "kazdy PLL() dostaje offset CON3: $(grep -o 'wywolan PLL() z CON3 [0-9]*' "$log/61-pll-con3.log")"
+		ok "zaden PLL nie jest rejestrowany jako PLL: $(grep -o 'stalych czestotliwosci [0-9]* zgodnych' "$log/61-pll-con3.log")"
 		rm -f "$log/61-pll-con3.log"
 		;;
 	2)
@@ -877,7 +1085,7 @@ if have python3; then
 		rm -f "$log/61-pll-con3.log"
 		;;
 	*)
-		bad "kazdy PLL() dostaje offset CON3" "patrz build-logs/61-pll-con3.log"
+		bad "zaden PLL nie jest rejestrowany jako PLL" "patrz build-logs/61-pll-con3.log"
 		;;
 	esac
 else
@@ -894,6 +1102,16 @@ if [ -x "$root/.pc-tools/conf" ] || [ -x "$root/.pc-tools/conf.exe" ]; then
 		rm -f "$log/56-kconfig.log"
 	else
 		bad "fragment konfiguracji scala sie z defconfigiem" "patrz build-logs/56-kconfig.log"
+	fi
+	# To samo dla nakladki, z ktorej naprawde budowany jest obraz na telefon.
+	# Sterownik zalezny od wylaczonego tam DSI (latka 0100) wypadalby z obrazu
+	# po cichu, a pierwsza bramka tego nie widzi, bo liczy sam fragment serii.
+	if sh "$root/scripts/check-kconfig.sh" "$root/scripts/bringup.config" \
+		> "$log/56-kconfig-bringup.log" 2>&1; then
+		ok "nakladka uruchomieniowa scala sie z fragmentem: $(grep -o 'zamowionych symboli [0-9]*, swiadomie wylaczonych [0-9]*' "$log/56-kconfig-bringup.log")"
+		rm -f "$log/56-kconfig-bringup.log"
+	else
+		bad "nakladka uruchomieniowa scala sie z fragmentem" "patrz build-logs/56-kconfig-bringup.log"
 	fi
 else
 	skip "fragment konfiguracji" "brak .pc-tools/conf, uruchom scripts/pc-prepare.sh"

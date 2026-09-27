@@ -1,0 +1,8 @@
+/* Pasek adresu i przyciski o 30% wieksze, strony bez zmian. */
+#navigator-toolbox { zoom: 1.3 !important; }
+/* Na pelnym ekranie pasek adresu zostaje; mobile-config-firefox chowa go na waskim ekranie. */
+#nav-bar[inFullscreen] { display: flex !important; }
+/* Pelny ekran w pionie: przyciski omijaja wyciecie aparatu w prawym gornym rogu (125 pkt, jak pasek stanu; 96 px po powiekszeniu 1,3). */
+@media (orientation: portrait) {
+    :root[inFullscreen] #TabsToolbar { padding-right: 96px !important; }
+}

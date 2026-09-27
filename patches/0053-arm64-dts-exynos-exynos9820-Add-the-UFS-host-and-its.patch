@@ -1,0 +1,99 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 01:53:19 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the UFS host and its PHY
+
+The four register windows of the controller, the two clocks it runs on,
+its interrupt, the two pins it drives and the PHY of its link.
+
+The bits that would put the controller on the coherent path are named
+through the system register block beside it rather than as a window of
+its own, and no dma-coherent property is given, so the driver clears
+them.  That is the arrangement the descriptors of this driver are kept
+for, and the one this controller was brought up on.
+
+The window of the PHY is asked for as a whole page.  The vendor gives it
+half of one, which covers the first lane only, while its own calibration
+reaches past that on the second.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 65 ++++++++++++++++++++++
+ 1 file changed, 65 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index c8af0abed79..8010c66b352 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -392,6 +392,71 @@ pinctrl_fsys1: pinctrl@13c40000 {
+ 			interrupts = <GIC_SPI 251 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		ufs_0: ufs@13d60000 {
++			compatible = "samsung,exynos9820-ufs";
++			reg = <0x13d60000 0x200>,
++			      <0x13d61100 0x200>,
++			      <0x13d50000 0x8000>,
++			      <0x13d70000 0x100>;
++			reg-names = "hci", "vs_hci", "unipro", "ufsp";
++			interrupts = <GIC_SPI 249 IRQ_TYPE_LEVEL_HIGH>;
++
++			clocks = <&cmu_fsys1 CLK_GOUT_FSYS1_UFS_EMBD_I_ACLK>,
++				 <&cmu_fsys1 CLK_GOUT_FSYS1_UFS_EMBD_I_CLK_UNIPRO>;
++			clock-names = "core_clk", "sclk_unipro_main";
++			/*
++			 * Without this the core never puts the two clocks above on the
++			 * list the host driver reads them from: the parser that fills it
++			 * returns early when no table is given, the driver then finds an
++			 * empty list and reports success without having read a single
++			 * rate, and the link is asked to start on a period of zero.  A
++			 * pair of zeroes means no scaling, which is what every other SoC
++			 * of this family writes here.
++			 */
++			freq-table-hz = <0 0>, <0 0>;
++
++			pinctrl-names = "default";
++			pinctrl-0 = <&ufs_rst_n &ufs_refclk_out>;
++
++			phys = <&ufs_0_phy>;
++			phy-names = "ufs-phy";
++
++			/*
++			 * The bits that would put this controller on the coherent
++			 * path.  Without a dma-coherent property beside them the
++			 * driver clears them, which is what the descriptors of this
++			 * driver are kept for.
++			 */
++			samsung,sysreg = <&sysreg_fsys1 0x700>;
++
++			status = "disabled";
++		};
++
++		ufs_0_phy: phy@13d64000 {
++			compatible = "samsung,exynos9820-ufs-phy";
++			/*
++			 * The vendor gives this window 0x800, which covers the first
++			 * lane only, while its own calibration reaches past that on
++			 * the second one.  A page is asked for here instead.
++			 */
++			reg = <0x13d64000 0x1000>;
++			reg-names = "phy-pma";
++			#phy-cells = <0>;
++
++			/*
++			 * UNVERIFIED: the reference this PHY locks to is taken to be
++			 * the board oscillator, which is what the pin beside it
++			 * carries out to the device.  The vendor describes no phy of
++			 * its own, so there is nothing to read this off; confirm it
++			 * by reading the lock status of the PHY with that oscillator
++			 * gated away.
++			 */
++			clocks = <&oscclk>;
++			clock-names = "ref_clk";
++
++			samsung,pmu-syscon = <&pmu_system_controller 0x724>;
++		};
++
+ 		/*
+ 		 * The VTS and AUD pin controllers sit inside power domains that can
+ 		 * be off, so they carry no interrupt and the driver leaves their

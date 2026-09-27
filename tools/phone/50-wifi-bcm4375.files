@@ -1,0 +1,7 @@
+# Firmware Wi-Fi BCM4375B1 dla wbudowanego brcmfmac: sterownik prosi o nie
+# przy starcie jadra, zanim zamontuje sie korzen, wiec musza byc w initramfs.
+# Bez tego kazda przebudowa initramfs (np. przy aktualizacji pakietow)
+# zabiera Wi-Fi po restarcie.
+/lib/firmware/brcm/brcmfmac4375-pcie.bin
+/lib/firmware/brcm/brcmfmac4375-pcie.txt
+/lib/firmware/brcm/brcmfmac4375-pcie.clm_blob

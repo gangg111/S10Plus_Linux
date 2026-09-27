@@ -1,0 +1,66 @@
+diff -ru a/kcm_mobile/mobilepower.cpp b/kcm_mobile/mobilepower.cpp
+--- a/kcm_mobile/mobilepower.cpp	2026-09-27 04:32:15.386099000 +0200
++++ b/kcm_mobile/mobilepower.cpp	2026-09-27 04:32:34.100840300 +0200
+@@ -73,6 +73,7 @@
+     bool isMobile = Kirigami::Platform::TabletModeWatcher::self()->isTabletMode();
+     bool isVM = PowerDevil::PowerManagement::instance()->isVirtualMachine();
+     bool canSuspend = PowerDevil::PowerManagement::instance()->canSuspend();
++    m_canSuspend = canSuspend;
+ 
+     m_settingsAC = new PowerDevil::ProfileSettings(QStringLiteral("AC"), isMobile, isVM, canSuspend, this);
+     m_settingsBattery = new PowerDevil::ProfileSettings(QStringLiteral("Battery"), isMobile, isVM, canSuspend, this);
+@@ -259,4 +260,9 @@
+     return m_powerProfileModel->rowCount(QModelIndex()) > 0;
+ }
+ 
++bool MobilePower::canSuspend() const
++{
++    return m_canSuspend;
++}
++
+ #include "mobilepower.moc"
+diff -ru a/kcm_mobile/mobilepower.h b/kcm_mobile/mobilepower.h
+--- a/kcm_mobile/mobilepower.h	2026-09-27 04:32:15.383565800 +0200
++++ b/kcm_mobile/mobilepower.h	2026-09-27 04:32:34.098626900 +0200
+@@ -23,6 +23,7 @@
+     Q_PROPERTY(QObject *powerProfileModel READ powerProfileModel CONSTANT)
+     Q_PROPERTY(int powerProfileIdx READ powerProfileIdx WRITE setPowerProfileIdx NOTIFY powerProfileIdxChanged)
+     Q_PROPERTY(bool isPowerProfileSupported READ isPowerProfileSupported NOTIFY isPowerProfileSupportedChanged)
++    Q_PROPERTY(bool canSuspend READ canSuspend CONSTANT)
+ 
+ public:
+     MobilePower(QObject *parent, const KPluginMetaData &metaData);
+@@ -40,6 +41,7 @@
+     void setPowerProfileIdx(int idx);
+     int powerProfileIdx() const;
+     bool isPowerProfileSupported() const;
++    bool canSuspend() const;
+ 
+     BatteryModel *batteries();
+ 
+@@ -69,4 +71,5 @@
+     int m_screenOffTime;
+     bool m_screenOff;
+     QString m_powerProfile;
++    bool m_canSuspend;
+ };
+diff -ru a/kcm_mobile/ui/main.qml b/kcm_mobile/ui/main.qml
+--- a/kcm_mobile/ui/main.qml	2026-09-27 04:32:15.358795900 +0200
++++ b/kcm_mobile/ui/main.qml	2026-09-27 04:32:34.102354800 +0200
+@@ -134,10 +134,15 @@
+                 onCurrentIndexChanged: kcm.screenOffIdx = currentIndex
+             }
+ 
+-            FormCard.FormDelegateSeparator { above: screenOffCombo; below: suspendCombo }
++            FormCard.FormDelegateSeparator {
++                above: screenOffCombo
++                below: suspendCombo
++                visible: kcm.canSuspend
++            }
+ 
+             FormCard.FormComboBoxDelegate {
+                 id: suspendCombo
++                visible: kcm.canSuspend
+                 text: i18nc("Part of a sentence like 'Suspend device after 5 minutes'", "Suspend device after")
+                 model: kcm.timeOptions()
+                 currentIndex: kcm.suspendSessionIdx

@@ -1,0 +1,168 @@
+insmod 0
+plugins 0x5d5c, num_plugins 9
+wtyczka 0 id 0 baza 0x0 rozmiar 0x0 attached 1 stay 1 nazwa ''
+wtyczka 1 id 1 baza 0xb001 rozmiar 0x1200 attached 1 stay 1 nazwa ''
+wtyczka 2 id 2 baza 0xc201 rozmiar 0xa00 attached 1 stay 1 nazwa ''
+wtyczka 3 id 3 baza 0x4fc9 rozmiar 0x0 attached 1 stay 1 nazwa ''
+wtyczka 4 id 4 baza 0x1ec01 rozmiar 0xa400 attached 1 stay 1 nazwa 'plugin_DVFS_0_0_0.fw'
+wtyczka 5 id 5 baza 0x13001 rozmiar 0xa000 attached 1 stay 1 nazwa ''
+wtyczka 6 id 6 baza 0xcc01 rozmiar 0x1400 attached 1 stay 1 nazwa ''
+wtyczka 7 id 7 baza 0xe001 rozmiar 0x5000 attached 1 stay 1 nazwa ''
+wtyczka 8 id 8 baza 0x1d001 rozmiar 0x1c00 attached 1 stay 1 nazwa ''
+fvmap pod SRAM + 0x29000
+mif    typ 0x0 poziomow 10 init_lv 1 o_ratevolt 0x1a8
+mif    lv0  2094000 kHz  756250 uV
+mif    lv1  2093000 kHz  731250 uV  <- init
+mif    lv2  1794000 kHz  681250 uV
+mif    lv3  1539000 kHz  650000 uV
+mif    lv4  1352000 kHz  618750 uV
+mif    lv5  1014000 kHz  581250 uV
+mif    lv6   845000 kHz  556250 uV
+mif    lv7   676000 kHz  537500 uV
+mif    lv8   546000 kHz  537500 uV
+mif    lv9   421000 kHz  537500 uV
+int    typ 0x1 poziomow 5 init_lv 0 o_ratevolt 0x2b8
+int    lv0   534000 kHz  718750 uV  <- init
+int    lv1   400000 kHz  612500 uV
+int    lv2   267000 kHz  581250 uV
+int    lv3   200000 kHz  581250 uV
+int    lv4   100000 kHz  581250 uV
+cpucl0 typ 0x2 poziomow 19 init_lv 9 o_ratevolt 0x324
+cpucl0 lv0  2106000 kHz 1175000 uV
+cpucl0 lv1  2002000 kHz 1106250 uV
+cpucl0 lv2  1950000 kHz 1062500 uV
+cpucl0 lv3  1846000 kHz 1018750 uV
+cpucl0 lv4  1742000 kHz  968750 uV
+cpucl0 lv5  1586000 kHz  887500 uV
+cpucl0 lv6  1456000 kHz  837500 uV
+cpucl0 lv7  1300000 kHz  793750 uV
+cpucl0 lv8  1157000 kHz  750000 uV
+cpucl0 lv9  1053000 kHz  718750 uV  <- init
+cpucl0 lv10  949000 kHz  687500 uV
+cpucl0 lv11  806000 kHz  656250 uV
+cpucl0 lv12  650000 kHz  612500 uV
+cpucl0 lv13  546000 kHz  587500 uV
+cpucl0 lv14  442000 kHz  568750 uV
+cpucl0 lv15  351000 kHz  537500 uV
+cpucl0 lv16  247000 kHz  537500 uV
+cpucl0 lv17  182000 kHz  537500 uV
+cpucl0 lv18  130000 kHz  537500 uV
+cpucl1 typ 0x3 poziomow 19 init_lv 11 o_ratevolt 0x428
+cpucl1 lv0  2400000 kHz 1081250 uV
+cpucl1 lv1  2314000 kHz 1025000 uV
+cpucl1 lv2  2210000 kHz  968750 uV
+cpucl1 lv3  2106000 kHz  925000 uV
+cpucl1 lv4  2002000 kHz  893750 uV
+cpucl1 lv5  1898000 kHz  862500 uV
+cpucl1 lv6  1794000 kHz  831250 uV
+cpucl1 lv7  1690000 kHz  793750 uV
+cpucl1 lv8  1586000 kHz  768750 uV
+cpucl1 lv9  1508000 kHz  756250 uV
+cpucl1 lv10 1404000 kHz  731250 uV
+cpucl1 lv11 1222000 kHz  700000 uV  <- init
+cpucl1 lv12 1066000 kHz  662500 uV
+cpucl1 lv13  962000 kHz  637500 uV
+cpucl1 lv14  845000 kHz  625000 uV
+cpucl1 lv15  754000 kHz  612500 uV
+cpucl1 lv16  650000 kHz  587500 uV
+cpucl1 lv17  507000 kHz  581250 uV
+cpucl1 lv18  377000 kHz  581250 uV
+cpucl2 typ 0x4 poziomow 24 init_lv 15 o_ratevolt 0x548
+cpucl2 lv0  3016000 kHz 1300000 uV
+cpucl2 lv1  2912000 kHz 1262500 uV
+cpucl2 lv2  2808000 kHz 1100000 uV
+cpucl2 lv3  2730000 kHz 1068750 uV
+cpucl2 lv4  2600000 kHz 1025000 uV
+cpucl2 lv5  2530000 kHz  993750 uV
+cpucl2 lv6  2470000 kHz  962500 uV
+cpucl2 lv7  2340000 kHz  906250 uV
+cpucl2 lv8  2236000 kHz  881250 uV
+cpucl2 lv9  2080000 kHz  850000 uV
+cpucl2 lv10 1976000 kHz  818750 uV
+cpucl2 lv11 1820000 kHz  775000 uV
+cpucl2 lv12 1664000 kHz  750000 uV
+cpucl2 lv13 1560000 kHz  725000 uV
+cpucl2 lv14 1456000 kHz  706250 uV
+cpucl2 lv15 1378000 kHz  693750 uV  <- init
+cpucl2 lv16 1248000 kHz  668750 uV
+cpucl2 lv17 1144000 kHz  662500 uV
+cpucl2 lv18 1040000 kHz  631250 uV
+cpucl2 lv19  936000 kHz  618750 uV
+cpucl2 lv20  819000 kHz  600000 uV
+cpucl2 lv21  728000 kHz  593750 uV
+cpucl2 lv22  624000 kHz  587500 uV
+cpucl2 lv23  520000 kHz  581250 uV
+npu    typ 0x5 poziomow 8 init_lv 7 o_ratevolt 0x6ac
+npu    lv0   933000 kHz  806250 uV
+npu    lv1   800000 kHz  750000 uV
+npu    lv2   666000 kHz  750000 uV
+npu    lv3   400000 kHz  650000 uV
+npu    lv4   334000 kHz  643750 uV
+npu    lv5   333000 kHz  581250 uV
+npu    lv6   222000 kHz  581250 uV
+npu    lv7   167000 kHz  581250 uV  <- init
+disp   typ 0x6 poziomow 5 init_lv 1 o_ratevolt 0x704
+disp   lv0   640000 kHz  706250 uV
+disp   lv1   534000 kHz  662500 uV  <- init
+disp   lv2   333000 kHz  581250 uV
+disp   lv3   200000 kHz  581250 uV
+disp   lv4   134000 kHz  581250 uV
+score  typ 0x7 poziomow 6 init_lv 5 o_ratevolt 0x75c
+score  lv0   666000 kHz  750000 uV
+score  lv1   534000 kHz  712500 uV
+score  lv2   467000 kHz  675000 uV
+score  lv3   400000 kHz  643750 uV
+score  lv4   200000 kHz  581250 uV
+score  lv5    25000 kHz  581250 uV  <- init
+aud    typ 0x8 poziomow 5 init_lv 4 o_ratevolt 0x7a4
+aud    lv0  1180000 kHz  750000 uV
+aud    lv1   800000 kHz  662500 uV
+aud    lv2   590000 kHz  612500 uV
+aud    lv3   394000 kHz  581250 uV
+aud    lv4   295000 kHz  581250 uV  <- init
+cp     typ 0x9 poziomow 4 init_lv 1 o_ratevolt 0x7d0
+cp     lv0  1499000 kHz  843750 uV
+cp     lv1  1066000 kHz  712500 uV  <- init
+cp     lv2   850000 kHz  700000 uV
+cp     lv3   533000 kHz  700000 uV
+g3d    typ 0xa poziomow 12 init_lv 10 o_ratevolt 0x800
+g3d    lv0   702000 kHz  662500 uV
+g3d    lv1   676000 kHz  650000 uV
+g3d    lv2   650000 kHz  643750 uV
+g3d    lv3   598000 kHz  637500 uV
+g3d    lv4   572000 kHz  631250 uV
+g3d    lv5   433000 kHz  606250 uV
+g3d    lv6   377000 kHz  593750 uV
+g3d    lv7   325000 kHz  575000 uV
+g3d    lv8   260000 kHz  556250 uV
+g3d    lv9   200000 kHz  556250 uV
+g3d    lv10  156000 kHz  537500 uV  <- init
+g3d    lv11  100000 kHz  537500 uV
+intcam typ 0xb poziomow 7 init_lv 6 o_ratevolt 0x8d4
+intcam lv0   690000 kHz  862500 uV
+intcam lv1   680000 kHz  800000 uV
+intcam lv2   670000 kHz  700000 uV
+intcam lv3   660000 kHz  662500 uV
+intcam lv4   650000 kHz  643750 uV
+intcam lv5   640000 kHz  581250 uV
+intcam lv6   630000 kHz  581250 uV  <- init
+cam    typ 0xc poziomow 5 init_lv 4 o_ratevolt 0x938
+cam    lv0   690000 kHz  718750 uV
+cam    lv1   680000 kHz  637500 uV
+cam    lv2   670000 kHz  637500 uV
+cam    lv3   660000 kHz  581250 uV
+cam    lv4   650000 kHz  581250 uV  <- init
+iva    typ 0xd poziomow 6 init_lv 5 o_ratevolt 0x970
+iva    lv0   534000 kHz  731250 uV
+iva    lv1   467000 kHz  687500 uV
+iva    lv2   400000 kHz  650000 uV
+iva    lv3   333000 kHz  618750 uV
+iva    lv4   167000 kHz  581250 uV
+iva    lv5    56000 kHz  581250 uV  <- init
+mfc    typ 0xe poziomow 6 init_lv 5 o_ratevolt 0x9c0
+mfc    lv0   800000 kHz  825000 uV
+mfc    lv1   666000 kHz  743750 uV
+mfc    lv2   534000 kHz  675000 uV
+mfc    lv3   400000 kHz  612500 uV
+mfc    lv4   267000 kHz  581250 uV
+mfc    lv5   134000 kHz  581250 uV  <- init

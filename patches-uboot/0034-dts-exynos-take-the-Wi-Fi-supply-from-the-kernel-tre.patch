@@ -1,0 +1,84 @@
+From d4569279e727717f11a72948827170f0b2256b93 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 23 Sep 2026 21:54:26 +0200
+Subject: [PATCH 34/40] dts: exynos: take the Wi-Fi supply from the kernel tree
+
+The kernel series turned the Wi-Fi on: the first PCIe controller is
+enabled and gets the line that powers up the Wi-Fi half of the BCM4375
+(WL_REG_ON on gpg0-5) as a fixed regulator with a 100 ms start-up delay.
+This tree carries a copy of that board file, and the copy has to stay a
+copy.  Nothing in this boot loader drives the controller, so the node
+only has to be there, not to work.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../arm64/exynos/exynos9820-beyond2lte.dts    | 39 +++++++++++++++++++
+ 1 file changed, 39 insertions(+)
+
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+index df360473..a97def1a 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
++++ b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+@@ -443,6 +443,16 @@
+ 	clock-frequency = <26000000>;
+ };
+ 
++/*
++ * The Wi-Fi half of the BCM4375 sits on this controller.  It answers only
++ * once the line below has powered it up, so that line is the supply the
++ * controller switches on before it releases the chip from reset.
++ */
++&pcie0 {
++	vpcie3v3-supply = <&wlan_reg_on>;
++	status = "okay";
++};
++
+ &pinctrl_alive {
+ 	key_volup: key-volup-pins {
+ 		samsung,pins = "gpa0-3";
+@@ -498,6 +508,17 @@
+ 	};
+ };
+ 
++&pinctrl_peric0 {
++	wlan_en_pins: wlan-en-pins {
++		samsung,pins = "gpg0-5";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV4>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
++	};
++};
++
+ / {
+ 	reg_usb_dummy: regulator-usb-dummy {
+ 		compatible = "regulator-fixed";
+@@ -505,6 +526,24 @@
+ 	};
+ };
+ 
++/ {
++	/*
++	 * WL_REG_ON, the line that powers up the Wi-Fi half of the BCM4375.
++	 * The Bluetooth half has a line of its own.  The vendor raises this
++	 * one and waits 100 ms before the controller may train the link, and
++	 * keeps its level through sleep.
++	 */
++	wlan_reg_on: regulator-wlan-en {
++		compatible = "regulator-fixed";
++		regulator-name = "wlan_en";
++		gpio = <&gpg0 5 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		startup-delay-us = <100000>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&wlan_en_pins>;
++	};
++};
++
+ &serial0 {
+ 	status = "okay";
+ };
+-- 
+2.47.3
+

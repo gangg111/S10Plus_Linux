@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 04:46:26 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Add the vibration
+ motor
+
+The vibration motor of the Galaxy S10+ is a linear resonant actuator
+driven by the haptic block of the max77705, which takes its drive
+signal from channel 1 of the PERIC0 PWM block on gpp3-1.  Describe the
+haptic block with the first of the vendor periods, 48828 ns, which the
+chip divides down to 160 Hz, and route the PWM channel to its pin.
+
+The vendor raises MOTOR_BOOST_EN on gpg1-7 when the max77705 probes and
+never lowers it.  Model the line as a fixed regulator that supplies the
+haptic block, so it is only up while the input device is open.
+
+Tested with an FF_RUMBLE effect: the motor enable bit of MCONFIG goes
+from 0x82 to 0xc2 for the length of the effect and the PWM channel runs
+at the duty the effect magnitude asks for.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 68 +++++++++++++++++++
+ 1 file changed, 68 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 1d20f8fb03a..9c28c742cc3 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -560,6 +560,30 @@ charger@69 {
+ 	};
+ };
+ 
++/*
++ * Vibration.  The motor is a linear resonant actuator driven by the haptic
++ * block of the max77705, which takes its drive signal from channel 1 of the
++ * PERIC0 PWM block on gpp3-1, in the pin function the vendor gives that pin.
++ *
++ * The period is the first of the seven the vendor lists, 48828 ns.  The
++ * driver programs the chip to divide the PWM rate by 128, the same divider
++ * the vendor programs, so the motor sees 20480 Hz / 128 = 160 Hz.  The other
++ * six vendor periods land between 120 and 200 Hz; the mainline driver takes
++ * one period only.
++ *
++ * The vendor never lets the duty cycle past 75 % (its duty 36621 ns of the
++ * 48828 ns period), 95 % when it overdrives.  The mainline driver maps an
++ * effect magnitude of 0..0xffff onto 50..100 %, so 0x8000 is the vendor's
++ * normal strength and 0xe666 its overdrive.
++ */
++&max77705 {
++	haptic {
++		compatible = "maxim,max77705-haptic";
++		haptic-supply = <&vdd_motor>;
++		pwms = <&pwm 1 48828 0>;
++	};
++};
++
+ &oscclk {
+ 	clock-frequency = <26000000>;
+ };
+@@ -703,6 +727,23 @@ ssp_mcu_resp_pins: ssp-mcu-resp-pins {
+ 	};
+ };
+ 
++&pinctrl_peric0 {
++	vib_pwm: vib-pwm-pins {
++		samsung,pins = "gpp3-1";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_DOWN>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++
++	motor_boost_en: motor-boost-en-pins {
++		samsung,pins = "gpg1-7";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_OUT0>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
++	};
++};
++
+ &pinctrl_peric0 {
+ 	wlan_en_pins: wlan-en-pins {
+ 		samsung,pins = "gpg0-5";
+@@ -714,6 +755,33 @@ wlan_en_pins: wlan-en-pins {
+ 	};
+ };
+ 
++&pwm {
++	pinctrl-names = "default";
++	pinctrl-0 = <&vib_pwm>;
++	status = "okay";
++};
++
++/ {
++	/*
++	 * MOTOR_BOOST_EN on gpg1-7.  The vendor raises it from pinctrl the
++	 * moment the max77705 probes and never touches it again: its boost
++	 * callback does nothing.  Its haptic node names a supply VDD_MOTOR_3P3
++	 * that no node of the vendor tree provides.  Here the line is the
++	 * supply of the haptic block, switched on while the input device is
++	 * open.  The voltage is the one in the vendor name, not a measurement.
++	 */
++	vdd_motor: regulator-vdd-motor {
++		compatible = "regulator-fixed";
++		regulator-name = "vdd_motor";
++		regulator-min-microvolt = <3300000>;
++		regulator-max-microvolt = <3300000>;
++		gpio = <&gpg1 7 GPIO_ACTIVE_HIGH>;
++		enable-active-high;
++		pinctrl-names = "default";
++		pinctrl-0 = <&motor_boost_en>;
++	};
++};
++
+ / {
+ 	reg_usb_dummy: regulator-usb-dummy {
+ 		compatible = "regulator-fixed";
+-- 
+2.53.0.windows.1
+

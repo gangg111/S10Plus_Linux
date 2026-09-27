@@ -1,0 +1,89 @@
+From 242bfb84936865e893161f859e7b7bede528ca81 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 23:53:59 +0200
+Subject: [PATCH 32/40] board: samsung: exynos-mobile: keep the start up bands
+ for bring up
+
+The four bands of colour this board paints across the bottom of the
+screen exist because a phone which stops before its console exists has
+no other way of saying how far it came.  That is a question asked while
+a port is being brought up, and once the phone boots the bands are four
+stripes of debugging left on a picture its owner is meant to look at.
+
+So put them behind an option of their own, out of the defconfig, and
+have the debug configuration of the Exynos9820 phones turn them back on
+together with the early console they belong with.  Nothing else changes:
+what is painted, where and in what order is what it was.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/Kconfig                 | 10 ++++++++++
+ board/samsung/exynos-mobile/debug-exynos9820.config |  6 ++++++
+ board/samsung/exynos-mobile/exynos-mobile.c         |  9 +++++++++
+ 3 files changed, 25 insertions(+)
+
+diff --git a/board/samsung/exynos-mobile/Kconfig b/board/samsung/exynos-mobile/Kconfig
+index 8eb15fe6..f908bfa0 100644
+--- a/board/samsung/exynos-mobile/Kconfig
++++ b/board/samsung/exynos-mobile/Kconfig
+@@ -11,6 +11,16 @@ if TARGET_EXYNOS_MOBILE
+ config LMB_LIMIT_DMA_BELOW_RAM_TOP
+ 	default y
+ 
++config EXYNOS_MOBILE_BOOT_MARKS
++	bool "Paint a band of colour at each stage of the start up"
++	help
++	  Paints a band of colour across the bottom of the screen at four
++	  points of the start up, so that a phone which stops before its
++	  console exists still says on its panel how far it came.
++
++	  Say yes while bringing a phone up.  A phone that boots should
++	  leave the picture its first stage drew where it is.
++
+ config ENV_SOURCE_FILE
+ 	default "exynos-mobile"
+ 
+diff --git a/board/samsung/exynos-mobile/debug-exynos9820.config b/board/samsung/exynos-mobile/debug-exynos9820.config
+index 229790e1..299ab7a0 100644
+--- a/board/samsung/exynos-mobile/debug-exynos9820.config
++++ b/board/samsung/exynos-mobile/debug-exynos9820.config
+@@ -15,3 +15,9 @@ CONFIG_DEBUG_UART_S5P=y
+ CONFIG_LOG=y
+ CONFIG_LOG_CONSOLE=y
+ CONFIG_LOG_MAX_LEVEL=8
++
++# The bands of colour this board paints at four points of the start up.
++# Out of the defconfig, because a phone that boots should keep the
++# picture its first stage drew; here, because a phone that does not boot
++# has nothing else with which to say how far it came.
++CONFIG_EXYNOS_MOBILE_BOOT_MARKS=y
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index eb4a2411..710b4495 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -570,6 +570,12 @@ static void exynos_decon_trigger(void)
+  *
+  * The bands go at the bottom because the console starts writing at the top,
+  * so the two can be read together rather than over each other.
++ *
++ * All of this is for bringing a phone up and none of it for a phone that
++ * boots: a picture its owner is meant to look at is no place for four bands
++ * of debugging.  So it is left out of the build unless the port is being
++ * worked on, and board/samsung/exynos-mobile/debug-exynos9820.config is what
++ * puts it back.
+  */
+ #define EXYNOS_MARK_ROWS			64
+ 
+@@ -594,6 +600,9 @@ static void exynos_mark(enum exynos_mark_stage stage)
+ 	u32 rows = EXYNOS_MARK_ROWS;
+ 	u32 *pixel, i, words;
+ 
++	if (!IS_ENABLED(CONFIG_EXYNOS_MOBILE_BOOT_MARKS))
++		return;
++
+ 	if (stage >= EXYNOS_MARK_COUNT)
+ 		return;
+ 
+-- 
+2.47.3
+

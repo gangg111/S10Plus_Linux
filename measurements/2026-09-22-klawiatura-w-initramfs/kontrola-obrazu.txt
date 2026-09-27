@@ -1,0 +1,35 @@
+== partycja rozruchowa obrazu:
+  config                 212493 B
+  dtbs                   4096 B
+  EFI                    4096 B
+  initramfs              9243421 B
+  loader                 4096 B
+  System.map             6121535 B
+  vmlinuz                36831744 B
+  vmlinuz-s10            44222976 B
+== wpisy rozruchowe (maja byc dwa):
+  00-s10.conf
+  pmos.conf
+== initramfs:
+  /mnt/pmos-kontrola/initramfs: Zstandard compressed data (v0.8+), Dictionary ID: None
+== ladunek i hook w srodku:
+  ok   hooks-cleanup/50-klawiatura.sh
+  ok   usr/share/klawiatura/klawiatura
+  ok   usr/share/klawiatura/ter32x64.psf
+  ok   usr/share/klawiatura/klawiatura.service
+  ok   usr/share/klawiatura/czcionka-konsoli.service
+  ok   init
+  ok   init_2nd.sh
+  BRAK bin/busybox
+  BRAK sbin/blkid
+  pozycji razem: 335
+== czy binarka w initramfs to ta sama, co w systemie plikow obrazu:
+  initramfs: 30a721db210f84d5
+  zbudowana: 30a721db210f84d5
+== plik do wgrywania:
+  naglowek: 3a ff 26 ed
+  989677752 B
+  (naglowek obrazu rzadkiego ma byc 3a ff 26 ed)
+== plik dla Odina (jesli starszy, to droga zapasowa jest przeterminowana):
+  pmos-userdata-sparse.tar.md5   2026-09-21 20:37
+  pmos-nasza-seria.img           2026-09-22 11:30

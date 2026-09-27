@@ -1,0 +1,14 @@
+== 1/4 dtc ==
+Version: DTC 1.7.2-g53373d13
+== 2/4 conf i .config ==
+init/Kconfig:198:warning: 'PAHOLE_VERSION': number is invalid
+init/Kconfig:198:warning: 'PAHOLE_VERSION': number is invalid
+.config:31:warning: symbol value '' invalid for PAHOLE_VERSION
+   .config: 4889 opcji
+== 3/4 naglowki arch ==
+wrappery asm: 30, wrappery uapi/asm: 18, wersja: 7.2.0 (code 459264)
+== 4/4 offsety ==
+include/generated/bounds.h: 7 definicji
+include/generated/asm-offsets.h: 99 definicji
+include/generated/rq-offsets.h: 2 definicji
+GOTOWE: drzewo przygotowane, dtc w /c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/.pc-tools

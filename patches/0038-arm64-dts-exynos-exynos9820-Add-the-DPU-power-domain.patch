@@ -13,10 +13,10 @@ Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
  1 file changed, 16 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
-index c269ae97a21..eeebd1c6bd6 100644
+index 4b84e006452..db984630c4c 100644
 --- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
 +++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
-@@ -419,6 +419,22 @@ reboot: syscon-reboot {
+@@ -429,6 +429,22 @@ reboot: syscon-reboot {
  			};
  		};
  

@@ -1,0 +1,8 @@
+# Ladunek haka /hooks-cleanup/50-klawiatura.sh: klawiatura ekranowa, czcionka
+# konsoli i ich uslugi. Hak doklada je do korzenia, jesli ich tam brakuje
+# (swiezo wgrany rootfs). Przez konfiguracje mkinitfs, a nie wszycie w plik,
+# bo kazda przebudowa initramfs (np. wyzwalacz apk) kasowala wszyte pliki.
+/usr/share/klawiatura/klawiatura
+/usr/share/klawiatura/ter32x64.psf
+/usr/share/klawiatura/klawiatura.service
+/usr/share/klawiatura/czcionka-konsoli.service

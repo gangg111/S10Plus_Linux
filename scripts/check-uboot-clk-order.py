@@ -28,7 +28,26 @@ import re
 import sys
 from pathlib import Path
 
-UBOOT = Path(os.environ.get("UBOOT_TREE", str(Path.home() / "u-boot-upstream")))
+def _domyslne_drzewo():
+    """Gdzie lezy drzewo bootloadera, gdy nikt nie powiedzial tego wprost.
+
+    Python z MSYS2, ktorym verify.sh uruchamia te bramke, nie dostaje HOME
+    i `Path.home()` rzuca wtedy RuntimeError, przez co bramka wywala sie
+    sladem stosu, zamiast powiedziec, ze nie ma zrodla. Drzewo i tak zyje
+    pod WSL, wiec ta sciezka jest sprawdzana jako pierwsza.
+    """
+    wsl = Path("//wsl.localhost/Debian/home/pm/u-boot-upstream")
+    if wsl.is_dir():
+        return wsl
+
+    try:
+        return Path.home() / "u-boot-upstream"
+    except RuntimeError:
+        return wsl
+
+
+UBOOT = Path(os.environ["UBOOT_TREE"]) if os.environ.get("UBOOT_TREE") \
+    else _domyslne_drzewo()
 ZRODLO = UBOOT / "drivers/clk/exynos/clk-exynos9820.c"
 
 # CMU_TOP rejestruje sie pierwszy, bo samsung_register_cmu wymusza jego
@@ -40,6 +59,8 @@ TYPY = {
     "S_CLK_MUX": "mux",
     "S_CLK_DIV": "div",
     "S_CLK_GATE": "gate",
+    # Enum nazywa sie S_CLK_FRATE; druga nazwa zostaje na wypadek zmiany w gorze.
+    "S_CLK_FRATE": "frate",
     "S_CLK_FIXED_RATE": "frate",
 }
 

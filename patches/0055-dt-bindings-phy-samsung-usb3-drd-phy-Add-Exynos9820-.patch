@@ -1,0 +1,35 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 07:07:58 +0200
+Subject: [PATCH] dt-bindings: phy: samsung,usb3-drd-phy: Add Exynos9820 USB
+ DRD PHY
+
+This SoC drives the USB 2.0 half of its PHY through the same registers and
+the same two clocks as the next SoC of the family, so it joins the group
+that takes one register window and the clocks named phy and ref.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml b/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml
+index 4562e0468f4..55f656c6989 100644
+--- a/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml
++++ b/Documentation/devicetree/bindings/phy/samsung,usb3-drd-phy.yaml
+@@ -33,6 +33,7 @@ properties:
+       - samsung,exynos7-usbdrd-phy
+       - samsung,exynos7870-usbdrd-phy
+       - samsung,exynos850-usbdrd-phy
++      - samsung,exynos9820-usbdrd-phy
+       - samsung,exynos990-usbdrd-phy
+       - samsung,exynosautov920-usb31drd-combo-ssphy
+       - samsung,exynosautov920-usbdrd-combo-hsphy
+@@ -235,6 +236,7 @@ allOf:
+               - samsung,exynos5420-usbdrd-phy
+               - samsung,exynos7870-usbdrd-phy
+               - samsung,exynos850-usbdrd-phy
++              - samsung,exynos9820-usbdrd-phy
+               - samsung,exynos990-usbdrd-phy
+               - samsung,exynosautov920-usb31drd-combo-ssphy
+               - samsung,exynosautov920-usbdrd-combo-hsphy

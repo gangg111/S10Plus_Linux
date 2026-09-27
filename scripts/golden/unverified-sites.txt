@@ -31,3 +31,4 @@ arch/arm64/boot/dts/exynos/exynos9820.dtsi|HW-07,HW-08|The mask is the vendor's 
 arch/arm64/boot/dts/exynos/exynos9820.dtsi|HW-03|the sources give both 18 and 20 MHz
 arch/arm64/boot/dts/exynos/exynos9820.dtsi|HW-39|every interrupt here is described as level high
 drivers/clk/samsung/clk-exynos9820.c|HW-33|one mux of a block this driver covers has a register
+arch/arm64/boot/dts/exynos/exynos9820.dtsi|HW-41|the reference this PHY locks to is taken to be

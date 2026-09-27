@@ -1,0 +1,524 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 07:54:02 +0200
+Subject: [PATCH] clk: samsung: exynos9820: Add the CMU_AUD block
+
+The audio block of this SoC is a clock controller of its own: two PLLs,
+the dividers that make the bit clocks of the four UAIF serial ports, the
+codec master clock and the counter clock, and the gates of the ABOX and
+of the buses around it.
+
+Base address, mux and divider layout, gate offsets, field widths and the
+parent of every gate are transcribed from the vendor clock abstraction
+layer tables (drivers/soc/samsung/cal-if/exynos9820/cmucal-sfr.c and
+cmucal-node.c of LineageOS/android_kernel_samsung_exynos9820 at
+7d08ec364a06), by the same generator as the rest of this driver.
+
+Both PLLs are registered as fixed rates. Their registers do read back
+(CON0 to CON4; CON5 aborts), but the pll_0831x type of this driver takes
+the fraction K from the register after the one holding M, P and S, while
+this SoC keeps it three registers further on. The vendor table for
+PLL_AUD0 holds nothing but 1179.648 MHz, trimmed by up to 840 ppb, so
+the rate is a design constant; the value used is the one read back from
+the running phone, M 45, P 1, S 0, K 0x5eff from 26 MHz. PLL_AUD1 is
+left off by the boot loader and is registered at 0 Hz.
+
+Every gate of the block is marked CLK_IGNORE_UNUSED for now. Nothing in
+mainline holds an audio clock yet, and a gated ABOX clock makes every
+access to the block hang the bus.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/clk/samsung/clk-exynos9820.c | 472 +++++++++++++++++++++++++++
+ 1 file changed, 472 insertions(+)
+
+diff --git a/drivers/clk/samsung/clk-exynos9820.c b/drivers/clk/samsung/clk-exynos9820.c
+index 79a99c81fe7..eaef86f50d2 100644
+--- a/drivers/clk/samsung/clk-exynos9820.c
++++ b/drivers/clk/samsung/clk-exynos9820.c
+@@ -2897,6 +2897,474 @@ static const struct samsung_cmu_info dpu_cmu_info __initconst = {
+ 	.clk_name		= "bus",
+ };
+ 
++/* ---- CMU_AUD ----------------------------------------------------------- */
++
++/* Register offsets for CMU_AUD (0x18c00000) */
++#define PLL_LOCKTIME_PLL_AUD0							0x0000
++#define PLL_LOCKTIME_PLL_AUD1							0x0004
++#define PLL_CON0_MUX_CLKCMU_AUD_CPU_USER					0x0100
++#define PLL_CON0_PLL_AUD0							0x0120
++#define PLL_CON3_PLL_AUD0							0x012c
++#define PLL_CON0_PLL_AUD1							0x0140
++#define PLL_CON3_PLL_AUD1							0x014c
++#define CLK_CON_MUX_MUX_CLK_AUD_CPU						0x1000
++#define CLK_CON_MUX_MUX_CLK_AUD_DSIF						0x1004
++#define CLK_CON_MUX_MUX_CLK_AUD_UAIF0						0x100c
++#define CLK_CON_MUX_MUX_CLK_AUD_UAIF1						0x1010
++#define CLK_CON_MUX_MUX_CLK_AUD_UAIF2						0x1014
++#define CLK_CON_MUX_MUX_CLK_AUD_UAIF3						0x1018
++#define CLK_CON_DIV_DIV_CLK_AUD_AUDIF						0x1800
++#define CLK_CON_DIV_DIV_CLK_AUD_BUS						0x1804
++#define CLK_CON_DIV_DIV_CLK_AUD_BUSP						0x1808
++#define CLK_CON_DIV_DIV_CLK_AUD_CNT						0x180c
++#define CLK_CON_DIV_DIV_CLK_AUD_CPU_ACLK					0x1810
++#define CLK_CON_DIV_DIV_CLK_AUD_CPU_ATCLK					0x1814
++#define CLK_CON_DIV_DIV_CLK_AUD_CPU_PCLKDBG					0x1818
++#define CLK_CON_DIV_DIV_CLK_AUD_DMIC						0x181c
++#define CLK_CON_DIV_DIV_CLK_AUD_DSIF						0x1820
++#define CLK_CON_DIV_DIV_CLK_AUD_MCLK						0x1824
++#define CLK_CON_DIV_DIV_CLK_AUD_PLL						0x1828
++#define CLK_CON_DIV_DIV_CLK_AUD_UAIF0						0x182c
++#define CLK_CON_DIV_DIV_CLK_AUD_UAIF1						0x1830
++#define CLK_CON_DIV_DIV_CLK_AUD_UAIF2						0x1834
++#define CLK_CON_DIV_DIV_CLK_AUD_UAIF3						0x1838
++#define CLK_CON_GAT_CLK_BLK_AUD_UID_AUD_CMU_AUD_IPCLKPORT_PCLK			0x2000
++#define CLK_CON_GAT_CLK_BLK_AUD_UID_DFTMUX_AUD_IPCLKPORT_AUD_CODEC_MCLK		0x2004
++#define CLK_CON_GAT_CLK_BLK_AUD_UID_DMIC_IPCLKPORT_CLK				0x2008
++#define CLK_CON_GAT_CLK_BLK_AUD_UID_RSTNSYNC_CLK_AUD_OSCCLK_IPCLKPORT_CLK	0x200c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_ACLK			0x2010
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_ACLK_IRQ			0x2014
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_CNT			0x2018
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_DSIF			0x201c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF0			0x2020
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF1			0x2024
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF2			0x2028
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF3			0x202c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_ASB			0x2030
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_CA32			0x2034
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_DAP			0x2038
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_IPCLKPORT_PCLKM		0x203c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_IPCLKPORT_PCLKS		0x2040
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_S_IPCLKPORT_PCLKM		0x2044
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_S_IPCLKPORT_PCLKS		0x2048
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_AXI2APB_AUD_IPCLKPORT_ACLK			0x204c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_AXI_US_32TO128_IPCLKPORT_ACLK		0x2050
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_BTM_AUD_IPCLKPORT_I_ACLK			0x2054
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_BTM_AUD_IPCLKPORT_I_PCLK			0x2058
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_GPIO_AUD_IPCLKPORT_PCLK			0x205c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_LHM_AXI_P_AUD_IPCLKPORT_I_CLK		0x2060
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_ATB_T0_AUD_IPCLKPORT_I_CLK		0x2064
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_ATB_T1_AUD_IPCLKPORT_I_CLK		0x2068
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_AXI_D_AUD_IPCLKPORT_I_CLK		0x206c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_ACLKM		0x2070
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_ACLKS		0x2074
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_PCLK		0x2078
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_PPMU_AUD_IPCLKPORT_ACLK			0x207c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_PPMU_AUD_IPCLKPORT_PCLK			0x2080
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_BUSP_IPCLKPORT_CLK	0x2084
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_BUS_IPCLKPORT_CLK		0x2088
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CNT_IPCLKPORT_CLK		0x208c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_ACLK_IPCLKPORT_CLK	0x2090
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_ATCLK_IPCLKPORT_CLK	0x2094
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_IPCLKPORT_CLK		0x2098
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_PCLKDBG_IPCLKPORT_CLK	0x209c
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_DSIF_IPCLKPORT_CLK	0x20a0
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF0_IPCLKPORT_CLK	0x20a4
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF1_IPCLKPORT_CLK	0x20a8
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF2_IPCLKPORT_CLK	0x20ac
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF3_IPCLKPORT_CLK	0x20b0
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_SMMU_AUD_IPCLKPORT_CLK			0x20b4
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_SYSREG_AUD_IPCLKPORT_PCLK			0x20b8
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_TREX_AUD_IPCLKPORT_CLK			0x20bc
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_VGEN_LITE_AUD_IPCLKPORT_CLK		0x20c0
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_WDT_AUD_IPCLKPORT_PCLK			0x20c4
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_WRAP2_CONV_AUD_IPCLKPORT_I_CLK		0x20c8
++#define CLK_CON_GAT_GOUT_BLK_AUD_UID_XIU_P_AUD_IPCLKPORT_ACLK			0x20cc
++
++static const unsigned long aud_clk_regs[] __initconst = {
++	PLL_LOCKTIME_PLL_AUD0,
++	PLL_LOCKTIME_PLL_AUD1,
++	PLL_CON0_MUX_CLKCMU_AUD_CPU_USER,
++	PLL_CON0_PLL_AUD0,
++	PLL_CON0_PLL_AUD1,
++	CLK_CON_MUX_MUX_CLK_AUD_CPU,
++	CLK_CON_MUX_MUX_CLK_AUD_DSIF,
++	CLK_CON_MUX_MUX_CLK_AUD_UAIF0,
++	CLK_CON_MUX_MUX_CLK_AUD_UAIF1,
++	CLK_CON_MUX_MUX_CLK_AUD_UAIF2,
++	CLK_CON_MUX_MUX_CLK_AUD_UAIF3,
++	CLK_CON_DIV_DIV_CLK_AUD_AUDIF,
++	CLK_CON_DIV_DIV_CLK_AUD_BUS,
++	CLK_CON_DIV_DIV_CLK_AUD_BUSP,
++	CLK_CON_DIV_DIV_CLK_AUD_CNT,
++	CLK_CON_DIV_DIV_CLK_AUD_CPU_ACLK,
++	CLK_CON_DIV_DIV_CLK_AUD_CPU_ATCLK,
++	CLK_CON_DIV_DIV_CLK_AUD_CPU_PCLKDBG,
++	CLK_CON_DIV_DIV_CLK_AUD_DMIC,
++	CLK_CON_DIV_DIV_CLK_AUD_DSIF,
++	CLK_CON_DIV_DIV_CLK_AUD_MCLK,
++	CLK_CON_DIV_DIV_CLK_AUD_PLL,
++	CLK_CON_DIV_DIV_CLK_AUD_UAIF0,
++	CLK_CON_DIV_DIV_CLK_AUD_UAIF1,
++	CLK_CON_DIV_DIV_CLK_AUD_UAIF2,
++	CLK_CON_DIV_DIV_CLK_AUD_UAIF3,
++	CLK_CON_GAT_CLK_BLK_AUD_UID_AUD_CMU_AUD_IPCLKPORT_PCLK,
++	CLK_CON_GAT_CLK_BLK_AUD_UID_DFTMUX_AUD_IPCLKPORT_AUD_CODEC_MCLK,
++	CLK_CON_GAT_CLK_BLK_AUD_UID_DMIC_IPCLKPORT_CLK,
++	CLK_CON_GAT_CLK_BLK_AUD_UID_RSTNSYNC_CLK_AUD_OSCCLK_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_ACLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_ACLK_IRQ,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_CNT,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_DSIF,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF0,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF1,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF2,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF3,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_ASB,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_CA32,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_DAP,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_IPCLKPORT_PCLKM,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_IPCLKPORT_PCLKS,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_S_IPCLKPORT_PCLKM,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_S_IPCLKPORT_PCLKS,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_AXI2APB_AUD_IPCLKPORT_ACLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_AXI_US_32TO128_IPCLKPORT_ACLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_BTM_AUD_IPCLKPORT_I_ACLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_BTM_AUD_IPCLKPORT_I_PCLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_GPIO_AUD_IPCLKPORT_PCLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_LHM_AXI_P_AUD_IPCLKPORT_I_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_ATB_T0_AUD_IPCLKPORT_I_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_ATB_T1_AUD_IPCLKPORT_I_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_AXI_D_AUD_IPCLKPORT_I_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_ACLKM,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_ACLKS,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_PCLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_PPMU_AUD_IPCLKPORT_ACLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_PPMU_AUD_IPCLKPORT_PCLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_BUSP_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_BUS_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CNT_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_ACLK_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_ATCLK_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_PCLKDBG_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_DSIF_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF0_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF1_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF2_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF3_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_SMMU_AUD_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_SYSREG_AUD_IPCLKPORT_PCLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_TREX_AUD_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_VGEN_LITE_AUD_IPCLKPORT_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_WDT_AUD_IPCLKPORT_PCLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_WRAP2_CONV_AUD_IPCLKPORT_I_CLK,
++	CLK_CON_GAT_GOUT_BLK_AUD_UID_XIU_P_AUD_IPCLKPORT_ACLK,
++};
++
++/*
++ * Clocks the vendor tables give a rate for but this SoC gives no readable
++ * register.  Two kinds sit here.  The on-chip oscillators have no register
++ * at all and cmucal-node.c carries them as FIXEDRATE entries.  The PLLs do
++ * have registers, but the window holding them answers no read: every attempt
++ * ends in a synchronous external abort, both from the boot loader and from
++ * here, always on the first one touched.  Registering them as PLLs is not an
++ * option either, because the core reads the register to learn the starting
++ * rate.  Their tables in cmucal-node.c hold exactly one entry each, so these
++ * are fixed by construction rather than tuned at runtime.
++ */
++static const struct samsung_fixed_rate_clock aud_fixed_clks[] __initconst = {
++	FRATE(CLK_CLKIO_AUD_DSIF, "clkio_aud_dsif", NULL, 0, 100000000),
++	FRATE(CLK_CLKIO_AUD_UAIF0, "clkio_aud_uaif0", NULL, 0, 10000000),
++	FRATE(CLK_CLKIO_AUD_UAIF1, "clkio_aud_uaif1", NULL, 0, 10000000),
++	FRATE(CLK_CLKIO_AUD_UAIF2, "clkio_aud_uaif2", NULL, 0, 10000000),
++	FRATE(CLK_CLKIO_AUD_UAIF3, "clkio_aud_uaif3", NULL, 0, 100000000),
++	FRATE(CLK_FOUT_PLL_AUD0, "fout_pll_aud0", NULL, 0, 1179648010),
++	FRATE(CLK_FOUT_PLL_AUD1, "fout_pll_aud1", NULL, 0, 0),
++};
++
++/* List of parent clocks for muxes in CMU_AUD */
++PNAME(mout_aud_cpu_p) = { "dout_aud_pll", "mout_aud_cpu_user" };
++PNAME(mout_aud_cpu_user_p) = { "oscclk", "dout_cmu_aud_cpu" };
++PNAME(mout_aud_dsif_p) = { "dout_aud_dsif", "clkio_aud_dsif" };
++PNAME(mout_aud_uaif0_p) = { "dout_aud_uaif0", "clkio_aud_uaif0" };
++PNAME(mout_aud_uaif1_p) = { "dout_aud_uaif1", "clkio_aud_uaif1" };
++PNAME(mout_aud_uaif2_p) = { "dout_aud_uaif2", "clkio_aud_uaif2" };
++PNAME(mout_aud_uaif3_p) = { "dout_aud_uaif3", "clkio_aud_uaif3" };
++
++static const struct samsung_mux_clock aud_mux_clks[] __initconst = {
++	MUX(CLK_MOUT_AUD_CPU_USER, "mout_aud_cpu_user", mout_aud_cpu_user_p,
++	    PLL_CON0_MUX_CLKCMU_AUD_CPU_USER, 4, 1),
++	MUX(CLK_MOUT_AUD_CPU, "mout_aud_cpu", mout_aud_cpu_p,
++	    CLK_CON_MUX_MUX_CLK_AUD_CPU, 0, 1),
++	MUX(CLK_MOUT_AUD_DSIF, "mout_aud_dsif", mout_aud_dsif_p,
++	    CLK_CON_MUX_MUX_CLK_AUD_DSIF, 0, 1),
++	MUX(CLK_MOUT_AUD_UAIF0, "mout_aud_uaif0", mout_aud_uaif0_p,
++	    CLK_CON_MUX_MUX_CLK_AUD_UAIF0, 0, 1),
++	MUX(CLK_MOUT_AUD_UAIF1, "mout_aud_uaif1", mout_aud_uaif1_p,
++	    CLK_CON_MUX_MUX_CLK_AUD_UAIF1, 0, 1),
++	MUX(CLK_MOUT_AUD_UAIF2, "mout_aud_uaif2", mout_aud_uaif2_p,
++	    CLK_CON_MUX_MUX_CLK_AUD_UAIF2, 0, 1),
++	MUX(CLK_MOUT_AUD_UAIF3, "mout_aud_uaif3", mout_aud_uaif3_p,
++	    CLK_CON_MUX_MUX_CLK_AUD_UAIF3, 0, 1),
++};
++
++static const struct samsung_div_clock aud_div_clks[] __initconst = {
++	DIV(CLK_DOUT_AUD_AUDIF, "dout_aud_audif", "fout_pll_aud0",
++	    CLK_CON_DIV_DIV_CLK_AUD_AUDIF, 0, 9),
++	DIV(CLK_DOUT_AUD_BUS, "dout_aud_bus", "fout_pll_aud0",
++	    CLK_CON_DIV_DIV_CLK_AUD_BUS, 0, 3),
++	DIV(CLK_DOUT_AUD_BUSP, "dout_aud_busp", "dout_aud_bus",
++	    CLK_CON_DIV_DIV_CLK_AUD_BUSP, 0, 2),
++	DIV(CLK_DOUT_AUD_CNT, "dout_aud_cnt", "dout_aud_audif",
++	    CLK_CON_DIV_DIV_CLK_AUD_CNT, 0, 9),
++	DIV(CLK_DOUT_AUD_CPU_ACLK, "dout_aud_cpu_aclk", "mout_aud_cpu",
++	    CLK_CON_DIV_DIV_CLK_AUD_CPU_ACLK, 0, 3),
++	DIV(CLK_DOUT_AUD_CPU_ATCLK, "dout_aud_cpu_atclk", "mout_aud_cpu",
++	    CLK_CON_DIV_DIV_CLK_AUD_CPU_ATCLK, 0, 3),
++	DIV(CLK_DOUT_AUD_CPU_PCLKDBG, "dout_aud_cpu_pclkdbg", "mout_aud_cpu",
++	    CLK_CON_DIV_DIV_CLK_AUD_CPU_PCLKDBG, 0, 3),
++	DIV(CLK_DOUT_AUD_DMIC, "dout_aud_dmic", "dout_aud_audif",
++	    CLK_CON_DIV_DIV_CLK_AUD_DMIC, 0, 2),
++	DIV(CLK_DOUT_AUD_DSIF, "dout_aud_dsif", "fout_pll_aud1",
++	    CLK_CON_DIV_DIV_CLK_AUD_DSIF, 0, 9),
++	DIV(CLK_DOUT_AUD_MCLK, "dout_aud_mclk", "dout_aud_audif",
++	    CLK_CON_DIV_DIV_CLK_AUD_MCLK, 0, 2),
++	DIV(CLK_DOUT_AUD_PLL, "dout_aud_pll", "fout_pll_aud0",
++	    CLK_CON_DIV_DIV_CLK_AUD_PLL, 0, 4),
++	DIV(CLK_DOUT_AUD_UAIF0, "dout_aud_uaif0", "dout_aud_audif",
++	    CLK_CON_DIV_DIV_CLK_AUD_UAIF0, 0, 9),
++	DIV(CLK_DOUT_AUD_UAIF1, "dout_aud_uaif1", "dout_aud_audif",
++	    CLK_CON_DIV_DIV_CLK_AUD_UAIF1, 0, 9),
++	DIV(CLK_DOUT_AUD_UAIF2, "dout_aud_uaif2", "dout_aud_audif",
++	    CLK_CON_DIV_DIV_CLK_AUD_UAIF2, 0, 9),
++	DIV(CLK_DOUT_AUD_UAIF3, "dout_aud_uaif3", "dout_aud_audif",
++	    CLK_CON_DIV_DIV_CLK_AUD_UAIF3, 0, 9),
++};
++
++static const struct samsung_gate_clock aud_gate_clks[] __initconst = {
++	GATE(CLK_GOUT_AUD_AUD_CMU_AUD_PCLK, "gout_aud_aud_cmu_aud_pclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_CLK_BLK_AUD_UID_AUD_CMU_AUD_IPCLKPORT_PCLK, 21,
++	     CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_AUD_DFTMUX_AUD_AUD_CODEC_MCLK,
++	     "gout_aud_dftmux_aud_aud_codec_mclk", "dout_aud_mclk",
++	     CLK_CON_GAT_CLK_BLK_AUD_UID_DFTMUX_AUD_IPCLKPORT_AUD_CODEC_MCLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_DMIC_CLK, "gout_aud_dmic_clk", "dout_aud_dmic",
++	     CLK_CON_GAT_CLK_BLK_AUD_UID_DMIC_IPCLKPORT_CLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_OSCCLK_CLK, "gout_aud_clk_aud_oscclk_clk",
++	     "oscclk",
++	     CLK_CON_GAT_CLK_BLK_AUD_UID_RSTNSYNC_CLK_AUD_OSCCLK_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_ACLK, "gout_aud_abox_aclk", "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_ACLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_ACLK_IRQ, "gout_aud_abox_aclk_irq",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_ACLK_IRQ, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_BCLK_CNT, "gout_aud_abox_bclk_cnt",
++	     "dout_aud_cnt",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_CNT, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_BCLK_DSIF, "gout_aud_abox_bclk_dsif",
++	     "mout_aud_dsif",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_DSIF, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_BCLK_UAIF0, "gout_aud_abox_bclk_uaif0",
++	     "mout_aud_uaif0",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF0, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_BCLK_UAIF1, "gout_aud_abox_bclk_uaif1",
++	     "mout_aud_uaif1",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF1, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_BCLK_UAIF2, "gout_aud_abox_bclk_uaif2",
++	     "mout_aud_uaif2",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF2, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_BCLK_UAIF3, "gout_aud_abox_bclk_uaif3",
++	     "mout_aud_uaif3",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_BCLK_UAIF3, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_CCLK_ASB, "gout_aud_abox_cclk_asb",
++	     "dout_aud_cpu_aclk",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_ASB, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_CCLK_CA32, "gout_aud_abox_cclk_ca32",
++	     "mout_aud_cpu",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_CA32, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_ABOX_CCLK_DAP, "gout_aud_abox_cclk_dap",
++	     "dout_aud_cpu_pclkdbg",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_ABOX_IPCLKPORT_CCLK_DAP, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_AD_APB_SMMU_AUD_PCLKM,
++	     "gout_aud_ad_apb_smmu_aud_pclkm", "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_IPCLKPORT_PCLKM, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_AD_APB_SMMU_AUD_PCLKS,
++	     "gout_aud_ad_apb_smmu_aud_pclks", "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_IPCLKPORT_PCLKS, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_AD_APB_SMMU_AUD_S_PCLKM,
++	     "gout_aud_ad_apb_smmu_aud_s_pclkm", "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_S_IPCLKPORT_PCLKM, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_AD_APB_SMMU_AUD_S_PCLKS,
++	     "gout_aud_ad_apb_smmu_aud_s_pclks", "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_AD_APB_SMMU_AUD_S_IPCLKPORT_PCLKS, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_AXI2APB_AUD_ACLK, "gout_aud_axi2apb_aud_aclk",
++	     "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_AXI2APB_AUD_IPCLKPORT_ACLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_AXI_US_32TO128_ACLK, "gout_aud_axi_us_32to128_aclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_AXI_US_32TO128_IPCLKPORT_ACLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_BTM_AUD_I_ACLK, "gout_aud_btm_aud_i_aclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_BTM_AUD_IPCLKPORT_I_ACLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_BTM_AUD_I_PCLK, "gout_aud_btm_aud_i_pclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_BTM_AUD_IPCLKPORT_I_PCLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_GPIO_AUD_PCLK, "gout_aud_gpio_aud_pclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_GPIO_AUD_IPCLKPORT_PCLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_LHM_AXI_P_AUD_I_CLK, "gout_aud_lhm_axi_p_aud_i_clk",
++	     "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_LHM_AXI_P_AUD_IPCLKPORT_I_CLK, 21,
++	     CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_AUD_LHS_ATB_T0_AUD_I_CLK, "gout_aud_lhs_atb_t0_aud_i_clk",
++	     "dout_aud_cpu_atclk",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_ATB_T0_AUD_IPCLKPORT_I_CLK, 21,
++	     CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_AUD_LHS_ATB_T1_AUD_I_CLK, "gout_aud_lhs_atb_t1_aud_i_clk",
++	     "dout_aud_cpu_atclk",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_ATB_T1_AUD_IPCLKPORT_I_CLK, 21,
++	     CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_AUD_LHS_AXI_D_AUD_I_CLK, "gout_aud_lhs_axi_d_aud_i_clk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_LHS_AXI_D_AUD_IPCLKPORT_I_CLK, 21,
++	     CLK_IS_CRITICAL, 0),
++	GATE(CLK_GOUT_AUD_PERI_AXI_ASB_ACLKM, "gout_aud_peri_axi_asb_aclkm",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_ACLKM, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_PERI_AXI_ASB_ACLKS, "gout_aud_peri_axi_asb_aclks",
++	     "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_ACLKS, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_PERI_AXI_ASB_PCLK, "gout_aud_peri_axi_asb_pclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_PERI_AXI_ASB_IPCLKPORT_PCLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_PPMU_AUD_ACLK, "gout_aud_ppmu_aud_aclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_PPMU_AUD_IPCLKPORT_ACLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_PPMU_AUD_PCLK, "gout_aud_ppmu_aud_pclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_PPMU_AUD_IPCLKPORT_PCLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_BUSP_CLK, "gout_aud_clk_aud_busp_clk",
++	     "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_BUSP_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_BUS_CLK, "gout_aud_clk_aud_bus_clk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_BUS_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_CNT_CLK, "gout_aud_clk_aud_cnt_clk",
++	     "dout_aud_cnt",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CNT_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_CPU_ACLK_CLK, "gout_aud_clk_aud_cpu_aclk_clk",
++	     "dout_aud_cpu_aclk",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_ACLK_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_CPU_ATCLK_CLK,
++	     "gout_aud_clk_aud_cpu_atclk_clk", "dout_aud_cpu_atclk",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_ATCLK_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_CPU_CLK, "gout_aud_clk_aud_cpu_clk",
++	     "mout_aud_cpu",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_CPU_PCLKDBG_CLK,
++	     "gout_aud_clk_aud_cpu_pclkdbg_clk", "dout_aud_cpu_pclkdbg",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_CPU_PCLKDBG_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_DSIF_CLK, "gout_aud_clk_aud_dsif_clk",
++	     "mout_aud_dsif",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_DSIF_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_UAIF0_CLK, "gout_aud_clk_aud_uaif0_clk",
++	     "mout_aud_uaif0",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF0_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_UAIF1_CLK, "gout_aud_clk_aud_uaif1_clk",
++	     "mout_aud_uaif1",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF1_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_UAIF2_CLK, "gout_aud_clk_aud_uaif2_clk",
++	     "mout_aud_uaif2",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF2_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_CLK_AUD_UAIF3_CLK, "gout_aud_clk_aud_uaif3_clk",
++	     "mout_aud_uaif3",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_RSTNSYNC_CLK_AUD_UAIF3_IPCLKPORT_CLK,
++	     21, CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_SMMU_AUD_CLK, "gout_aud_smmu_aud_clk", "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_SMMU_AUD_IPCLKPORT_CLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_SYSREG_AUD_PCLK, "gout_aud_sysreg_aud_pclk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_SYSREG_AUD_IPCLKPORT_PCLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_TREX_AUD_CLK, "gout_aud_trex_aud_clk", "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_TREX_AUD_IPCLKPORT_CLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_VGEN_LITE_AUD_CLK, "gout_aud_vgen_lite_aud_clk",
++	     "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_VGEN_LITE_AUD_IPCLKPORT_CLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_WDT_AUD_PCLK, "gout_aud_wdt_aud_pclk", "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_WDT_AUD_IPCLKPORT_PCLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_WRAP2_CONV_AUD_I_CLK, "gout_aud_wrap2_conv_aud_i_clk",
++	     "dout_aud_bus",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_WRAP2_CONV_AUD_IPCLKPORT_I_CLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++	GATE(CLK_GOUT_AUD_XIU_P_AUD_ACLK, "gout_aud_xiu_p_aud_aclk",
++	     "dout_aud_busp",
++	     CLK_CON_GAT_GOUT_BLK_AUD_UID_XIU_P_AUD_IPCLKPORT_ACLK, 21,
++	     CLK_IGNORE_UNUSED, 0),
++};
++
++#define CLKS_NR_AUD			(CLK_GOUT_AUD_XIU_P_AUD_ACLK + 1)
++
++static const struct samsung_cmu_info aud_cmu_info __initconst = {
++	.mux_clks		= aud_mux_clks,
++	.nr_mux_clks		= ARRAY_SIZE(aud_mux_clks),
++	.div_clks		= aud_div_clks,
++	.nr_div_clks		= ARRAY_SIZE(aud_div_clks),
++	.gate_clks		= aud_gate_clks,
++	.nr_gate_clks		= ARRAY_SIZE(aud_gate_clks),
++	.fixed_clks		= aud_fixed_clks,
++	.nr_fixed_clks		= ARRAY_SIZE(aud_fixed_clks),
++	.nr_clk_ids		= CLKS_NR_AUD,
++	.clk_regs		= aud_clk_regs,
++	.nr_clk_regs		= ARRAY_SIZE(aud_clk_regs),
++	.clk_name		= "cpu",
++};
++
+ /* ---- CMU_CMU ----------------------------------------------------------- */
+ 
+ /* Register offsets for CMU_CMU (0x1a240000) */
+@@ -3852,6 +4320,10 @@ static const struct of_device_id exynos9820_cmu_of_match[] = {
+ 		.compatible = "samsung,exynos9820-cmu-dpu",
+ 		.data = &dpu_cmu_info,
+ 	},
++	{
++		.compatible = "samsung,exynos9820-cmu-aud",
++		.data = &aud_cmu_info,
++	},
+ 	{ }
+ };
+ 

@@ -1,0 +1,14 @@
+[Unit]
+Description=Hub czujnikow BCM47752 (hubd, zamiennik lhd)
+After=systemd-modules-load.service
+
+[Service]
+Type=simple
+ExecStartPre=/sbin/modprobe brcm_sensorhub
+ExecStart=/usr/bin/python3 /usr/local/lib/hubd/hubd.py
+ExecStartPost=/bin/sh /usr/local/lib/hubd/czujniki-wlacz.sh
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

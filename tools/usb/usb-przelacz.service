@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: GPL-2.0
+# Ponowne zgloszenie urzadzenia USB komputerowi po restarcie telefonu.
+#
+# Po restarcie kontroler nie zglasza hostowi odlaczenia, wiec host trzyma stary
+# opis urzadzenia i nie wylicza go od nowa; trzeba bylo wyjmowac i wkladac
+# kabel.  Usluga odpina gadzet od kontrolera i podpina z powrotem, ale TYLKO
+# wtedy, gdy host sam sobie nie poradzil: przepiecie na slepo w trakcie startu
+# gubi urzadzenie w srodku wyliczania i konczy sie tym, ze host nie widzi go
+# wcale.
+
+[Unit]
+Description=Ponowne zgloszenie urzadzenia USB, gdy host go nie wyliczyl
+# Gadzet powstaje jeszcze w initramfs, wiec w tym miejscu juz jest.  Idziemy
+# PO sieci, a nie przed nia: skrypt i tak najpierw czeka i nic nie rusza, gdy
+# polaczenie dziala.
+# PO pelnym starcie, nie w jego trakcie: przepiecie w srodku wyliczania
+# gubi urzadzenie, co juz raz skonczylo sie telefonem niewidocznym
+# az do recznego ruszenia kabla.
+After=multi-user.target network.target
+ConditionPathExists=/sys/kernel/config/usb_gadget/g1
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/usb-przelacz
+# Skrypt czeka do pietnastu sekund, zanim cokolwiek zrobi.
+TimeoutStartSec=60
+
+[Install]
+WantedBy=multi-user.target

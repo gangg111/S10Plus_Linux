@@ -1,0 +1,3 @@
+major minor  #blocks  name
+
+   7        0      32768 loop0

@@ -68,8 +68,8 @@ review together, not about a missing definition.
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---
  drivers/clk/samsung/Makefile         |    1 +
- drivers/clk/samsung/clk-exynos9820.c | 2483 ++++++++++++++++++++++++++
- 2 files changed, 2484 insertions(+)
+ drivers/clk/samsung/clk-exynos9820.c | 2503 ++++++++++++++++++++++++++
+ 2 files changed, 2504 insertions(+)
  create mode 100644 drivers/clk/samsung/clk-exynos9820.c
 
 diff --git a/drivers/clk/samsung/Makefile b/drivers/clk/samsung/Makefile
@@ -86,10 +86,10 @@ index b3c4ef4e0db..6904cc882c1 100644
  obj-$(CONFIG_EXYNOS_ARM64_COMMON_CLK)	+= clk-gs101.o
 diff --git a/drivers/clk/samsung/clk-exynos9820.c b/drivers/clk/samsung/clk-exynos9820.c
 new file mode 100644
-index 00000000000..2d782859182
+index 00000000000..f9d19a8df9b
 --- /dev/null
 +++ b/drivers/clk/samsung/clk-exynos9820.c
-@@ -0,0 +1,2483 @@
+@@ -0,0 +1,2503 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
@@ -1091,9 +1091,19 @@ index 00000000000..2d782859182
 +	CLK_CON_GAT_GOUT_BLK_FSYS1_UID_XIU_P_FSYS1_IPCLKPORT_ACLK,
 +};
 +
-+static const struct samsung_pll_clock fsys1_pll_clks[] __initconst = {
-+	PLL(pll_0831x, CLK_FOUT_PLL_MMC, "fout_pll_mmc", "oscclk",
-+	    PLL_LOCKTIME_PLL_MMC, PLL_CON3_PLL_MMC, NULL),
++/*
++ * Clocks the vendor tables give a rate for but this SoC gives no readable
++ * register.  Two kinds sit here.  The on-chip oscillators have no register
++ * at all and cmucal-node.c carries them as FIXEDRATE entries.  The PLLs do
++ * have registers, but the window holding them answers no read: every attempt
++ * ends in a synchronous external abort, both from the boot loader and from
++ * here, always on the first one touched.  Registering them as PLLs is not an
++ * option either, because the core reads the register to learn the starting
++ * rate.  Their tables in cmucal-node.c hold exactly one entry each, so these
++ * are fixed by construction rather than tuned at runtime.
++ */
++static const struct samsung_fixed_rate_clock fsys1_fixed_clks[] __initconst = {
++	FRATE(CLK_FOUT_PLL_MMC, "fout_pll_mmc", NULL, 0, 26000000),
 +};
 +
 +/* List of parent clocks for muxes in CMU_FSYS1 */
@@ -1300,14 +1310,14 @@ index 00000000000..2d782859182
 +#define CLKS_NR_FSYS1			(CLK_GOUT_FSYS1_XIU_P_FSYS1_ACLK + 1)
 +
 +static const struct samsung_cmu_info fsys1_cmu_info __initconst = {
-+	.pll_clks		= fsys1_pll_clks,
-+	.nr_pll_clks		= ARRAY_SIZE(fsys1_pll_clks),
 +	.mux_clks		= fsys1_mux_clks,
 +	.nr_mux_clks		= ARRAY_SIZE(fsys1_mux_clks),
 +	.div_clks		= fsys1_div_clks,
 +	.nr_div_clks		= ARRAY_SIZE(fsys1_div_clks),
 +	.gate_clks		= fsys1_gate_clks,
 +	.nr_gate_clks		= ARRAY_SIZE(fsys1_gate_clks),
++	.fixed_clks		= fsys1_fixed_clks,
++	.nr_fixed_clks		= ARRAY_SIZE(fsys1_fixed_clks),
 +	.nr_clk_ids		= CLKS_NR_FSYS1,
 +	.clk_regs		= fsys1_clk_regs,
 +	.nr_clk_regs		= ARRAY_SIZE(fsys1_clk_regs),
@@ -1414,8 +1424,15 @@ index 00000000000..2d782859182
 +};
 +
 +/*
-+ * On-chip oscillators the vendor tables give a rate for but no register:
-+ * cmucal-node.c carries them as FIXEDRATE entries.
++ * Clocks the vendor tables give a rate for but this SoC gives no readable
++ * register.  Two kinds sit here.  The on-chip oscillators have no register
++ * at all and cmucal-node.c carries them as FIXEDRATE entries.  The PLLs do
++ * have registers, but the window holding them answers no read: every attempt
++ * ends in a synchronous external abort, both from the boot loader and from
++ * here, always on the first one touched.  Registering them as PLLs is not an
++ * option either, because the core reads the register to learn the starting
++ * rate.  Their tables in cmucal-node.c hold exactly one entry each, so these
++ * are fixed by construction rather than tuned at runtime.
 + */
 +static const struct samsung_fixed_rate_clock apm_fixed_clks[] __initconst = {
 +	FRATE(CLK_DLL_DCO, "dll_dco", NULL, 0, 360000000),
@@ -1627,20 +1644,20 @@ index 00000000000..2d782859182
 +#define PLL_LOCKTIME_PLL_SHARED3			0x0018
 +#define PLL_LOCKTIME_PLL_SHARED4			0x001c
 +#define PLL_CON0_APLL_SHARED0				0x0100
-+#define PLL_CON0_APLL_SHARED1				0x0120
-+#define PLL_CON0_PLL_G3D				0x0140
-+#define PLL_CON0_PLL_SHARED0				0x0160
-+#define PLL_CON0_PLL_SHARED1				0x0180
-+#define PLL_CON0_PLL_SHARED2				0x01a0
-+#define PLL_CON0_PLL_SHARED3				0x01c0
-+#define PLL_CON0_PLL_SHARED4				0x01e0
 +#define PLL_CON3_APLL_SHARED0				0x010c
++#define PLL_CON0_APLL_SHARED1				0x0120
 +#define PLL_CON3_APLL_SHARED1				0x012c
++#define PLL_CON0_PLL_G3D				0x0140
 +#define PLL_CON3_PLL_G3D				0x014c
++#define PLL_CON0_PLL_SHARED0				0x0160
 +#define PLL_CON3_PLL_SHARED0				0x016c
++#define PLL_CON0_PLL_SHARED1				0x0180
 +#define PLL_CON3_PLL_SHARED1				0x018c
++#define PLL_CON0_PLL_SHARED2				0x01a0
 +#define PLL_CON3_PLL_SHARED2				0x01ac
++#define PLL_CON0_PLL_SHARED3				0x01c0
 +#define PLL_CON3_PLL_SHARED3				0x01cc
++#define PLL_CON0_PLL_SHARED4				0x01e0
 +#define PLL_CON3_PLL_SHARED4				0x01ec
 +#define CLK_CON_MUX_CLKCMU_DPU_BUS			0x1000
 +#define CLK_CON_MUX_MUX_CLKCMU_APM_BUS			0x1004
@@ -2004,23 +2021,26 @@ index 00000000000..2d782859182
 +	CLK_CON_GAT_GATE_CLKCMU_VRA2_STR,
 +};
 +
-+static const struct samsung_pll_clock top_pll_clks[] __initconst = {
-+	PLL(pll_0822x, CLK_FOUT_APLL_SHARED0, "fout_apll_shared0", "oscclk",
-+	    PLL_LOCKTIME_APLL_SHARED0, PLL_CON3_APLL_SHARED0, NULL),
-+	PLL(pll_0822x, CLK_FOUT_APLL_SHARED1, "fout_apll_shared1", "oscclk",
-+	    PLL_LOCKTIME_APLL_SHARED1, PLL_CON3_APLL_SHARED1, NULL),
-+	PLL(pll_0818x, CLK_FOUT_PLL_G3D, "fout_pll_g3d", "oscclk",
-+	    PLL_LOCKTIME_PLL_G3D, PLL_CON3_PLL_G3D, NULL),
-+	PLL(pll_0817x, CLK_FOUT_PLL_SHARED0, "fout_pll_shared0", "oscclk",
-+	    PLL_LOCKTIME_PLL_SHARED0, PLL_CON3_PLL_SHARED0, NULL),
-+	PLL(pll_0817x, CLK_FOUT_PLL_SHARED1, "fout_pll_shared1", "oscclk",
-+	    PLL_LOCKTIME_PLL_SHARED1, PLL_CON3_PLL_SHARED1, NULL),
-+	PLL(pll_0818x, CLK_FOUT_PLL_SHARED2, "fout_pll_shared2", "oscclk",
-+	    PLL_LOCKTIME_PLL_SHARED2, PLL_CON3_PLL_SHARED2, NULL),
-+	PLL(pll_0818x, CLK_FOUT_PLL_SHARED3, "fout_pll_shared3", "oscclk",
-+	    PLL_LOCKTIME_PLL_SHARED3, PLL_CON3_PLL_SHARED3, NULL),
-+	PLL(pll_1018x, CLK_FOUT_PLL_SHARED4, "fout_pll_shared4", "oscclk",
-+	    PLL_LOCKTIME_PLL_SHARED4, PLL_CON3_PLL_SHARED4, NULL),
++/*
++ * Clocks the vendor tables give a rate for but this SoC gives no readable
++ * register.  Two kinds sit here.  The on-chip oscillators have no register
++ * at all and cmucal-node.c carries them as FIXEDRATE entries.  The PLLs do
++ * have registers, but the window holding them answers no read: every attempt
++ * ends in a synchronous external abort, both from the boot loader and from
++ * here, always on the first one touched.  Registering them as PLLs is not an
++ * option either, because the core reads the register to learn the starting
++ * rate.  Their tables in cmucal-node.c hold exactly one entry each, so these
++ * are fixed by construction rather than tuned at runtime.
++ */
++static const struct samsung_fixed_rate_clock top_fixed_clks[] __initconst = {
++	FRATE(CLK_FOUT_APLL_SHARED0, "fout_apll_shared0", NULL, 0, 2132000000),
++	FRATE(CLK_FOUT_APLL_SHARED1, "fout_apll_shared1", NULL, 0, 1865500032),
++	FRATE(CLK_FOUT_PLL_G3D, "fout_pll_g3d", NULL, 0, 650000000),
++	FRATE(CLK_FOUT_PLL_SHARED0, "fout_pll_shared0", NULL, 0, 2132000000),
++	FRATE(CLK_FOUT_PLL_SHARED1, "fout_pll_shared1", NULL, 0, 1865500032),
++	FRATE(CLK_FOUT_PLL_SHARED2, "fout_pll_shared2", NULL, 0, 800000000),
++	FRATE(CLK_FOUT_PLL_SHARED3, "fout_pll_shared3", NULL, 0, 640000000),
++	FRATE(CLK_FOUT_PLL_SHARED4, "fout_pll_shared4", NULL, 0, 666000000),
 +};
 +
 +/* List of parent clocks for muxes in CMU_CMU */
@@ -2496,14 +2516,14 @@ index 00000000000..2d782859182
 +#define CLKS_NR_CMU			(CLK_GOUT_CMU_VRA2_STR + 1)
 +
 +static const struct samsung_cmu_info top_cmu_info __initconst = {
-+	.pll_clks		= top_pll_clks,
-+	.nr_pll_clks		= ARRAY_SIZE(top_pll_clks),
 +	.mux_clks		= top_mux_clks,
 +	.nr_mux_clks		= ARRAY_SIZE(top_mux_clks),
 +	.div_clks		= top_div_clks,
 +	.nr_div_clks		= ARRAY_SIZE(top_div_clks),
 +	.gate_clks		= top_gate_clks,
 +	.nr_gate_clks		= ARRAY_SIZE(top_gate_clks),
++	.fixed_clks		= top_fixed_clks,
++	.nr_fixed_clks		= ARRAY_SIZE(top_fixed_clks),
 +	.fixed_factor_clks	= top_fixed_factor_clks,
 +	.nr_fixed_factor_clks	= ARRAY_SIZE(top_fixed_factor_clks),
 +	.nr_clk_ids		= CLKS_NR_CMU,

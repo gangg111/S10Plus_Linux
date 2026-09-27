@@ -102,6 +102,98 @@ wola warstwe kalibracyjna, steruje izolacja PHY w bloku PMU i dzieli prace miedz
 warstwe PMA, ktora u nas trafia do sterownika PHY, a warstwy PCS i UniPro, ktore
 naleza do sterownika hosta).
 
+`drivers/misc/mcu_ipc/{regs-mcu_ipc.h,mcu_ipc.c,shm_ipc.c}` (skrzynka pocztowa
+miedzy procesorem aplikacyjnym a modemem: mapa rejestrow bloku MCU_IPC, kierunki
+przerwan w obie strony, rejestry wiadomosci ISSR, a w `shm_ipc.c` podzial
+zarezerwowanej pamieci modemu na obszary i wyliczanie parametrow wywolania do
+firmware bezpieczenstwa),
+`drivers/misc/modem_v1/{modem_ctrl_s5000ap.c,link_device_shmem.c,link_device_memory.h,modem_prj.h,modem_v1.h}`
+(sterownik modemu producenta w czesci dotyczacej NASZEGO wariantu `s5000ap`:
+kolejnosc rozruchu procesora komunikacyjnego, zerowanie i pola startowe rejestrow
+skrzynki, wywolania do swiata bezpiecznego sprawdzajace podpis obrazu modemu wraz
+z ich trybami i petla ponowien, stary uklad pamieci uzywany przy rozruchu i zrzucie
+razem z wartosciami rozpoznawczymi, komendy protokolu sterujacego oraz lista operacji
+dla przestrzeni uzytkownika, z ktorych korzysta demon rozruchu modemu),
+`drivers/misc/modem_v1/include/{sbd.h,sipc5.h}` (opis kolejek pierscieniowych,
+ktorymi biegnie ruch do modemu, oraz ramkowania warstwy lacza),
+`drivers/soc/samsung/cal-if/exynos9820/pmucal_cp_exynos9820.h` (sekwencje jednostki
+zarzadzania zasilaniem dla domeny modemu: wlaczenie, potwierdzenie, zatrzymanie
+i zwolnienie resetu, kazda jako tablica zapisow i oczekiwan na konkretne bity),
+
+`drivers/pci/dwc/{pcie-exynos-host-v0.c,pcie-exynos-host-v0.h,pci-exynos9820_cal.c}`
+(sterownik kontrolera PCIe producenta i jego warstwa kalibracji warstwy
+fizycznej: sekwencja startu lacza, uklad rejestrow okien elbi, pcs i ia oraz
+tablice strojenia; uklad Wi-Fi tego telefonu wisi wlasnie na tym kontrolerze,
+a mainline nie ma dla niego niczego, patrz HW-44),
+`drivers/soc/samsung/cal-if/exynos9820/{flexpmu_cal_cpu_exynos9820.h,flexpmu_cal_powermode_exynos9820.h}`
+(sekwencje jednostki zasilania dla rdzeni: trzy kroki, ktorymi producent wlacza
+kazdy z osmiu rdzeni, oraz lista rejestrow podpowiedzi CPU_INFORM; stad adres
+bloku generatora przerwan 0x15870000, offsety GRP1/GRP2 i wniosek, ze samo
+wywolanie PSCI na tym ukladzie nie wystarcza, opisany w docs/R13-rdzenie.md),
+`drivers/soc/samsung/acpm/{acpm.c,acpm_ipc.c,acpm.h,acpm_ipc.h,acpm_common.h,acpm_framework.h,acpm_ipc_ctrl.h}`
+(firmware Active Power Manager i jego protokol: uklad pamieci wspoldzielonej,
+naglowek ramki, numery kanalow i to, ze konfiguracja kanalow lezy pod offsetem
+wewnatrz tej pamieci; stad liczby w `patches/0066` oraz w wezlach `sram@2039000`
+i `firmware/power-management`),
+`drivers/soc/samsung/acpm/{acpm_mfd.c,acpm_mfd.h}` (czesc tego samego firmware,
+ktora obsluguje uklady zasilania: dowod, ze glowny PMIC odpowiada wylacznie przez
+kanal APM, a nie na zadnej magistrali procesora, co zamyka HW-42),
+`drivers/mfd/s2mps19_core.c`, `drivers/regulator/s2mps19_regulator.c`,
+`include/linux/mfd/samsung/{s2mps19.h,s2mps19-regulator.h}` (glowny uklad
+zasilania tego telefonu: lista szyn, ich zakresy i numery kanalow, czyli to, co
+trzeba znac, zanim ktokolwiek siegnie po szyny przez APM),
+`drivers/mfd/s2mps19_irq.c` (tablica przerwan tego ukladu: numer rejestru
+i BIT dla kazdego zdarzenia.  Potrzebna wprost, bo kolejnosc w wyliczeniu
+naglowka NIE odpowiada kolejnosci bitow: rejestr INT3 pomija bit 4, wiec
+odtworzenie masek z samej listy nazw dalo by zle przypisanie siedmiu przerwan),
+`drivers/input/touchscreen/sec_ts/y771/{sec_ts.h,sec_ts_fn.c}` (naglowek i warstwa
+polecen sterownika dotyku producenta: uklad osmiobajtowego zdarzenia pole po polu,
+w tym podzial bajtu 7 na piciobitowy licznik pozostalych zdarzen, znacznik
+`max_energy_flag` i dwa bity typu kontaktu, ktory rozstrzygnal maske w latce 0093;
+do tego stale gestow, tryby niskiego poboru i opcody silnika SPONGE, czyli to, na
+czym stanie gest wybudzania),
+`drivers/i2c/busses/i2c-exynos5.c` jako `i2c-exynos5-vendor.c` (sterownik
+magistrali producenta: to z niego wzieta jest kolejnosc resetu kontrolera
+i odczyt wyniku transferu z `TRANS_STATUS`, ktory w mainline czytany jest
+z innego rejestru; rozstrzygnal objaw "tx timeout" na zywej magistrali),
+`sound/soc/samsung/abox/{abox_soc.h,abox_rdma.c,abox_wdma.c}` (mapa rejestrow
+bloku audio ABOX i sterowniki jego DMA odtwarzania i nagrywania: dowod, ze RDMA
+i WDMA programuje firmware DSP przez IPC, a AP czyta tylko wskaznik bufora;
+docs/R19-dzwiek.md),
+`sound/soc/samsung/abox/{abox.c,abox.h,abox_soc.c,abox_if.c,abox_cmpnt_v20.c}`
+(strona AP bloku ABOX: zadanie DRAM przez SYSPOWER, regmapa, konfiguracja UAIF,
+kontrolki trasy SPUS/SIFS i licznik SIFS; z nich skladana jest sciezka
+odtwarzania bez firmware DSP),
+`sound/soc/samsung/beyond_madera.c` (sterownik karty tego telefonu: formaty
+i sloty UAIF dla kodeka i wzmacniaczy),
+`drivers/mfd/cirrus-cal.c` (kalibracja glosnikow producenta: odczyt
+`/efs/cirrus/rdc_cal`, `rdc_cal_r`, `temp_cal` i wpis do pol CAL_R,
+CAL_AMBIENT, CAL_STATUS, CAL_CHECKSUM firmware ochrony; docs/R19-dzwiek.md),
+`sound/soc/codecs/cs35l41.c` (sterownik wzmacniaczy producenta: z wartosci
+przetwornicy boost ustawia tylko prad szczytowy, wspolczynniki zostaja po
+resecie, co wyznaczylo opis wzmacniaczy w latce 0121),
+`drivers/extcon/extcon-madera.c` (wykrywanie akcesoriow kodeka producenta:
+tryb zacisku MICD, pomiar mikrofonu przez ADC, progi i klawisze pilota,
+na ktorych oparta jest latka 0138 i przyciski zestawu; docs/R19-dzwiek.md),
+`drivers/mmc/host/dw_mmc-exynos.c` i `drivers/mmc/host/dw_mmc-exynos.h`
+(kontroler kart producenta: czyta
+`samsung,dw-mshc-sdr-timing` jako czterech liczb `div, f_drv, drv, sample`,
+podczas gdy mainline czyta dwie `sample, drive`; stad przelozenie taktowania
+gniazda microSD w wezle plyty).
+
+`drivers/soc/samsung/cal-if/{pmucal_cpu.c,pmucal_cpu.h,pmucal_rae.c,
+pmucal_powermode.c,pmucal_powermode.h,pmucal_common.h,cal-if.c}` oraz
+`drivers/soc/samsung/exynos-cpupm.c` to warstwa, ktora WYKONUJE tablice
+`flexpmu_cal_*` przy budzeniu i usypianiu rdzeni. Tablice same mowia, jakie
+rejestry, a dopiero ten kod mowi, w jakiej kolejnosci, na co sie czeka i co
+robi sie na poziomie klastra. Sciagniete przy rundzie R13, zeby ustalic, czy
+producent robi przy starcie rdzenia cos, czego nasz port nie robi.
+Odpowiedz brzmi: nie robi, jego `cal_cpu_enable()` wisi na
+`CPUHP_AP_EXYNOS_CPU_UP_POWER_CONTROL`, czyli biegnie na rdzeniu JUZ
+wystartowanym, wiec w kwestii samego rozruchu rdzenia polega na firmware
+tak samo jak my.
+
+
 ## Instrukcja serwisowa SM-G975F
 
 Sześć plików PDF (service guide producenta) dostarczonych przez właściciela urządzenia,

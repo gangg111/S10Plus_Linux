@@ -1,0 +1,85 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 00:34:18 +0200
+Subject: [PATCH] phy: samsung-ufs: Let an SoC place the two calibration waits
+
+Both waits are pinned to one point of the sequence and to one side of
+the table at that point: the calibration wait runs after the table of
+the very first point, the lock wait after the table of the last one.
+
+A calibration whose own work finishes later than the first point has
+nowhere to say so, and waiting at the first point would poll for a bit
+that has not been set going yet.  A calibration that has to see the lock
+before the last table is written, rather than after, has the same
+problem in the other direction: the table would be written into a
+receiver that has not locked on.
+
+Let the SoC name the point its calibration wait belongs to, and say
+whether its lock wait comes before the table or after it.  Both default
+to what is done today, so no SoC supported so far changes behaviour.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/phy/samsung/phy-samsung-ufs.c | 13 ++++++++++++-
+ drivers/phy/samsung/phy-samsung-ufs.h | 10 ++++++++++
+ 2 files changed, 22 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/phy/samsung/phy-samsung-ufs.c b/drivers/phy/samsung/phy-samsung-ufs.c
+index 47a7f2916fd..b5c0ba515fe 100644
+--- a/drivers/phy/samsung/phy-samsung-ufs.c
++++ b/drivers/phy/samsung/phy-samsung-ufs.c
+@@ -130,6 +130,16 @@ static int samsung_ufs_phy_calibrate(struct phy *phy)
+ 	if (!cfg)
+ 		goto out;
+ 
++	if (ufs_phy->ufs_phy_state == CFG_POST_PWR_HS &&
++	    ufs_phy->drvdata->wait_for_cdr_before_cfg &&
++	    ufs_phy->drvdata->wait_for_cdr) {
++		for_each_phy_lane(ufs_phy, i) {
++			err = ufs_phy->drvdata->wait_for_cdr(phy, i);
++			if (err)
++				goto out;
++		}
++	}
++
+ 	for_each_phy_cfg(cfg) {
+ 		if (!samsung_ufs_phy_cfg_applies(ufs_phy, cfg))
+ 			continue;
+@@ -140,7 +150,7 @@ static int samsung_ufs_phy_calibrate(struct phy *phy)
+ 	}
+ 
+ 	for_each_phy_lane(ufs_phy, i) {
+-		if (ufs_phy->ufs_phy_state == CFG_PRE_INIT &&
++		if (ufs_phy->ufs_phy_state == ufs_phy->drvdata->wait_for_cal_state &&
+ 		    ufs_phy->drvdata->wait_for_cal) {
+ 			err = ufs_phy->drvdata->wait_for_cal(phy, i);
+ 			if (err)
+@@ -148,6 +158,7 @@ static int samsung_ufs_phy_calibrate(struct phy *phy)
+ 		}
+ 
+ 		if (ufs_phy->ufs_phy_state == CFG_POST_PWR_HS &&
++		    !ufs_phy->drvdata->wait_for_cdr_before_cfg &&
+ 		    ufs_phy->drvdata->wait_for_cdr) {
+ 			err = ufs_phy->drvdata->wait_for_cdr(phy, i);
+ 			if (err)
+diff --git a/drivers/phy/samsung/phy-samsung-ufs.h b/drivers/phy/samsung/phy-samsung-ufs.h
+index 3904a63f933..94b28724000 100644
+--- a/drivers/phy/samsung/phy-samsung-ufs.h
++++ b/drivers/phy/samsung/phy-samsung-ufs.h
+@@ -122,6 +122,16 @@ struct samsung_ufs_phy_drvdata {
+ 	const char * const *clk_list;
+ 	int num_clks;
+ 	u32 cdr_lock_status_offset;
++	/*
++	 * Where in the sequence the two waits below belong.  Left at zero they
++	 * keep to what every SoC described so far needs: the calibration wait
++	 * after the table of the first point, the lock wait after the table of
++	 * the last one.  A calibration that finishes at a later point, or that
++	 * has to see the lock before the last table is written rather than
++	 * after, says so here.
++	 */
++	u8 wait_for_cal_state;
++	bool wait_for_cdr_before_cfg;
+ 	/* SoC's specific operations */
+ 	int (*wait_for_cal)(struct phy *phy, u8 lane);
+ 	int (*wait_for_cdr)(struct phy *phy, u8 lane);

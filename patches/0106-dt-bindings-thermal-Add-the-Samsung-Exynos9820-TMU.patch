@@ -1,0 +1,121 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 00:37:28 +0200
+Subject: [PATCH] dt-bindings: thermal: Add the Samsung Exynos9820 TMU
+
+The thermal management unit of the Exynos9820 comes as two blocks, TOP
+and SUB, each with its own registers, interrupt and bus clock.  Their
+probes belong to the firmware on the APM: the vendor kernel asks it for
+the temperature of five zones over the ACPM protocol and never reads a
+temperature from the blocks.
+
+Describe each block as its own node, with the ACPM interface the zones
+are read through and the firmware zone number as the sensor specifier.
+The zones and their numbers are the firmware's: the three CPU clusters
+belong to TOP, the GPU and the ISP to SUB.
+
+samsung,exynos-thermal.yaml describes TMUs the kernel programs itself,
+with one sensor per node; here the sensors are served by the firmware
+and addressed by zone number, hence a schema of their own.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../thermal/samsung,exynos9820-tmu.yaml       | 76 +++++++++++++++++++
+ MAINTAINERS                                   |  1 +
+ 2 files changed, 77 insertions(+)
+ create mode 100644 Documentation/devicetree/bindings/thermal/samsung,exynos9820-tmu.yaml
+
+diff --git a/Documentation/devicetree/bindings/thermal/samsung,exynos9820-tmu.yaml b/Documentation/devicetree/bindings/thermal/samsung,exynos9820-tmu.yaml
+new file mode 100644
+index 00000000000..9c5a8423f19
+--- /dev/null
++++ b/Documentation/devicetree/bindings/thermal/samsung,exynos9820-tmu.yaml
+@@ -0,0 +1,76 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/thermal/samsung,exynos9820-tmu.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Samsung Exynos9820 Thermal Management Unit
++
++maintainers:
++  - Artur Szafraniec <ganggg111@gmail.com>
++
++description: |
++  The thermal management unit of the Exynos9820 comes as two blocks, TOP
++  and SUB, each with its own registers, interrupt and bus clock and with
++  several temperature probes.  The firmware running on the APM owns the
++  probes, groups them into zones and reports the zones over the ACPM
++  protocol.  The zone numbers are the firmware's and span both blocks:
++
++    TOP block: 0 - big CPU cluster, 1 - middle CPU cluster,
++               2 - little CPU cluster
++    SUB block: 3 - GPU, 4 - ISP
++
++  Each block also has a hardware trip that removes the power at the
++  temperature programmed into it, without going through software.
++
++allOf:
++  - $ref: thermal-sensor.yaml#
++
++properties:
++  compatible:
++    enum:
++      - samsung,exynos9820-tmu-top
++      - samsung,exynos9820-tmu-sub
++
++  reg:
++    maxItems: 1
++
++  interrupts:
++    maxItems: 1
++
++  clocks:
++    maxItems: 1
++
++  "#thermal-sensor-cells":
++    const: 1
++    description:
++      The firmware zone number, one of those listed above for the block.
++
++  samsung,acpm-ipc:
++    $ref: /schemas/types.yaml#/definitions/phandle
++    description:
++      The ACPM firmware interface the zones are read through.
++
++required:
++  - compatible
++  - reg
++  - interrupts
++  - clocks
++  - "#thermal-sensor-cells"
++  - samsung,acpm-ipc
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/clock/samsung,exynos9820.h>
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
++
++    thermal-sensor@10090000 {
++        compatible = "samsung,exynos9820-tmu-top";
++        reg = <0x10090000 0x800>;
++        interrupts = <GIC_SPI 478 IRQ_TYPE_LEVEL_HIGH>;
++        clocks = <&cmu_peris CLK_GOUT_PERIS_TMU_TOP_PCLK>;
++        #thermal-sensor-cells = <1>;
++        samsung,acpm-ipc = <&acpm_ipc>;
++    };
+diff --git a/MAINTAINERS b/MAINTAINERS
+index caddf06892d..b61f121a1a8 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24003,6 +24003,7 @@ L:	linux-samsung-soc@vger.kernel.org
+ S:	Maintained
+ F:	Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
+ F:	Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
++F:	Documentation/devicetree/bindings/thermal/samsung,exynos9820-tmu.yaml
+ F:	arch/arm64/boot/dts/exynos/exynos9820*
+ F:	drivers/clk/samsung/clk-exynos9820.c
+ F:	drivers/pci/controller/dwc/pcie-exynos9820.c

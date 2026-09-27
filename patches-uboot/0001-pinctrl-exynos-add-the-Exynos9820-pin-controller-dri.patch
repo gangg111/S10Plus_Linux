@@ -1,19 +1,20 @@
-From 42c2d3fd00ce4696b607910a35fd80b8e93d78fc Mon Sep 17 00:00:00 2001
+From 18d6e0dcbc023941aa4c34c0d167dd5c3666c460 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Fri, 18 Sep 2026 23:07:39 +0200
-Subject: [PATCH 1/8] pinctrl: exynos: add the Exynos9820 pin controller driver
+Subject: [PATCH 01/40] pinctrl: exynos: add the Exynos9820 pin controller
+ driver
 
 Exynos9820 has eight pin controllers holding sixty two banks between them.
-The geometry below is the one this project established for the Linux driver,
-where every bank was cross checked against the vendor tree of this board; only
-the bank geometry carries over, because U-Boot needs neither the external
-interrupt offsets nor the suspend hooks the kernel driver has.
+The geometry below is the one this project established for the Linux
+driver, where every bank was cross checked against the vendor tree of this
+board; only the bank geometry carries over, because U-Boot needs neither
+the external interrupt offsets nor the suspend hooks the kernel driver has.
 
-The controller a device gets its bank table from is selected by dev_seq(), so
-the table order follows the order the nodes appear in the device tree, sorted
-by unit address: PERIC0, PERIC1, FSYS0, FSYS1, VTS, ALIVE, CMGP, AUD.  FSYS1 is
-the block the UFS lines sit behind, so it is the one that has to be right before
-storage can be read at all.
+The controller a device gets its bank table from is selected by dev_seq(),
+so the table order follows the order the nodes appear in the device tree,
+sorted by unit address: PERIC0, PERIC1, FSYS0, FSYS1, VTS, ALIVE, CMGP,
+AUD.  FSYS1 is the block the UFS lines sit behind, so it is the one that
+has to be right before storage can be read at all.
 
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---

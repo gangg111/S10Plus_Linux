@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 06:06:49 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Run the codec bus
+ at 25 MHz
+
+The codec bus started at 5 MHz until the SPI clock had been checked on
+the phone.  At 5 MHz the source clock of the USI block reads 20 MHz, the
+bus rate times the fixed divider of 4, set exactly from its 200 MHz
+parent.  25 MHz, the rate of the vendor tree, needs 100 MHz, which the
+same divider also reaches exactly.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 7240dff0f47..e348451d9b9 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -691,7 +691,7 @@ &spi_2 {
+ 	audio-codec@0 {
+ 		compatible = "cirrus,cs47l93";
+ 		reg = <0>;
+-		spi-max-frequency = <5000000>;
++		spi-max-frequency = <25000000>;
+ 
+ 		interrupts-extended = <&gpa2 2 IRQ_TYPE_LEVEL_LOW>;
+ 		interrupt-controller;

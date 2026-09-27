@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 01:53:19 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Enable the
+ embedded storage
+
+The board carries the storage the SoC node describes, so turn it on.
+
+Its supply is a regulator the boot loader leaves on and nothing here
+switches, so it is not described.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index 72db040d28a..e78da54621f 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -366,6 +366,10 @@ &serial0 {
+ 	status = "okay";
+ };
+ 
++&ufs_0 {
++	status = "okay";
++};
++
+ /* This USI instance is wired as the touchscreen I2C master on this board. */
+ &usi3 {
+ 	samsung,mode = <USI_V2_I2C>;

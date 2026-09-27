@@ -1,0 +1,89 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 04:58:30 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the I2C bus of the
+ speaker amplifiers
+
+Add the I2C-only USI block the vendor tree calls usi_17_i2c, its HSI2C
+controller and the pins it uses.  Both speaker amplifiers of the Galaxy
+S10+ answer on this bus.
+
+The mode register offset in the PERIC1 system register, 0x1050, follows
+from the vendor list of USI blocks: they come in address order, each
+full USI followed by its I2C-only partner 0x10000 above it.  The same
+rule gives the 0x101c already used for usi3 in PERIC0.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   |  7 ++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 39 +++++++++++++++++++
+ 2 files changed, 46 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index 477ba04a823..3e5316b76be 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -729,6 +729,13 @@ gph1: gph1-gpio-bank {
+ 		#interrupt-cells = <2>;
+ 	};
+ 
++	hsi2c38_bus: hsi2c38-bus-pins {
++		samsung,pins = "gph0-6", "gph0-7";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_3>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
++
+ 	/* tearing effect from the panel, the display trigger source */
+ 	decon_te_pins: decon-te-pins {
+ 		samsung,pins = "gpd0-0";
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 6d816b49f7d..d4029c61ae9 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -490,6 +490,45 @@ serial1: serial@10840000 {
+ 			};
+ 		};
+ 
++		/*
++		 * An I2C-only USI block, the one the vendor tree calls usi_17_i2c.
++		 * Its mode register sits in the PERIC1 system register at offset
++		 * 0x1050: the vendor lists the PERIC1 blocks in address order,
++		 * each full USI followed by its I2C-only partner 0x10000 above it,
++		 * and the same rule gives the 0x101c of usi3 in PERIC0.
++		 */
++		usi17_i2c: usi@109a00c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x109a00c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI17_I2C_PCLK>,
++				 <&cmu_peric1 CLK_GOUT_PERIC1_USI17_I2C_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_peric1 0x1050>;
++			samsung,clkreq-on;
++			status = "disabled";
++
++			hsi2c38: i2c@109a0000 {
++				compatible = "samsung,exynos9820-hsi2c",
++					     "samsung,exynosautov9-hsi2c";
++				reg = <0x109a0000 0xc0>;
++				interrupts = <GIC_SPI 428 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_peric1 CLK_GOUT_PERIC1_USI17_I2C_IPCLK>,
++					 <&cmu_peric1 CLK_GOUT_PERIC1_USI17_I2C_PCLK>;
++				clock-names = "hsi2c", "hsi2c_pclk";
++				pinctrl-0 = <&hsi2c38_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
+ 		cmu_fsys0a: clock-controller@10a00000 {
+ 			compatible = "samsung,exynos9820-cmu-fsys0a";
+ 			reg = <0x10a00000 0x8000>;

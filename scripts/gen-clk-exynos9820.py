@@ -50,11 +50,17 @@ _spec.loader.exec_module(CAL)
 BLOKI = [
     ("CMU_PERIS", "peris", "bus", "wczesna", False),
     ("CMU_PERIC0", "peric0", "bus", "platforma", False),
+    ("CMU_PERIC1", "peric1", "bus", "platforma", False),
     ("CMU_FSYS0A", "fsys0a", "bus", "platforma", False),
     ("CMU_FSYS1", "fsys1", "bus", "platforma", False),
     ("CMU_APM", "apm", "bus", "platforma", False),
     ("CMU_CMGP", "cmgp", "bus", "platforma", False),
     ("CMU_DPU", "dpu", "bus", "platforma", True),
+    # Domena AUD istnieje (PMU 0x1900), ale blok idzie na razie bez niej:
+    # bootloader zostawia ja wlaczona, a jedynym odbiorca jest dzis modul
+    # spoza drzewa, ktory nie trzyma zadnego zegara, wiec runtime PM zdjalby
+    # domene zaraz po starcie.
+    ("CMU_AUD", "aud", "cpu", "platforma", False),
     ("CMU_CMU", "top", None, "wczesna", False),
 ]
 
@@ -68,6 +74,45 @@ POWOD_WCZESNEJ = {
 # Zegar odniesienia calego SoC.  W tablicach producenta kazdy blok ma wlasny
 # alias OSCCLK_<BLOK> o tej samej czestotliwosci, w drzewie urzadzen jest to
 # jeden zegar wejsciowy.
+# Czestotliwosci PLL-i, ktorych rejestrow NIE DA SIE przeczytac.
+#
+# Okno PLL w CMU_TOP jest zamkniete: odczyt konczy sie synchronicznym abortem
+# zewnetrznym (esr 0x96000010, far 0x1a24010c dla apll_shared0). Zmierzone
+# w bootloaderze 19.09.2026 i potwierdzone panika jadra 21.09.2026, za kazdym
+# razem na PIERWSZYM czytanym rejestrze PLL. Okna muxow, dzielnikow i bramek
+# tego samego bloku czytaja sie normalnie, wiec zamkniete jest samo okno PLL.
+#
+# Rejestracja przez PLL() zawsze konczy sie odczytem, bo rdzen wola
+# recalc_rate, zeby poznac czestotliwosc poczatkowa. Dlatego te zegary ida
+# jako stale czestotliwosci, a nie jako PLL-e.
+#
+# Wartosci z tablic CAL producenta (sources/ds/cmucal-node.c), gdzie kazdy
+# z tych PLL-i ma dokladnie jeden wpis, czyli sa to stale konstrukcyjne.
+# Sprawdzone wobec oscylatora 26 MHz i zgodne z naszym bootloaderem, ktory
+# z tymi liczbami na tym telefonie startuje.
+PLL_STALE = {
+    "fout_apll_shared0": 2132000000,   # 26 MHz * 82
+    "fout_apll_shared1": 1865500032,   # 26 MHz * 287 / 4
+    "fout_pll_g3d":       650000000,   # jedyny z dwoma wpisami, bierzemy wyzszy
+    "fout_pll_shared0":  2132000000,   # 26 MHz * 328 / 4
+    "fout_pll_shared1":  1865500032,   # 26 MHz * 287 / 4
+    "fout_pll_shared2":   800000000,
+    "fout_pll_shared3":   640000000,
+    "fout_pll_shared4":   666000000,   # 26 MHz * 333 / 13
+    "fout_pll_mmc":        26000000,   # PLL w obejsciu, wprost z oscylatora
+    # PLL-e bloku audio czytaja sie (CON0-CON4, odczyt CON5 konczy sie
+    # abortem), ale ida tak samo, bo mainline pll0831x bierze K spod
+    # con_reg + 8, a tu K lezy w CON3 = CON0 + 0xc.  Tablica producenta dla
+    # PLL_AUD0 ma wylacznie wpisy 1179,648 MHz +-840 ppb (korekta dryfu),
+    # czyli czestotliwosc jest stala konstrukcyjnie; wartosc zmierzona na
+    # telefonie po bootloaderze: M 45, P 1, S 0, K 0x5eff z 26 MHz
+    # (measurements/2026-09-25-dzwiek).  PLL_AUD1 bootloader zostawia
+    # wylaczony (CON0 = 0), wiec nie udaje czestotliwosci z tablicy.
+    "fout_pll_aud0":     1179648010,   # 26 MHz * (45 + 24319/65536)
+    "fout_pll_aud1":              0,   # wylaczony
+}
+
+
 OSCYLATOR = "oscclk"
 CZESTOTLIWOSC_OSCYLATORA = 26000000
 
@@ -124,6 +169,8 @@ IGNORUJ_CALE_BLOKI = {
                " prowadzi, wiec nikt ich tu nie zajmuje",
     "CMU_APM": "blok always-on: PMU, RTC i skrzynki do modemu oraz VTS chodza"
                " bez sterownikow po stronie mainline",
+    "CMU_AUD": "ABOX prowadzi na razie modul spoza drzewa, ktory nie trzyma"
+               " zegarow; wygaszona bramka ACLK wiesza kazdy dostep do bloku",
 }
 
 # Sciezki, na ktorych odbiorca realnie ustawia czestotliwosc: port szeregowy
@@ -309,8 +356,7 @@ def nieprogramowalne(model):
     To jest zalozenie, nie fakt z tablic: ktore wejscie wybiera sprzet, nie
     wynika z niczego, co mamy. Stad adnotacja UNVERIFIED w naglowku pliku
     i pozycja w docs/HW-BLOCKED.md. Blokow, ktorych to dotyczy, sa dwa w calym
-    SoC (MUX_CLK_PERIS_GIC i MUX_HCHGEN_CLK_AUD_CPU), a ten sterownik obejmuje
-    tylko pierwszy.
+    SoC (MUX_CLK_PERIS_GIC i MUX_HCHGEN_CLK_AUD_CPU) i sterownik obejmuje oba.
     """
     out = {}
     for w in model["wezly"]:
@@ -561,10 +607,37 @@ def emituj_blok(model, blok, przyrostek, zegar_dt, rejestracja, w_domenie,
         for n, off in rejestry_wezla(model, w):
             rejestry.setdefault(n, off)
     kolejnosc = sorted(rejestry, key=lambda n: (rejestry[n], n))
-    szer = max([len(n) for n in kolejnosc] or [0])
+
+    # Sterownik PLL rodziny samsung czyta M, P i S wprost z rejestru, na ktory
+    # wskazuje con_offset, a te wspolczynniki leza w CON3, nie w CON0 (CON0 to
+    # rejestr sterujacy).  Tablice CAL wymieniaja PLL_CON3_* tylko tam, gdzie
+    # uklad uzywa dzielnika K, czyli dla trzech PLL-i z dziewieciu; te trzy
+    # wpisy potwierdzaja regule mapy rejestrow tej rodziny, CON3 = CON0 + 0xc,
+    # i z niej biora sie offsety dla pozostalych.  Gdzie producent podaje
+    # offset, jest on brany wprost i tylko sprawdzany wobec reguly.
+    # Pilnuje tego scripts/check-pll-con3.py.
+    definicje = dict(rejestry)
+    for w, _ in wezly:
+        if w["rodzaj"] != "pll":
+            continue
+        con0 = model["pola"][w["enable"]]["rejestr"]
+        con3 = con0.replace("PLL_CON0_", "PLL_CON3_", 1)
+        if con3 == con0:
+            sys.exit("%s: %s nie wyglada na rejestr sterujacy PLL"
+                     % (blok, con0))
+        liczony = rejestry[con0] + 0xc
+        wpis = model["rejestry"].get(con3)
+        if wpis and wpis["offset"] != liczony:
+            sys.exit("%s: %s pod 0x%x, a %s pod 0x%x, roznica nie wynosi 0xc"
+                     % (blok, con0, rejestry[con0], con3, wpis["offset"]))
+        definicje[con3] = wpis["offset"] if wpis else liczony
+
+    kolejnosc_def = sorted(definicje, key=lambda n: (definicje[n], n))
+    szer = max([len(n) for n in kolejnosc_def] or [0])
     kolumna = ((8 + szer) // 8 + 1) * 8
-    for n in kolejnosc:
-        out.append(do_kolumny("#define " + n, kolumna) + "0x%04x" % rejestry[n])
+    for n in kolejnosc_def:
+        out.append(do_kolumny("#define " + n, kolumna)
+                   + "0x%04x" % definicje[n])
     out.append("")
 
     out.append("static const unsigned long %s_clk_regs[] __initconst = {" % kod)
@@ -577,31 +650,44 @@ def emituj_blok(model, blok, przyrostek, zegar_dt, rejestracja, w_domenie,
     for w, r in wezly:
         rodzaje.setdefault(w["rodzaj"], []).append((w, r))
 
-    if rodzaje.get("pll"):
-        out.append("static const struct samsung_pll_clock %s_pll_clks[]"
-                   " __initconst = {" % kod)
-        for w, _ in rodzaje["pll"]:
-            n = nazwy[w["id"]]
-            lock = model["pola"][w["lock"]]["rejestr"]
-            con = model["pola"][w["enable"]]["rejestr"]
-            out.append(zawin("PLL", [w["typ"].lower(), ident(n), '"%s"' % n,
-                                     '"%s"' % OSCYLATOR, lock, con, "NULL"])
-                       + ",")
-        out.append("};")
-        out.append("")
+    stale = []
+    for w, _ in rodzaje.get("frate", []):
+        n = nazwy[w["id"]]
+        stale.append((n, w["czestotliwosc"], False))
+    for w, _ in rodzaje.get("pll", []):
+        n = nazwy[w["id"]]
+        if n not in PLL_STALE:
+            sys.exit("gen-clk: brak stalej czestotliwosci dla %s; okna PLL"
+                     " nie da sie odczytac, wiec trzeba ja wziac z tablic"
+                     " CAL producenta" % n)
+        stale.append((n, PLL_STALE[n], True))
 
-    if rodzaje.get("frate"):
+    if stale:
         out.append("/*")
-        out.append(" * On-chip oscillators the vendor tables give a rate for"
-                   " but no register:")
-        out.append(" * cmucal-node.c carries them as FIXEDRATE entries.")
+        out.append(" * Clocks the vendor tables give a rate for but this SoC"
+                   " gives no readable")
+        out.append(" * register.  Two kinds sit here.  The on-chip"
+                   " oscillators have no register")
+        out.append(" * at all and cmucal-node.c carries them as FIXEDRATE"
+                   " entries.  The PLLs do")
+        out.append(" * have registers, but the window holding them answers"
+                   " no read: every attempt")
+        out.append(" * ends in a synchronous external abort, both from the"
+                   " boot loader and from")
+        out.append(" * here, always on the first one touched.  Registering"
+                   " them as PLLs is not an")
+        out.append(" * option either, because the core reads the register to"
+                   " learn the starting")
+        out.append(" * rate.  Their tables in cmucal-node.c hold exactly one"
+                   " entry each, so these")
+        out.append(" * are fixed by construction rather than tuned at"
+                   " runtime.")
         out.append(" */")
         out.append("static const struct samsung_fixed_rate_clock"
                    " %s_fixed_clks[] __initconst = {" % kod)
-        for w, _ in rodzaje["frate"]:
-            n = nazwy[w["id"]]
+        for n, hz, _ in stale:
             out.append(zawin("FRATE", [ident(n), '"%s"' % n, "NULL", "0",
-                                       "%d" % w["czestotliwosc"]]) + ",")
+                                       "%d" % hz]) + ",")
         out.append("};")
         out.append("")
 
@@ -685,9 +771,6 @@ def emituj_blok(model, blok, przyrostek, zegar_dt, rejestracja, w_domenie,
     out.append("static const struct samsung_cmu_info %s_cmu_info __initconst"
                " = {" % kod)
     pola = []
-    if rodzaje.get("pll"):
-        pola += [(".pll_clks", "%s_pll_clks" % kod),
-                 (".nr_pll_clks", "ARRAY_SIZE(%s_pll_clks)" % kod)]
     if rodzaje.get("mux"):
         pola += [(".mux_clks", "%s_mux_clks" % kod),
                  (".nr_mux_clks", "ARRAY_SIZE(%s_mux_clks)" % kod)]
@@ -697,7 +780,7 @@ def emituj_blok(model, blok, przyrostek, zegar_dt, rejestracja, w_domenie,
     if rodzaje.get("gate"):
         pola += [(".gate_clks", "%s_gate_clks" % kod),
                  (".nr_gate_clks", "ARRAY_SIZE(%s_gate_clks)" % kod)]
-    if rodzaje.get("frate"):
+    if rodzaje.get("frate") or rodzaje.get("pll"):
         pola += [(".fixed_clks", "%s_fixed_clks" % kod),
                  (".nr_fixed_clks", "ARRAY_SIZE(%s_fixed_clks)" % kod)]
     if rodzaje.get("ffactor"):

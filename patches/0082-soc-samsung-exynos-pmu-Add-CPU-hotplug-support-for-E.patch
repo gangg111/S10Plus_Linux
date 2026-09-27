@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 09:40:00 +0200
+Subject: [PATCH] soc: samsung: exynos-pmu: Add CPU hotplug support for
+ Exynos9820
+
+The firmware of this SoC needs the same nudge as the Tensor one, and the
+registers it needs are the ones this driver already drives: the vendor
+power sequences write to GRP2_INTR_BID_ENABLE at 0x200 of the interrupt
+generator and clear the pending bit from 0x20c before every core they
+start, and the CPU_INFORM hints sit at 0x860 of the PMU, one word per
+core.  Both match what the gs101 path does, so only the entry differs.
+
+Unlike Tensor, the PMU registers of this SoC are writable from the kernel,
+so no secure path is needed.
+
+Not measured yet: the phone this runs on boots with one core and the
+remaining seven have never come up, which is what this is for.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/soc/samsung/exynos-pmu.c | 20 +++++++++++++++++++-
+ 1 file changed, 19 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/soc/samsung/exynos-pmu.c b/drivers/soc/samsung/exynos-pmu.c
+index d58376c3817..c51f6248816 100644
+--- a/drivers/soc/samsung/exynos-pmu.c
++++ b/drivers/soc/samsung/exynos-pmu.c
+@@ -116,6 +116,17 @@ static const struct regmap_config regmap_pmu_intr = {
+ 	.use_raw_spinlock = true,
+ };
+ 
++/*
++ * The firmware of this SoC needs the same nudge as the Tensor one: a core does
++ * not come up on the PSCI call alone, the host has to lift the interrupt block
++ * of that core first.  The registers involved are the ones the gs101 code
++ * already drives, at the same offsets, so only the entry differs.  Unlike
++ * Tensor, PMU registers here are writable from the kernel, so no secure path.
++ */
++static const struct exynos_pmu_data exynos9820_pmu_data = {
++	.pmu_cpuhp = true,
++};
++
+ /*
+  * PMU platform driver and devicetree bindings.
+  */
+@@ -149,6 +160,9 @@ static const struct of_device_id exynos_pmu_of_device_ids[] = {
+ 		.compatible = "samsung,exynos7-pmu",
+ 	}, {
+ 		.compatible = "samsung,exynos850-pmu",
++	}, {
++		.compatible = "samsung,exynos9820-pmu",
++		.data = &exynos9820_pmu_data,
+ 	},
+ 	{ /*sentinel*/ },
+ };
+@@ -415,7 +429,11 @@ static int setup_cpuhp_and_cpuidle(struct device *dev)
+ 	int ret, cpu;
+ 
+ 	intr_gen_node = of_parse_phandle(dev->of_node,
+-					 "google,pmu-intr-gen-syscon", 0);
++					 "samsung,pmu-intr-gen-syscon", 0);
++	if (!intr_gen_node)
++		intr_gen_node = of_parse_phandle(dev->of_node,
++						 "google,pmu-intr-gen-syscon",
++						 0);
+ 	if (!intr_gen_node) {
+ 		/*
+ 		 * To maintain support for older DTs that didn't specify syscon

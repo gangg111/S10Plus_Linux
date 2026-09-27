@@ -1,0 +1,152 @@
+From edbaab116b6ecbe7575a4f926d92449629f3bb4d Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 21:33:21 +0200
+Subject: [PATCH 29/40] board: samsung: exynos-mobile: keep the loader off the
+ reserved windows
+
+This phone reserves several windows just under the four gigabyte line
+this board stops at, and one of them is where the kernel leaves its last
+console lines for the next boot to read.  The loader puts itself, its
+heap and its stack below wherever it is told to stop, so stopping at the
+line lands all three on top of those windows and wipes them.
+
+Measured, and that is how the hole was found: a deliberate kernel panic
+left /sys/fs/pstore empty on the next boot, while the fastboot buffer,
+which is handed the highest free memory below the line, came back at
+0xeee00000, so some 146 MiB above it had already gone to the loader.
+The tree reserves modem_if, cp_ram_logging and the ramoops buffer inside
+exactly that span.
+
+The stop is now pulled below any window the tree reserves that the
+loader would otherwise reach, and pulling it down can uncover the next
+one, so it is done until it settles.  What this hook is passed is the
+length of the monitor alone, under a megabyte, so the heap and a margin
+for the page tables, the frame buffer and the stack are added before
+asking.  The fastboot buffer is given the same ceiling, or it would be
+placed in the windows the loader has just left.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/exynos-mobile.c | 80 ++++++++++++++++++++-
+ 1 file changed, 78 insertions(+), 2 deletions(-)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index 6ef42137..bacff2eb 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -21,8 +21,10 @@
+ #include <efi_loader.h>
+ #include <env.h>
+ #include <errno.h>
++#include <fdtdec.h>
+ #include <init.h>
+ #include <linux/err.h>
++#include <linux/libfdt.h>
+ #include <linux/sizes.h>
+ #include <lmb.h>
+ #include <part.h>
+@@ -35,9 +37,71 @@
+ DECLARE_GLOBAL_DATA_PTR;
+ 
+ 
++/* How many times the ceiling may be lowered before the tree is wrong. */
++#define EXYNOS_RESERVED_PASSES	8
++
+ #define lmb_alloc(size, addr) \
+ 	lmb_alloc_mem(LMB_MEM_ALLOC_ANY, SZ_2M, addr, size, LMB_NONE)
+ 
++/*
++ * The highest address this loader may end on, given how much room it needs.
++ *
++ * Stopping at 4 GiB is not enough by itself.  This phone reserves several
++ * windows just under that line, and the loader relocates itself, its heap and
++ * its stack downwards from wherever it is told to stop, so with the stop at
++ * the line it lands on top of them.  One of those windows is the one the
++ * kernel logs its last words into, which is the whole point of that window:
++ * a reset is supposed to leave it behind for the next boot to read.
++ *
++ * Measured, and this is how the hole was found: with the stop at 4 GiB a
++ * deliberate kernel panic left /sys/fs/pstore empty after the reboot, and the
++ * fastboot buffer, which is handed the highest free memory below the line,
++ * came back at 0xeee00000, so the loader had already taken everything above
++ * that, some 144 MiB reaching well into the reserved windows.
++ *
++ * So every window the tree reserves is walked, and the stop is pulled down
++ * below any of them that the loader would otherwise reach.  Pulling it down
++ * can uncover another one, hence the loop; it ends because each pass either
++ * lowers the stop or finishes.
++ */
++static phys_addr_t exynos_ram_top_below_reserved(phys_addr_t top,
++						 phys_size_t needed)
++{
++	const void *fdt = gd->fdt_blob;
++	int parent, node, pass;
++
++	if (!fdt)
++		return top;
++
++	parent = fdt_path_offset(fdt, "/reserved-memory");
++	if (parent < 0)
++		return top;
++
++	for (pass = 0; pass < EXYNOS_RESERVED_PASSES; pass++) {
++		phys_addr_t was = top;
++
++		fdt_for_each_subnode(node, fdt, parent) {
++			fdt_size_t size;
++			fdt_addr_t start;
++
++			start = fdtdec_get_addr_size_auto_parent(fdt, parent,
++								 node, "reg", 0,
++								 &size, false);
++			if (start == FDT_ADDR_T_NONE || !size)
++				continue;
++
++			/* Does what the loader would take reach this window? */
++			if (start < top && start + size > top - needed)
++				top = start;
++		}
++
++		if (top == was)
++			break;
++	}
++
++	return top;
++}
++
+ struct efi_fw_image fw_images[] = {
+ 	{
+ 		.fw_name = u"UBOOT_BOOT_PARTITION",
+@@ -315,7 +379,8 @@ static int exynos_fastboot_setup(void)
+ 	 * with 8 GiB sits above that line, and every transfer then has an
+ 	 * address the controller cannot reach.
+ 	 */
+-	addr = SZ_4G;
++	addr = exynos_ram_top_below_reserved(SZ_4G,
++					     CONFIG_FASTBOOT_BUF_SIZE);
+ 	if (lmb_alloc_mem(LMB_MEM_ALLOC_MAX, SZ_2M, &addr,
+ 			  CONFIG_FASTBOOT_BUF_SIZE, LMB_NONE)) {
+ 		log_err("%s: failed to allocate fastboot buffer\n", __func__);
+@@ -550,7 +615,18 @@ int board_early_init_f(void)
+  */
+ phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
+ {
+-	return SZ_4G;
++	/*
++	 * What is passed in is the length of the monitor alone, under a
++	 * megabyte, and the monitor is not what ends up below the line:
++	 * the heap and the stack are reserved after this, downwards from
++	 * the same place, and on this board the heap by itself is 128 MiB.
++	 * Measured with the line at 4 GiB: the highest free memory under
++	 * it began at 0xeee00000, so the loader had taken some 146 MiB.
++	 * The margin covers what is reserved besides the heap: the page
++	 * tables, the frame buffer and the stack.
++	 */
++	return exynos_ram_top_below_reserved(SZ_4G, total_size +
++					     CONFIG_SYS_MALLOC_LEN + SZ_32M);
+ }
+ 
+ int dram_init(void)
+-- 
+2.47.3
+

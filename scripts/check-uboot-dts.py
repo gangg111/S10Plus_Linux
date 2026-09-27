@@ -28,6 +28,8 @@ Kody wyjscia: 0 zgodne, 1 rozjazd, 2 bramka NIE URUCHOMIONA (brak zrodel).
 """
 
 import re
+import os
+import pathlib
 import subprocess
 import sys
 from pathlib import Path
@@ -41,6 +43,10 @@ LINUX = ufs_cal.ROOT / "sources" / "linux"
 BRANCH = "series"
 
 DTS_PATCH = "0007-dts-exynos-add-the-Exynos9820-and-Galaxy-S10-device-.patch"
+
+# Drzewo bootloadera zyje pod WSL, tak samo jak dla check-uboot-clk-order.
+UBOOT = pathlib.Path(os.environ.get(
+    "UBOOT_TREE", "//wsl.localhost/Debian/home/pm/u-boot-upstream"))
 CFG_PATCH = "0008-board-samsung-exynos-mobile-add-the-Samsung-Galaxy-S.patch"
 PIN_PATCH = "0001-pinctrl-exynos-add-the-Exynos9820-pin-controller-dri.patch"
 
@@ -74,10 +80,25 @@ def kernel_file(path):
     return r.stdout
 
 
+def uboot_file(path):
+    """Plik kopii wprost z drzewa bootloadera.
+
+    Kiedys szedl z patcha 0007, bo tamten wnosil go w calosci. Dzis tresc
+    dochodzi dwoma patchami (0007 wnosi plik, 0009 dosyla synchronizacje),
+    a skladanie pliku z wielu patchy nie jest robota dla tej bramki. Rownosc
+    patchy z tym drzewem dowodzi osobno check-uboot-seria.sh, wiec lancuch
+    od generatora do wysylanej latki jest pelny i bez tego.
+    """
+    p = UBOOT / path
+    if not p.is_file():
+        fail("drzewo bootloadera nie ma %s" % path)
+    return p.read_text(encoding="utf-8")
+
+
 def check_copies():
     """Kopia w dts/upstream musi byc bajt w bajt plikiem z serii jadra."""
     for ub_path, lin_path in COPIES.items():
-        ours = "\n".join(ufs_cal.read_driver_from_patch(GATE, DTS_PATCH, ub_path))
+        ours = uboot_file(ub_path)
         theirs = kernel_file(lin_path)
         # Patch oddaje wiersze bez koncowki, wiec porownujemy po wierszach.
         a = ours.splitlines()

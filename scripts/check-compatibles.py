@@ -41,6 +41,10 @@ BEZ_STEROWNIKA = {
     "arm,cortex-a55": "rdzen procesora, rozpoznawany po MIDR",
     "arm,cortex-a75": "rdzen procesora, rozpoznawany po MIDR",
     "samsung,mongoose-m4": "rdzen procesora, rozpoznawany po MIDR",
+    # Sterownik huba czujnikow to port kodu producenta spoza drzewa
+    # (tools/phone/hub-modul, budowany przez tools/pc/buduj-moduly-extra.sh);
+    # niesie blob firmware huba, wiec nie wchodzi do serii jadra.
+    "brcm,bcm47752": "hub czujnikow, sterownik spoza drzewa w tools/phone/hub-modul",
 }
 
 # Katalogi, w ktorych szukamy tablic dopasowan.

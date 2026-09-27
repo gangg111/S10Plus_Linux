@@ -1,0 +1,187 @@
+Warning: Permanently added '172.16.42.1' (ED25519) to the list of known hosts.
+=== zegary magistral i2c ===
+    gout_peric0_clk_peric0_oscclk_clk 0       0        0        26000000    0          0     50000      Y      deviceless                      no_connection_id         
+                                     gout_cmgp_usi_cmgp3_pclk 0       1        0        400000000   0          0     50000      N                                       15d60000.i2c                    hsi2c_pclk               
+                                     gout_cmgp_usi_cmgp2_pclk 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                     gout_cmgp_usi_cmgp1_pclk 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                     gout_cmgp_usi_cmgp0_pclk 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                     gout_cmgp_i2c_cmgp3_pclk 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                     gout_cmgp_i2c_cmgp2_pclk 0       1        0        400000000   0          0     50000      N                                       15d50000.i2c                    hsi2c_pclk               
+                                     gout_cmgp_i2c_cmgp1_pclk 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                     gout_cmgp_i2c_cmgp0_pclk 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                  mout_usi_cmgp3 0       1        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_usi_cmgp3 0       1        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_usi_cmgp3_ipclk 0       1        0        400000000   0          0     50000      N                                          15d60000.i2c                    hsi2c                    
+                                        gout_cmgp_clk_cmgp_usi3_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                  mout_usi_cmgp2 0       0        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_usi_cmgp2 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_usi_cmgp2_ipclk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                        gout_cmgp_clk_cmgp_usi2_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                  mout_usi_cmgp1 0       0        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_usi_cmgp1 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_usi_cmgp1_ipclk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                        gout_cmgp_clk_cmgp_usi1_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                  mout_usi_cmgp0 0       0        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_usi_cmgp0 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_usi_cmgp0_ipclk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                        gout_cmgp_clk_cmgp_usi0_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                  mout_i2c_cmgp3 0       0        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_i2c_cmgp3 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_clk_cmgp_i2c3_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                        gout_cmgp_i2c_cmgp3_ipclk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                  mout_i2c_cmgp2 0       1        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_i2c_cmgp2 0       1        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_clk_cmgp_i2c2_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                        gout_cmgp_i2c_cmgp2_ipclk 0       1        0        400000000   0          0     50000      N                                          15d50000.i2c                    hsi2c                    
+                                  mout_i2c_cmgp1 0       0        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_i2c_cmgp1 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_clk_cmgp_i2c1_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                        gout_cmgp_i2c_cmgp1_ipclk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                  mout_i2c_cmgp0 0       0        0        400000000   0          0     50000      Y                                    deviceless                      no_connection_id         
+                                     dout_i2c_cmgp0 0       0        0        400000000   0          0     50000      Y                                       deviceless                      no_connection_id         
+                                        gout_cmgp_clk_cmgp_i2c0_clk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+                                        gout_cmgp_i2c_cmgp0_ipclk 0       0        0        400000000   0          0     50000      Y                                          deviceless                      no_connection_id         
+          mout_cmu_peric0_bus        1       1        0        400000000   0          0     50000      Y            deviceless                      no_connection_id         
+             gout_cmu_peric0_bus     1       1        0        400000000   0          0     50000      Y               deviceless                      no_connection_id         
+                dout_cmu_peric0_bus  2       2        0        66666667    0          0     50000      Y                  10400000.clock-controller       bus                      
+                   mout_peric0_bus_user 2       4        0        66666667    0          0     50000      Y                     deviceless                      no_connection_id         
+                      gout_peric0_xiu_p_peric0_aclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi15_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi15_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi14_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi14_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi13_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi13_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi12_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi12_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi05_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi05_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi04_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi04_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi03_usi_pclk 0       1        0        66666667    0          0     50000      N                        104b0000.i2c                    hsi2c_pclk               
+                                                                                                                                104b00c0.usi                    pclk                     
+                      gout_peric0_usi03_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi02_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi02_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi01_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi01_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi00_usi_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_usi00_i2c_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_uart_dbg_pclk 0       0        0        66666667    0          0     50000      N                        10440000.serial                 uart                     
+                      gout_peric0_sysreg_peric0_pclk 0       1        0        66666667    0          0     50000      N                        syscon@10420000                 no_connection_id         
+                      gout_peric0_clk_peric0_busp_clk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_pwm_i_pclk_s0 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_lhm_axi_p_peric0_i_clk 1       1        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_gpio_peric0_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_d_tzpc_peric0_pclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_axi2apb_peric0p1_aclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_axi2apb_peric0p0_aclk 0       0        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+                      gout_peric0_peric0_cmu_peric0_pclk 1       1        0        66666667    0          0     50000      Y                        deviceless                      no_connection_id         
+          mout_cmu_peric0_ip         0       1        0        400000000   0          0     50000      Y            deviceless                      no_connection_id         
+             gout_cmu_peric0_ip      0       1        0        400000000   0          0     50000      N               deviceless                      no_connection_id         
+                dout_cmu_peric0_ip   0       1        0        200000000   0          0     50000      Y                  clock-controller@10400000       no_connection_id         
+                   mout_peric0_usi_i2c_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi_i2c 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi15_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi14_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi13_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi12_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi05_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi04_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi03_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi02_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi01_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_usi00_i2c_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi_i2c_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi15_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi15_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi15_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi15_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi14_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi14_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi14_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi14_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi12_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi12_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi12_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi12_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi05_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi05_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi05_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi05_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi03_usi_user 0       1        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi03_usi 0       1        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi03_usi_ipclk 0       1        0        200000000   0          0     50000      N                           104b0000.i2c                    hsi2c                    
+                                                                                                                                   104b00c0.usi                    ipclk                    
+                         gout_peric0_clk_peric0_usi03_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi02_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi02_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi02_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi02_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi01_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi01_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi01_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi01_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi00_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi00_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi00_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi00_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi04_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi04_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi04_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi04_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_usi13_usi_user 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_usi13_usi 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_usi13_usi_ipclk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                         gout_peric0_clk_peric0_usi13_usi_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+                   mout_peric0_uart_dbg 0       0        0        200000000   0          0     50000      Y                     deviceless                      no_connection_id         
+                      dout_peric0_uart_dbg 0       0        0        200000000   0          0     50000      Y                        deviceless                      no_connection_id         
+                         gout_peric0_uart_dbg_ipclk 0       0        0        200000000   0          0     50000      N                           10440000.serial                 clk_uart_baud0           
+                         gout_peric0_clk_peric0_uart_dbg_clk 0       0        0        200000000   0          0     50000      Y                           deviceless                      no_connection_id         
+          mout_cmu_peric1_bus        0       0        0        400000000   0          0     50000      Y            deviceless                      no_connection_id         
+             gout_cmu_peric1_bus     0       0        0        400000000   0          0     50000      Y               deviceless                      no_connection_id         
+                dout_cmu_peric1_bus  0       0        0        66666667    0          0     50000      Y                  deviceless                      no_connection_id         
+          mout_cmu_peric1_ip         0       0        0        400000000   0          0     50000      Y            deviceless                      no_connection_id         
+             gout_cmu_peric1_ip      0       0        0        400000000   0          0     50000      Y               deviceless                      no_connection_id         
+                dout_cmu_peric1_ip   0       0        0        200000000   0          0     50000      Y                  deviceless                      no_connection_id         
+
+=== zegary przypisane do urzadzen ===
+[15d50000.i2c]
+driver driver_override i2c-0 modalias of_node power subsystem supplier:platform:15c00000.clock-controller supplier:platform:15c30000.pinctrl uevent 
+[15d60000.i2c]
+driver driver_override i2c-1 modalias of_node power subsystem supplier:platform:15c00000.clock-controller supplier:platform:15c30000.pinctrl uevent 
+[104b0000.i2c]
+
+[104b00c0.usi]
+104b0000.i2c driver driver_override modalias of_node power subsystem supplier:platform:10400000.clock-controller uevent 
+
+=== pinctrl: stan pinow magistral ===
+10430000.pinctrl-samsung-pinctrl
+10830000.pinctrl-samsung-pinctrl
+13030000.pinctrl-samsung-pinctrl
+13c40000.pinctrl-samsung-pinctrl
+15580000.pinctrl-samsung-pinctrl
+15850000.pinctrl-samsung-pinctrl
+15c30000.pinctrl-samsung-pinctrl
+18c60000.pinctrl-samsung-pinctrl
+pinctrl-devices
+pinctrl-handles
+pinctrl-maps
+
+=== odroczone sondy ===
+1-0036	i2c: supplier 1-0066 not ready
+
+=== katalog i2c w debugfs ===
+/sys/kernel/debug/i2c/:
+i2c-0
+i2c-1
+i2c-2
+
+/sys/kernel/debug/i2c/i2c-0:
+0-0060
+
+/sys/kernel/debug/i2c/i2c-0/0-0060:
+
+/sys/kernel/debug/i2c/i2c-1:
+
+/sys/kernel/debug/i2c/i2c-2:

@@ -1,7 +1,7 @@
-From 5cd81ffce627cffb80b25848ee7048702602094b Mon Sep 17 00:00:00 2001
+From d77a9f1a7539d6b5e8fc6a242f4f686f38579e2a Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sat, 19 Sep 2026 03:54:47 +0200
-Subject: [PATCH 7/8] dts: exynos: add the Exynos9820 and Galaxy S10+ device
+Subject: [PATCH 07/40] dts: exynos: add the Exynos9820 and Galaxy S10+ device
  trees
 
 Copies of the device trees this SoC and this phone have in the kernel,

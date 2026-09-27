@@ -1,0 +1,64 @@
+Warning: Permanently added '172.16.42.1' (ED25519) to the list of known hosts.
+=== jadro ===
+Linux pmos 7.2.0-01001-ga9d566a524be-dirty #12 SMP PREEMPT Sun Sep 20 16:16:41 CEST 2026 aarch64 Linux
+
+=== ktory wariant sterownika wybrany ===
+[   20.937210] exynos5-hsi2c 104b0000.i2c: DIAG wariant hw=3 fifo=64
+[   21.864351] exynos5-hsi2c 15d50000.i2c: DIAG wariant hw=3 fifo=64
+[   23.422570] exynos5-hsi2c 15d60000.i2c: DIAG wariant hw=3 fifo=64
+
+=== zrzut rejestrow przy niepowodzeniu ===
+[   21.298852] exynos5-hsi2c 104b0000.i2c: DIAG ret=-110 ipclk=200000000 pclk=66666667 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00ffeb fs3=00000000 sla=00000000 ctl=00000009
+[   22.078851] exynos5-hsi2c 15d50000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+[   22.970851] exynos5-hsi2c 15d50000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+[   23.638885] exynos5-hsi2c 15d60000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+
+=== komunikaty magistral ===
+[    0.000000] psci: Using PSCI v0.1 Function IDs from DT
+[    0.840633] Calibrating delay loop (skipped), value calculated using timer frequency.. 52.00 BogoMIPS (lpj=104000)
+[    6.234984] cpuidle: using governor menu
+[   16.717406] exynos5_usb3drd_phy 10b00000.phy: supply vbus not found, using dummy regulator
+[   16.941568] exynos5_usb3drd_phy 10b00000.phy: supply vbus-boost not found, using dummy regulator
+[   17.786342] exynos-usi 104b00c0.usi: DIAG sw_conf offset=0x101c maska=0x7 zapisano=0x4 odczyt=0x00000004
+[   18.010587] exynos-usi 104b00c0.usi: DIAG usi con=00000000 option=00000003 clkreq_on=1
+[   18.126079] exynos-usi 15d500c0.usi: DIAG sw_conf offset=0x24 maska=0x7 zapisano=0x4 odczyt=0x00000004
+[   18.350254] exynos-usi 15d500c0.usi: DIAG usi con=00000000 option=00000003 clkreq_on=1
+[   18.464864] exynos-usi 15d600c0.usi: DIAG sw_conf offset=0x30 maska=0x7 zapisano=0x4 odczyt=0x00000004
+[   18.689091] exynos-usi 15d600c0.usi: DIAG usi con=00000000 option=00000003 clkreq_on=1
+[   20.823708] i2c_dev: i2c /dev entries driver
+[   20.937210] exynos5-hsi2c 104b0000.i2c: DIAG wariant hw=3 fifo=64
+[   21.298852] exynos5-hsi2c 104b0000.i2c: DIAG ret=-110 ipclk=200000000 pclk=66666667 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00ffeb fs3=00000000 sla=00000000 ctl=00000009
+[   21.637430] exynos5-hsi2c 104b0000.i2c: tx timeout
+[   21.750474] s6sy761 0-0048: probe with driver s6sy761 failed with error -110
+[   21.864351] exynos5-hsi2c 15d50000.i2c: DIAG wariant hw=3 fifo=64
+[   22.078851] exynos5-hsi2c 15d50000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+[   22.417419] exynos5-hsi2c 15d50000.i2c: tx timeout
+[   22.970851] exynos5-hsi2c 15d50000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+[   23.309339] exynos5-hsi2c 15d50000.i2c: tx timeout
+[   23.422570] exynos5-hsi2c 15d60000.i2c: DIAG wariant hw=3 fifo=64
+[   23.638885] exynos5-hsi2c 15d60000.i2c: DIAG ret=-110 ipclk=400000000 pclk=400000000 ie=00000f80 is=00000000 ts=000a0006 fifo=01000001 conf=980110ff auto=80000001 tmo=000000ff fs1=ffffff00 fs2=7f00fff3 fs3=00070000 sla=00000000 ctl=00000009
+[   23.977429] exynos5-hsi2c 15d60000.i2c: tx timeout
+[   32.065534] Alternate GPT is invalid, using primary GPT.
+[   40.119076] i2c 2-0036: deferred probe pending: i2c: supplier 2-0066 not ready
+[   75.787287] systemd[1]: Starting Enable compressed swap in memory using zram...
+
+=== przerwania (czy CMGP ruszylo) ===
+  95:          2  GIC-0  420 Level     104b0000.i2c
+  97:          4  GIC-0  113 Level     15d50000.i2c
+  98:          2  GIC-0  114 Level     15d60000.i2c
+
+=== czy jest bateria ===
+
+=== czy jest dotyk ===
+N: Name="gpio-keys"
+
+=== odroczone sondy ===
+2-0036	i2c: supplier 2-0066 not ready
+
+=== skan magistrali baterii (i2c-1) ===
+  podsumowanie bledow:
+    Connection timed out     (110) razy: 59
+
+=== skan magistrali dotyku (i2c-2) ===
+  podsumowanie bledow:
+    Connection timed out     (110) razy: 9

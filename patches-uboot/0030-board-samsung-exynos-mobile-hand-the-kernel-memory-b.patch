@@ -1,0 +1,54 @@
+From a90c95a7092a01d1657c17bf18cbd459c745d57b Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 21:33:21 +0200
+Subject: [PATCH 30/40] board: samsung: exynos-mobile: hand the kernel memory
+ below the line
+
+Everything this board gives an operating system has to live below the
+line board_get_usable_ram_top() stops at, and not just the loader itself.
+Without that the allocator serves memory from the top of the highest
+bank, which on this phone is tens of gigabytes up, and that is where the
+kernel image lands.
+
+What it costs is not a detail.  The entry point passed to PSCI CPU_ON is
+then above four gigabytes, the firmware cannot start a secondary core
+there, and instead of an error it takes the whole SoC down: the phone
+resets with nothing from the kernel at all, which is what this port had
+been living with, booting on one core out of eight with maxcpus=1.
+
+Measured, each half on the phone.  With the image at 0x9f5200000 bringing
+a core online resets it.  A core started at 0xe1900000 comes up, the
+power management unit reports it running, and the phone carries on.  With
+this option the image lands at 0xe3400000, all eight cores come up, the
+three kinds this SoC has among them, and nothing is lost: the system
+still counts the same 7666604 kB of memory as before.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/Kconfig | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/board/samsung/exynos-mobile/Kconfig b/board/samsung/exynos-mobile/Kconfig
+index ed7d16b8..8eb15fe6 100644
+--- a/board/samsung/exynos-mobile/Kconfig
++++ b/board/samsung/exynos-mobile/Kconfig
+@@ -1,5 +1,16 @@
+ if TARGET_EXYNOS_MOBILE
+ 
++# Everything this board hands to an operating system has to live below the
++# line board_get_usable_ram_top() stops at.  Without this the allocator
++# serves memory from the top of the highest bank, which on this phone is
++# tens of gigabytes up, and the kernel image lands there; the firmware then
++# cannot start a secondary core at an entry point that high and takes the
++# whole SoC down instead.  Measured: with the image at 0x9f520000 a core
++# brought online resets the phone, while a core started at 0xe1900000 comes
++# up and the phone carries on.
++config LMB_LIMIT_DMA_BELOW_RAM_TOP
++	default y
++
+ config ENV_SOURCE_FILE
+ 	default "exynos-mobile"
+ 
+-- 
+2.47.3
+

@@ -1,0 +1,27 @@
+== krok 1: czy trafiam w te klawisze, ktore mysle
+surowe X= 310 Y=2756  ->  piksel  310 2756  ->  z
+surowe X= 140 Y=2756  ->  piksel  140 2756  ->  
+surowe X=1304 Y=2941  ->  piksel 1304 2941  ->  
+== krok 2: mapa jadra
+1
+== krok 3: pisanie
+palec:
+palec gotowy, czekam 4000 ms
+palec: 310 2756 na 120 ms
+palec: 310 2756 na 700 ms
+palec: 217 2560 na 120 ms
+palec: 310 2756 na 700 ms
+palec: 402 2560 na 120 ms
+palec: 140 2756 na 120 ms
+palec: 310 2756 na 120 ms
+palec: 1304 2941 na 120 ms
+klawiatura:
+ekran 1440x3040, komorka konsoli 64 px, pas 896 px od 2144, rzad 185 px
+koniec, konsola przywrocona
+== odebrano: [zżźZ]
+== bajty odebrane:
+ 7a c5 bc c5 ba 5a 0a
+== bajty oczekiwane:
+ 7a c5 bc c5 ba 5a 0a
+WYNIK: ZGODNE
+== klawiatura: active

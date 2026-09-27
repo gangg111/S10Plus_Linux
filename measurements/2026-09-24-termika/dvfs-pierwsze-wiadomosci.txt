@@ -1,0 +1,17 @@
+Pierwsze wiadomosci do firmware DVFS, 24.09.2026, jadro #58, modul dvfs_msg.c, kanal 1.
+Kazda po zgodzie uzytkownika, ktory byl przy telefonie.
+
+1) FREQ_GET cpucl2 (id 4)
+   wyslane    002a0004 00000000 00000001 00000000
+   odpowiedz  002a0000 00000000 00000000 00000000   (po 1 ms, seq 42, cmd[1] = 0)
+   TMU po: big 42 C, mid 40 C (firmware zyje); M4 1378 MHz
+
+2) FREQ_REQ cpucl2 = 1378000 kHz (bez zmiany)
+   wyslane    002a0004 001506d0 00000000 00000000
+   odpowiedz  002a0000 001506d0 00000000 00000000   (po 1 ms, echo czestotliwosci)
+   M4 1378 MHz
+
+3) FREQ_REQ cpucl2 = 1560000 kHz (+1 poziom, fvmap lv13, 725000 uV)
+   wyslane    002a0004 0017cdc0 00000000 00000000
+   odpowiedz  002a0000 0017cdc0 00000000 00000000   (po 1 ms)
+   petla ADD (takt.c): cpu0-3 1053, cpu4-5 1222, cpu6-7 1560 MHz

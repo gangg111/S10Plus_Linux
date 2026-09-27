@@ -1,0 +1,47 @@
+From a77a088d36bf1c9eb40e8ffcb68fbe066a7c663c Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 17:17:58 +0200
+Subject: [PATCH 38/40] dts: exynos: take the GPU node from the kernel tree
+
+Kernel patches 0112 and 0113 describe the Mali-G76 GPU of the Exynos9820.
+This tree carries a copy of that SoC file, and the copy has to stay a
+copy, so take the file.  Nothing in this boot loader drives the GPU.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ dts/upstream/src/arm64/exynos/exynos9820.dtsi | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820.dtsi b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+index 69826c4f..2d7d2007 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820.dtsi
++++ b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+@@ -953,6 +953,25 @@
+ 			};
+ 		};
+ 
++		/*
++		 * A Mali-G76 MP12: GPU_ID reads 0x72110000 and SHADER_PRESENT
++		 * 0x00770077 on this phone.  The firmware on the APM owns its clock
++		 * and voltage, and with no operating points the GPU stays at the
++		 * level the firmware starts it at.  The power domain is left out:
++		 * the bootloader leaves it on, and the vendor saves and restores
++		 * the TrustZone setup of the block with an SMC around every power
++		 * cycle, which the power domain driver does not do.
++		 */
++		gpu: gpu@18500000 {
++			compatible = "samsung,exynos9820-mali", "arm,mali-bifrost";
++			reg = <0x18500000 0x5000>;
++			interrupts = <GIC_SPI 288 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 287 IRQ_TYPE_LEVEL_HIGH>,
++				     <GIC_SPI 289 IRQ_TYPE_LEVEL_HIGH>;
++			interrupt-names = "job", "mmu", "gpu";
++			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_G3D>;
++		};
++
+ 		pinctrl_aud: pinctrl@18c60000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x18c60000 0x1000>;
+-- 
+2.47.3
+

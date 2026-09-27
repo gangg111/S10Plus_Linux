@@ -1,0 +1,103 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 07:19:20 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the bus the main PMIC
+ sits on
+
+This bus stays awake with its domain, which is what the chip on it needs:
+the charge a fuel gauge counts has to go on being counted while the rest of
+the chip sleeps.
+
+The block is a USI rather than a dedicated controller, so a mode register
+outside it decides which protocol it speaks.  That register is not
+described here and the mode the boot firmware leaves is taken instead, on
+the grounds
+that the firmware reads this battery before it hands the machine over.  The
+annotation in the node says so and says what to measure.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   | 12 +++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 46 +++++++++++++++++++
+ 2 files changed, 58 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index 5cd948284ac..9541c17b9a2 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -462,6 +462,18 @@ hsi2c2_bus: hsi2c2-bus-pins {
+ 		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
+ 		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
+ 	};
++
++	/*
++	 * To the MAX77705, which carries the charger and the fuel gauge.
++	 * This one is a USI in I2C mode, not a dedicated I2C like the bus
++	 * above, which is why its pins take a different function.
++	 */
++	hsi2c45_bus: hsi2c45-bus-pins {
++		samsung,pins = "gpm12-0", "gpm13-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
+ };
+ 
+ &pinctrl_fsys0 {
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 792c936cde3..1e7e1b2519d 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -685,6 +685,52 @@ hsi2c2: i2c@15d50000 {
+ 			};
+ 		};
+ 
++		/*
++		 * The bus the main PMIC's companion sits on.  Like the display
++		 * PMIC's bus above it, it stays awake with the CMGP domain, which
++		 * is what a fuel gauge needs: the charge it counts has to go on
++		 * being counted while the rest of the chip sleeps.
++		 *
++		 * This block is a USI, not a dedicated I2C like the one before
++		 * it, so a register outside it picks whether it speaks I2C, SPI
++		 * or UART, and the driver behind that register is also the one
++		 * that releases the block from reset.  Without the node below
++		 * nothing does either, and it shows: measured on the phone, this
++		 * bus raised not one interrupt, while the touchscreen bus, which
++		 * does have such a node, raised two.
++		 */
++		usi_cmgp3: usi@15d600c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x15d600c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_PCLK>,
++				 <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_cmgp 0x30>;
++			samsung,clkreq-on;
++			status = "disabled";
++
++			hsi2c45: i2c@15d60000 {
++				compatible = "samsung,exynos9820-hsi2c",
++					     "samsung,exynosautov9-hsi2c";
++				reg = <0x15d60000 0xc0>;
++				interrupts = <GIC_SPI 82 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_IPCLK>,
++					 <&cmu_cmgp CLK_GOUT_CMGP_USI_CMGP3_PCLK>;
++				clock-names = "hsi2c", "hsi2c_pclk";
++				pinctrl-0 = <&hsi2c45_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
+ 		pinctrl_aud: pinctrl@18c60000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x18c60000 0x1000>;

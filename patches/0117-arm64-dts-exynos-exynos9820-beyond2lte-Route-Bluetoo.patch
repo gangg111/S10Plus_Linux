@@ -1,0 +1,37 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 02:17:32 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820-beyond2lte: Route Bluetooth
+ SCO over the UART
+
+The BCM4375 routes SCO audio to its PCM pins after reset.  On this board
+those pins go to the SoC audio subsystem, which has no driver, so a
+headset call has no path to the host.
+
+Route SCO over the HCI transport instead, so that the Bluetooth stack
+carries call audio itself.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+index a97def1a6f5..9be8afa51c0 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
+@@ -567,6 +567,14 @@ bluetooth {
+ 		device-wakeup-gpios = <&gpg2 0 GPIO_ACTIVE_HIGH>;
+ 		interrupts-extended = <&gpa2 3 IRQ_TYPE_EDGE_RISING>;
+ 		interrupt-names = "host-wakeup";
++		/*
++		 * The chip comes up routing SCO to its PCM pins, which on this
++		 * board go to the audio subsystem, not to anything the host can
++		 * read.  Route it over the UART instead, so that headset calls
++		 * work without the audio subsystem.  Read back from the chip:
++		 * 00 02 00 01 01 before, 01 02 00 01 01 after.
++		 */
++		brcm,bt-pcm-int-params = [01 02 00 01 01];
+ 	};
+ };
+ 

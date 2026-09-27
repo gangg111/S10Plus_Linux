@@ -1,0 +1,13 @@
+[Unit]
+Description=Eksperymentalny sterownik DECON (decon9820, zamiast simpledrm)
+After=plymouth-start.service
+Before=plasma-mobile.service display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/sbin/modprobe decon9820
+RemainAfterExit=yes
+TimeoutStartSec=30
+
+[Install]
+WantedBy=graphical.target

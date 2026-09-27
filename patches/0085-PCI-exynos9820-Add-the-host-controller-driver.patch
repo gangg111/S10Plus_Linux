@@ -1,0 +1,640 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 10:10:00 +0200
+Subject: [PATCH] PCI: exynos9820: Add the host controller driver
+
+The Wi-Fi chip of the boards built around this SoC hangs off the first of
+its two PCIe controllers, and nothing in tree drives either of them.
+
+What is taken from the Exynos5433 driver next door is the interrupt and
+LTSSM block of ELBI, whose offsets match this controller down to the word.
+What is not taken is the reset path: the four reset registers that driver
+uses do not exist here, one of them is a read-only interrupt register on
+this SoC, and the core reset of this one is a single register at 0x1d0.
+Those come from the vendor power sequences, as do the two calibration
+tables of the PHY.
+
+The PHY is part of this driver rather than a driver of its own, because
+its three resets are registers of the controller, pulsed in the middle of
+writing the tables.
+
+The link history the controller keeps, thirty two states deep, is exposed
+through debugfs: when a link does not come up, that register block is the
+only place that says how far the training got.
+
+Not measured yet: no board in tree enables this controller, and the phone
+this was written for has not been flashed with it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                                  |   1 +
+ drivers/pci/controller/dwc/Kconfig           |  13 +
+ drivers/pci/controller/dwc/Makefile          |   1 +
+ drivers/pci/controller/dwc/pcie-exynos9820.c | 550 +++++++++++++++++++
+ 4 files changed, 565 insertions(+)
+ create mode 100644 drivers/pci/controller/dwc/pcie-exynos9820.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index e4350a699bc..f2438c6f166 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24005,6 +24005,7 @@ F:	Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
+ F:	Documentation/devicetree/bindings/pci/samsung,exynos9820-pcie.yaml
+ F:	arch/arm64/boot/dts/exynos/exynos9820*
+ F:	drivers/clk/samsung/clk-exynos9820.c
++F:	drivers/pci/controller/dwc/pcie-exynos9820.c
+ F:	drivers/phy/samsung/phy-exynos9820-ufs.c
+ F:	include/dt-bindings/clock/samsung,exynos9820.h
+ 
+diff --git a/drivers/pci/controller/dwc/Kconfig b/drivers/pci/controller/dwc/Kconfig
+index aa0b784c85b..cddfe723bd8 100644
+--- a/drivers/pci/controller/dwc/Kconfig
++++ b/drivers/pci/controller/dwc/Kconfig
+@@ -400,6 +400,19 @@ config PCI_EXYNOS
+ 	  hardware and therefore the driver re-uses the DesignWare core
+ 	  functions to implement the driver.
+ 
++config PCIE_EXYNOS9820
++	tristate "Samsung Exynos9820 PCIe controller"
++	depends on ARCH_EXYNOS || COMPILE_TEST
++	select PCIE_DW_HOST
++	help
++	  Enables support for the PCIe controller of the Samsung Exynos9820
++	  SoC in host mode.  The Wi-Fi chip of the boards built around this
++	  SoC hangs off it, and so does nothing else, so the driver drives one
++	  lane at Gen1 and leaves the second controller of the SoC alone.
++
++	  The PHY is part of this driver rather than a driver of its own,
++	  because the resets it needs are registers of the controller.
++
+ config PCIE_FU740
+ 	bool "SiFive FU740 PCIe controller"
+ 	depends on PCI_MSI
+diff --git a/drivers/pci/controller/dwc/Makefile b/drivers/pci/controller/dwc/Makefile
+index d4f88cfc622..4663d4de56c 100644
+--- a/drivers/pci/controller/dwc/Makefile
++++ b/drivers/pci/controller/dwc/Makefile
+@@ -9,6 +9,7 @@ obj-$(CONFIG_PCIE_ANDES_QILAI) += pcie-andes-qilai.o
+ obj-$(CONFIG_PCIE_ESWIN) += pcie-eswin.o
+ obj-$(CONFIG_PCI_DRA7XX) += pci-dra7xx.o
+ obj-$(CONFIG_PCI_EXYNOS) += pci-exynos.o
++obj-$(CONFIG_PCIE_EXYNOS9820) += pcie-exynos9820.o
+ obj-$(CONFIG_PCIE_FU740) += pcie-fu740.o
+ obj-$(CONFIG_PCI_IMX6) += pci-imx6.o
+ obj-$(CONFIG_PCIE_NXP_S32G) += pcie-nxp-s32g.o
+diff --git a/drivers/pci/controller/dwc/pcie-exynos9820.c b/drivers/pci/controller/dwc/pcie-exynos9820.c
+new file mode 100644
+index 00000000000..f8c0d89772f
+--- /dev/null
++++ b/drivers/pci/controller/dwc/pcie-exynos9820.c
+@@ -0,0 +1,550 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * PCIe host controller driver for the Samsung Exynos9820 SoC
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The Wi-Fi chip of the Galaxy S10+ hangs off the first of the two PCIe
++ * controllers of this SoC, and nothing in tree drives either of them: the one
++ * Exynos controller mainline has is for the 5433, whose register layout only
++ * partly matches this one.  What matches, down to the offset, is the interrupt
++ * and LTSSM block of ELBI, so that part is taken from there; the reset
++ * registers are not the same at all and come from the vendor sequences.
++ *
++ * The PHY lives in this driver rather than in a driver of its own, which is
++ * not how mainline usually splits it.  The reason is the reset sequence: the
++ * three resets the PHY needs are registers of the CONTROLLER (ELBI 0x288,
++ * 0x28c and 0x290), pulsed in the middle of writing the PHY tables, and they
++ * sit inside the ELBI window the DesignWare core already owns.  Splitting that
++ * across two drivers would mean handing one of them a window the other has
++ * claimed.
++ *
++ * Every register offset and every value of the two calibration tables is
++ * transcribed from the vendor sources, not guessed; see docs/R14-wifi.md for
++ * where each one comes from.
++ */
++
++#include <linux/bitfield.h>
++#include <linux/clk.h>
++#include <linux/debugfs.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/interrupt.h>
++#include <linux/kernel.h>
++#include <linux/init.h>
++#include <linux/mfd/syscon.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/pci.h>
++#include <linux/platform_device.h>
++#include <linux/regmap.h>
++
++#include "pcie-designware.h"
++
++#define to_exynos9820_pcie(x)	dev_get_drvdata((x)->dev)
++
++/* ELBI, the block that drives the controller from the host side */
++#define PCIE_IRQ_PULSE			0x000
++#define IRQ_INTA_ASSERT			BIT(0)
++#define IRQ_INTB_ASSERT			BIT(2)
++#define IRQ_INTC_ASSERT			BIT(4)
++#define IRQ_INTD_ASSERT			BIT(6)
++#define PCIE_IRQ_LEVEL			0x004
++#define PCIE_IRQ_SPECIAL		0x008
++#define PCIE_IRQ_EN_PULSE		0x00c
++#define PCIE_IRQ_EN_LEVEL		0x010
++#define PCIE_IRQ_EN_SPECIAL		0x014
++#define PCIE_SW_WAKE			0x018
++#define PCIE_BUS_EN			BIT(1)
++#define PCIE_APP_LTSSM_ENABLE		0x02c
++#define PCIE_ELBI_LTSSM_ENABLE		0x1
++#define PCIE_APP_REQ_EXIT_L1		0x040
++#define PCIE_ELBI_RDLH_LINKUP		0x074
++#define PCIE_ELBI_LTSSM_STATE		GENMASK(5, 0)
++#define PCIE_ELBI_LTSSM_L0		0x11
++#define PCIE_APP_REQ_EXIT_L1_MODE	0x0f4
++#define APP_REQ_EXIT_L1_MODE		BIT(0)
++#define PCIE_LINKDOWN_RST_CTRL_SEL	0x1b8
++#define PCIE_LINKDOWN_RST_MANUAL	BIT(1)
++#define PCIE_LINKDOWN_RST_FSM		BIT(0)
++#define PCIE_SOFT_CORE_RESET		0x1d0
++#define PCIE_PCS_G_RST			0x288
++#define PCIE_PHY_CMN_RST		0x28c
++#define PCIE_MAC_RST			0x290
++#define PCIE_QCH_SEL			0x2c8
++#define CLOCK_GATING_PMU_MASK		GENMASK(11, 8)
++#define CLOCK_GATING_APB_MASK		GENMASK(7, 4)
++#define CLOCK_GATING_AXI_MASK		GENMASK(3, 0)
++#define PCIE_L12ERR_CTRL		0x2f0
++
++/*
++ * The controller keeps the last thirty two states of the link training
++ * machine, one word each, newest last.  When the link does not come up, this
++ * is the only place that says how far it got.
++ */
++#define PCIE_HISTORY_REG(x)		(0x138 + (x) * 4)
++#define PCIE_HISTORY_DEPTH		32
++#define PCIE_HISTORY_LTSSM		GENMASK(21, 16)
++#define PCIE_HISTORY_PM_DSTATE		GENMASK(10, 8)
++#define PCIE_HISTORY_L1SUB		GENMASK(2, 0)
++
++/*
++ * The two halves of the PHY sit in one window, the digital one at its start
++ * and the analogue one sixty four kilobytes further in.  They are described
++ * as a single window because the DesignWare binding knows exactly one name
++ * for a PHY window and this controller has two blocks behind it.
++ *
++ * PMA, the analogue half.  Its registers are one byte wide on a four byte
++ * stride, which is why the tables below are u8 and the writes go to index
++ * times four.
++ */
++#define PHY_PMA_OFFSET			0x10000
++#define PMA_CMN_PWRDN			(0x20 * 4)
++#define PMA_CMN_PWRDN_ON		0xc1
++#define PMA_CMN_PWRDN_OFF		0xc0
++#define PMA_TRSV_PWRDN			(0x57 * 4)
++#define PMA_TRSV_PWRDN_ON		0xfe
++#define PMA_TRSV_PWRDN_OFF		0x7e
++#define PMA_TRSV_BASE			(0x30 * 4)
++
++/* PCS, the digital half */
++#define PCS_L1SS_TIMEOUT		0x00c
++#define PCS_L1SS_TIMEOUT_CLR		BIT(1)
++#define PCS_L1SS_TIMEOUT_SET		BIT(4)
++#define PCS_CDR_RESET			0x0d0
++#define PCS_CDR_RESET_MASK		GENMASK(7, 6)
++#define PCS_CDR_RESET_HOLD		(0x3 << 6)
++#define PCS_CDR_RESET_RELEASE		(0x2 << 6)
++#define PCS_RX_ELECIDLE			0x0ec
++#define PCS_RX_ELECIDLE_BYPASS		BIT(3)
++#define PCS_TX_LATENCY			0x0f8
++#define PCS_TX_LATENCY_VAL		0x70
++#define PCS_REFCLK_OUT			0x100
++#define PCS_REFCLK_OUT_VAL		0x87
++#define PCS_REFCLK_OUT_PWRDN		BIT(6)
++#define PCS_REFCLK_SEL			0x104
++#define PCS_REFCLK_SEL_VAL		0x50
++#define PCS_REFCLK_SEL_PWRDN		BIT(7)
++
++/*
++ * Two words of the FSYS1 system register belong to this controller.  The
++ * vendor window starts at 0x13c11044 and is sixteen bytes long, of which only
++ * the first and the fourth word are ever touched.
++ */
++#define FSYS1_PCIE_CON0			0x1044
++#define FSYS1_PCS_HIGH_SPEED		BIT(1)
++#define FSYS1_PCIE_CON1			0x1050
++#define FSYS1_PCIE_CON1_CLR		(GENMASK(7, 4) | GENMASK(3, 2) | BIT(1))
++#define FSYS1_PCIE_CON1_SET		(0x3 << 2)
++#define FSYS1_LANE0_ENABLE		BIT(12)
++
++/* The PMU word that lifts the isolation of this PHY */
++#define PMU_PCIE_PHY_CONTROL		0x71c
++#define PMU_PCIE_PHY_ENABLE		BIT(0)
++
++/* Reference clock of the auxiliary domain, in the units the DBI wants */
++#define PCIE_AUX_CLK_FREQ		0xb40
++#define PCIE_AUX_CLK_FREQ_26MHZ		0x1a
++#define PCIE_L1_SUBSTATES		0xb44
++#define PCIE_L1_SUBSTATES_VAL		0xea
++
++#define PCIE_LINK_TIMEOUT_US		20000
++
++/*
++ * The analogue half is programmed as one block: forty eight words of common
++ * settings followed by eighty of transceiver settings.  Both are the vendor
++ * "26MHz gen2" tables for channel zero, which is the channel the Wi-Fi chip
++ * sits on; the other channel of this SoC is not wired on this board.
++ */
++static const u8 exynos9820_pcie_pma_cmn[48] = {
++	0x01, 0xe1, 0x05, 0x00, 0x88, 0x88, 0x88, 0x0c,
++	0x61, 0x45, 0x65, 0x24, 0x33, 0x18, 0xe3, 0xfc,
++	0xd8, 0x05, 0xe6, 0x80, 0x00, 0x00, 0x00, 0x00,
++	0x60, 0x11, 0x00, 0xa0, 0x05, 0x04, 0x18, 0x88,
++	0xc0, 0xff, 0x9b, 0x52, 0x22, 0x30, 0x4f, 0xdc,
++	0x40, 0x00, 0x00, 0x00, 0x00, 0xff, 0x00, 0x80,
++};
++
++static const u8 exynos9820_pcie_pma_trsv[80] = {
++	0x31, 0x40, 0x37, 0x99, 0x85, 0x00, 0xc0, 0xff,
++	0xff, 0x3f, 0x8c, 0xc8, 0x02, 0x01, 0x88, 0x80,
++	0x06, 0x90, 0x6c, 0x66, 0x09, 0x61, 0x42, 0x44,
++	0xc6, 0x50, 0x0a, 0x33, 0x58, 0xe7, 0x20, 0x22,
++	0x80, 0x38, 0x05, 0x85, 0x00, 0x00, 0x00, 0x7e,
++	0x00, 0x00, 0x55, 0x15, 0xac, 0xaa, 0x3e, 0x00,
++	0x00, 0x00, 0x20, 0x3f, 0x00, 0x03, 0x01, 0x00,
++	0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
++	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40,
++	0x05, 0x85, 0xff, 0x00, 0x00, 0x00, 0x00, 0x00,
++};
++
++struct exynos9820_pcie {
++	struct dw_pcie		pci;
++	void __iomem		*pma_base;
++	void __iomem		*pcs_base;
++	struct regmap		*pmureg;
++	struct regmap		*fsysreg;
++	struct clk_bulk_data	*clks;
++	struct gpio_desc	*reset_gpio;
++	struct dentry		*debugfs;
++};
++
++static void exynos9820_pcie_writel(void __iomem *base, u32 val, u32 reg)
++{
++	writel(val, base + reg);
++}
++
++static u32 exynos9820_pcie_readl(void __iomem *base, u32 reg)
++{
++	return readl(base + reg);
++}
++
++static void exynos9820_pcie_update(void __iomem *base, u32 reg, u32 clr,
++				   u32 set)
++{
++	u32 val = readl(base + reg);
++
++	val &= ~clr;
++	val |= set;
++	writel(val, base + reg);
++}
++
++/*
++ * Every reset of this block is pulsed the same way: driven high, taken low,
++ * driven high again, with at least ten microseconds between the steps.  The
++ * vendor sequences do it exactly so for all three of them; every caller runs
++ * from probe, so the waits are allowed to sleep.
++ */
++static void exynos9820_pcie_reset_pulse(struct exynos9820_pcie *ep, u32 reg,
++					unsigned int settle_us)
++{
++	void __iomem *elbi = ep->pci.elbi_base;
++
++	exynos9820_pcie_writel(elbi, 1, reg);
++	usleep_range(10, 20);
++	exynos9820_pcie_writel(elbi, 0, reg);
++	usleep_range(10, 20);
++	exynos9820_pcie_writel(elbi, 1, reg);
++	usleep_range(settle_us, settle_us * 2);
++}
++
++static void exynos9820_pcie_phy_pwrdn_clear(struct exynos9820_pcie *ep)
++{
++	exynos9820_pcie_update(ep->pcs_base, PCS_REFCLK_OUT,
++			       PCS_REFCLK_OUT_PWRDN, 0);
++	exynos9820_pcie_update(ep->pcs_base, PCS_REFCLK_SEL,
++			       PCS_REFCLK_SEL_PWRDN, 0);
++	exynos9820_pcie_writel(ep->pma_base, PMA_CMN_PWRDN_OFF, PMA_CMN_PWRDN);
++	exynos9820_pcie_writel(ep->pma_base, PMA_TRSV_PWRDN_OFF,
++			       PMA_TRSV_PWRDN);
++}
++
++static void exynos9820_pcie_phy_pwrdn(struct exynos9820_pcie *ep)
++{
++	exynos9820_pcie_writel(ep->pma_base, PMA_TRSV_PWRDN_ON,
++			       PMA_TRSV_PWRDN);
++	exynos9820_pcie_writel(ep->pma_base, PMA_CMN_PWRDN_ON, PMA_CMN_PWRDN);
++	exynos9820_pcie_update(ep->pcs_base, PCS_REFCLK_OUT, 0,
++			       PCS_REFCLK_OUT_PWRDN);
++	exynos9820_pcie_update(ep->pcs_base, PCS_REFCLK_SEL, 0,
++			       PCS_REFCLK_SEL_PWRDN);
++}
++
++/*
++ * The whole PHY, in the order the vendor sequence has it.  Nothing here waits
++ * for a status bit: the sequence is timed, and the one register that does
++ * report the PLL state shares its address with the last word of the common
++ * table, so it cannot be polled before the table is written anyway.
++ */
++static void exynos9820_pcie_phy_config(struct exynos9820_pcie *ep)
++{
++	unsigned int i;
++
++	regmap_update_bits(ep->fsysreg, FSYS1_PCIE_CON0,
++			   FSYS1_PCS_HIGH_SPEED, FSYS1_PCS_HIGH_SPEED);
++	regmap_update_bits(ep->fsysreg, FSYS1_PCIE_CON1,
++			   FSYS1_PCIE_CON1_CLR, FSYS1_PCIE_CON1_SET);
++	regmap_update_bits(ep->fsysreg, FSYS1_PCIE_CON1,
++			   FSYS1_LANE0_ENABLE, FSYS1_LANE0_ENABLE);
++
++	exynos9820_pcie_reset_pulse(ep, PCIE_PCS_G_RST, 10);
++
++	for (i = 0; i < ARRAY_SIZE(exynos9820_pcie_pma_cmn); i++)
++		exynos9820_pcie_writel(ep->pma_base,
++				       exynos9820_pcie_pma_cmn[i], i * 4);
++
++	for (i = 0; i < ARRAY_SIZE(exynos9820_pcie_pma_trsv); i++)
++		exynos9820_pcie_writel(ep->pma_base,
++				       exynos9820_pcie_pma_trsv[i],
++				       PMA_TRSV_BASE + i * 4);
++
++	exynos9820_pcie_writel(ep->pcs_base, PCS_TX_LATENCY_VAL,
++			       PCS_TX_LATENCY);
++	exynos9820_pcie_writel(ep->pcs_base, PCS_REFCLK_OUT_VAL,
++			       PCS_REFCLK_OUT);
++	exynos9820_pcie_writel(ep->pcs_base, PCS_REFCLK_SEL_VAL,
++			       PCS_REFCLK_SEL);
++	exynos9820_pcie_update(ep->pcs_base, PCS_L1SS_TIMEOUT,
++			       PCS_L1SS_TIMEOUT_CLR, PCS_L1SS_TIMEOUT_SET);
++
++	exynos9820_pcie_reset_pulse(ep, PCIE_MAC_RST, 10);
++	exynos9820_pcie_reset_pulse(ep, PCIE_PHY_CMN_RST, 100);
++
++	/* Clock and data recovery, held and released once */
++	exynos9820_pcie_update(ep->pcs_base, PCS_CDR_RESET, 0,
++			       PCS_CDR_RESET_HOLD);
++	usleep_range(20, 30);
++	exynos9820_pcie_update(ep->pcs_base, PCS_CDR_RESET,
++			       PCS_CDR_RESET_MASK, PCS_CDR_RESET_RELEASE);
++	exynos9820_pcie_update(ep->pcs_base, PCS_CDR_RESET,
++			       PCS_CDR_RESET_MASK, 0);
++}
++
++/*
++ * One line per recorded state, oldest first, the way the hardware keeps them.
++ * The link state alone is rarely enough: a link stuck in polling looks the
++ * same as one that trained and fell back, and only the power state next to it
++ * tells the two apart.
++ */
++static int exynos9820_pcie_history_show(struct seq_file *sf, void *data)
++{
++	struct exynos9820_pcie *ep = sf->private;
++	unsigned int i;
++
++	seq_puts(sf, "# entry  ltssm  dstate  l1sub\n");
++	for (i = 0; i < PCIE_HISTORY_DEPTH; i++) {
++		u32 val = exynos9820_pcie_readl(ep->pci.elbi_base,
++						PCIE_HISTORY_REG(i));
++
++		seq_printf(sf, "%7u   0x%02lx    0x%lx     0x%lx\n", i,
++			   FIELD_GET(PCIE_HISTORY_LTSSM, val),
++			   FIELD_GET(PCIE_HISTORY_PM_DSTATE, val),
++			   FIELD_GET(PCIE_HISTORY_L1SUB, val));
++	}
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(exynos9820_pcie_history);
++
++static void exynos9820_pcie_debugfs_init(struct exynos9820_pcie *ep)
++{
++	ep->debugfs = debugfs_create_dir(dev_name(ep->pci.dev), NULL);
++	debugfs_create_file("link_history", 0444, ep->debugfs, ep,
++			    &exynos9820_pcie_history_fops);
++}
++
++static bool exynos9820_pcie_link_up(struct dw_pcie *pci)
++{
++	u32 val = exynos9820_pcie_readl(pci->elbi_base, PCIE_ELBI_RDLH_LINKUP);
++
++	return FIELD_GET(PCIE_ELBI_LTSSM_STATE, val) >= PCIE_ELBI_LTSSM_L0;
++}
++
++static int exynos9820_pcie_start_link(struct dw_pcie *pci)
++{
++	struct exynos9820_pcie *ep = to_exynos9820_pcie(pci);
++	void __iomem *elbi = pci->elbi_base;
++
++	/*
++	 * The controller comes out of reset before the endpoint is allowed
++	 * to answer, so the endpoint reset line is released here rather than
++	 * in probe, and the eighteen milliseconds are the ones the vendor
++	 * sequence waits for this chip.
++	 */
++	gpiod_set_value_cansleep(ep->reset_gpio, 1);
++	usleep_range(18000, 20000);
++
++	exynos9820_pcie_writel(elbi, APP_REQ_EXIT_L1_MODE,
++			       PCIE_APP_REQ_EXIT_L1_MODE);
++	exynos9820_pcie_writel(elbi, PCIE_LINKDOWN_RST_MANUAL,
++			       PCIE_LINKDOWN_RST_CTRL_SEL);
++
++	exynos9820_pcie_update(elbi, PCIE_SW_WAKE, PCIE_BUS_EN, 0);
++	exynos9820_pcie_writel(elbi, PCIE_ELBI_LTSSM_ENABLE,
++			       PCIE_APP_LTSSM_ENABLE);
++	return 0;
++}
++
++static void exynos9820_pcie_stop_link(struct dw_pcie *pci)
++{
++	struct exynos9820_pcie *ep = to_exynos9820_pcie(pci);
++
++	exynos9820_pcie_writel(pci->elbi_base, 0, PCIE_APP_LTSSM_ENABLE);
++	gpiod_set_value_cansleep(ep->reset_gpio, 0);
++}
++
++static void exynos9820_pcie_clear_irq_pulse(struct exynos9820_pcie *ep)
++{
++	void __iomem *elbi = ep->pci.elbi_base;
++	u32 val = exynos9820_pcie_readl(elbi, PCIE_IRQ_PULSE);
++
++	exynos9820_pcie_writel(elbi, val, PCIE_IRQ_PULSE);
++}
++
++static irqreturn_t exynos9820_pcie_irq_handler(int irq, void *arg)
++{
++	struct exynos9820_pcie *ep = arg;
++
++	exynos9820_pcie_clear_irq_pulse(ep);
++	return IRQ_HANDLED;
++}
++
++static void exynos9820_pcie_enable_irq_pulse(struct exynos9820_pcie *ep)
++{
++	void __iomem *elbi = ep->pci.elbi_base;
++	u32 val = IRQ_INTA_ASSERT | IRQ_INTB_ASSERT |
++		  IRQ_INTC_ASSERT | IRQ_INTD_ASSERT;
++
++	exynos9820_pcie_writel(elbi, val, PCIE_IRQ_EN_PULSE);
++	exynos9820_pcie_writel(elbi, 0, PCIE_IRQ_EN_LEVEL);
++	exynos9820_pcie_writel(elbi, 0, PCIE_IRQ_EN_SPECIAL);
++}
++
++static int exynos9820_pcie_host_init(struct dw_pcie_rp *pp)
++{
++	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
++	struct exynos9820_pcie *ep = to_exynos9820_pcie(pci);
++
++	/* Lift the isolation of the PHY before anything touches it */
++	regmap_update_bits(ep->pmureg, PMU_PCIE_PHY_CONTROL,
++			   PMU_PCIE_PHY_ENABLE, PMU_PCIE_PHY_ENABLE);
++
++	/*
++	 * Let the block keep its clocks running: the gating this register
++	 * asks for is the automatic kind, and on this controller it stops the
++	 * link from being trained at all.
++	 */
++	exynos9820_pcie_update(pci->elbi_base, PCIE_QCH_SEL,
++			       CLOCK_GATING_PMU_MASK | CLOCK_GATING_APB_MASK |
++			       CLOCK_GATING_AXI_MASK, 0);
++
++	exynos9820_pcie_phy_pwrdn_clear(ep);
++
++	/* The core reset of this SoC is one register, not the four of 5433 */
++	exynos9820_pcie_writel(pci->elbi_base, 0, PCIE_SOFT_CORE_RESET);
++	usleep_range(20, 30);
++	exynos9820_pcie_writel(pci->elbi_base, 1, PCIE_SOFT_CORE_RESET);
++
++	exynos9820_pcie_phy_config(ep);
++	exynos9820_pcie_enable_irq_pulse(ep);
++
++	return 0;
++}
++
++static void exynos9820_pcie_host_deinit(struct dw_pcie_rp *pp)
++{
++	struct dw_pcie *pci = to_dw_pcie_from_pp(pp);
++	struct exynos9820_pcie *ep = to_exynos9820_pcie(pci);
++
++	exynos9820_pcie_phy_pwrdn(ep);
++	regmap_update_bits(ep->pmureg, PMU_PCIE_PHY_CONTROL,
++			   PMU_PCIE_PHY_ENABLE, 0);
++}
++
++static const struct dw_pcie_host_ops exynos9820_pcie_host_ops = {
++	.init = exynos9820_pcie_host_init,
++	.deinit = exynos9820_pcie_host_deinit,
++};
++
++static const struct dw_pcie_ops dw_pcie_ops = {
++	.link_up = exynos9820_pcie_link_up,
++	.start_link = exynos9820_pcie_start_link,
++	.stop_link = exynos9820_pcie_stop_link,
++};
++
++static int exynos9820_pcie_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct device_node *np = dev->of_node;
++	struct exynos9820_pcie *ep;
++	struct dw_pcie_rp *pp;
++	int ret;
++
++	ep = devm_kzalloc(dev, sizeof(*ep), GFP_KERNEL);
++	if (!ep)
++		return -ENOMEM;
++
++	ep->pci.dev = dev;
++	ep->pci.ops = &dw_pcie_ops;
++
++	ep->pcs_base = devm_platform_ioremap_resource_byname(pdev, "phy");
++	if (IS_ERR(ep->pcs_base))
++		return PTR_ERR(ep->pcs_base);
++	ep->pma_base = ep->pcs_base + PHY_PMA_OFFSET;
++
++	ep->pmureg = syscon_regmap_lookup_by_phandle(np,
++						     "samsung,pmu-syscon");
++	if (IS_ERR(ep->pmureg))
++		return dev_err_probe(dev, PTR_ERR(ep->pmureg),
++				     "failed to look up the PMU\n");
++
++	ep->fsysreg = syscon_regmap_lookup_by_phandle(np,
++						      "samsung,fsys-sysreg");
++	if (IS_ERR(ep->fsysreg))
++		return dev_err_probe(dev, PTR_ERR(ep->fsysreg),
++				     "failed to look up the FSYS1 sysreg\n");
++
++	ret = devm_clk_bulk_get_all_enabled(dev, &ep->clks);
++	if (ret < 0)
++		return dev_err_probe(dev, ret, "failed to get the clocks\n");
++
++	/*
++	 * The endpoint is held in reset until the link is started, which is
++	 * why the line goes out low here and is raised in start_link.
++	 */
++	ep->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
++	if (IS_ERR(ep->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(ep->reset_gpio),
++				     "failed to get the endpoint reset line\n");
++
++	platform_set_drvdata(pdev, ep);
++
++	pp = &ep->pci.pp;
++	pp->irq = platform_get_irq(pdev, 0);
++	if (pp->irq < 0)
++		return pp->irq;
++
++	ret = devm_request_irq(dev, pp->irq, exynos9820_pcie_irq_handler,
++			       IRQF_SHARED, "exynos9820-pcie", ep);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to request the irq\n");
++
++	pp->ops = &exynos9820_pcie_host_ops;
++	/* This board wires no MSI: the one interrupt carries everything. */
++	pp->msi_irq[0] = -ENODEV;
++
++	ret = dw_pcie_host_init(pp);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to initialize host\n");
++
++	exynos9820_pcie_debugfs_init(ep);
++
++	return 0;
++}
++
++static void exynos9820_pcie_remove(struct platform_device *pdev)
++{
++	struct exynos9820_pcie *ep = platform_get_drvdata(pdev);
++
++	debugfs_remove_recursive(ep->debugfs);
++	dw_pcie_host_deinit(&ep->pci.pp);
++}
++
++static const struct of_device_id exynos9820_pcie_of_match[] = {
++	{ .compatible = "samsung,exynos9820-pcie" },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, exynos9820_pcie_of_match);
++
++static struct platform_driver exynos9820_pcie_driver = {
++	.probe	= exynos9820_pcie_probe,
++	.remove	= exynos9820_pcie_remove,
++	.driver = {
++		.name	= "exynos9820-pcie",
++		.of_match_table = exynos9820_pcie_of_match,
++		.suppress_bind_attrs = true,
++	},
++};
++module_platform_driver(exynos9820_pcie_driver);
++
++MODULE_DESCRIPTION("Samsung Exynos9820 PCIe host controller driver");
++MODULE_LICENSE("GPL");

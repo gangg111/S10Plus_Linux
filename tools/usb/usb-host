@@ -1,0 +1,101 @@
+#!/bin/sh
+# Przelaczenie portu USB telefonu w tryb hosta, zeby dzialala wpieta klawiatura.
+#
+# Telefon ma jedno zlacze i normalnie jest w nim URZADZENIEM: tak widzi go
+# komputer. Zeby przyjal klawiature, musi zostac HOSTEM, a do tego potrzebne
+# sa dwie rzeczy naraz.
+#
+# 1. Rola kontrolera. Drzewo ma dr_mode "otg" i usb-role-switch, wiec dwc3
+#    wystawia przelacznik w /sys/class/usb_role. Domyslnie stoi na urzadzeniu,
+#    bo start jako host odcialby polaczenie z komputerem i nie byloby jak
+#    wrocic.
+#
+# 2. Zasilanie. Klawiatura bierze prad ze zlacza, a mainline nie ma sterownika
+#    regulatorow tego ukladu zasilania, wiec przetwornice podbijajaca wlaczamy
+#    rejestrem, po magistrali. Rejestry ukladu ladowania licza sie od 0xb0
+#    (reg_base w sterowniku), wiec rejestr trybu pracy CNFG_00 ma adres 0xb7,
+#    a limit pradu CNFG_02 adres 0xb9. Tryb 0xa to przetwornica razem
+#    z trybem hosta (OTG_MASK | BOOST_MASK), limit 900 mA to 01 na bitach 6 i 7.
+#
+# Uzycie:
+#   usb-host host       wlacz zasilanie i przelacz w tryb hosta
+#   usb-host urzadzenie wroc do trybu urzadzenia i wylacz zasilanie
+#   usb-host stan       pokaz, co jest teraz
+set -u
+
+I2C=2
+LADOWARKA=0x69
+CNFG_00=0xb7
+CNFG_02=0xb9
+TRYB_OTG=0x0a
+# Tryb zwykly: ladowanie wlaczone razem z przetwornica obnizajaca.
+TRYB_LADOWANIE=0x05
+
+NARZ=/root/narz
+CZYTAJ="$NARZ/i2cblk"
+PISZ="$NARZ/i2cw"
+
+rola_plik() {
+	ls -d /sys/class/usb_role/*/role 2>/dev/null | head -1
+}
+
+bajt() {
+	"$CZYTAJ" "$I2C" "$LADOWARKA" "$1" 1 2>/dev/null | sed "s/.*= //"
+}
+
+stan() {
+	R=$(rola_plik)
+	echo "rola kontrolera: $([ -n "$R" ] && cat "$R" || echo 'brak przelacznika')"
+	echo "tryb ukladu zasilania (0xb7): $(bajt $CNFG_00)"
+	echo "limit pradu (0xb9): $(bajt $CNFG_02)"
+	echo "urzadzenia na magistrali USB:"
+	ls /sys/bus/usb/devices/ 2>/dev/null | tr '\n' ' '
+	echo
+}
+
+case "${1:-stan}" in
+host)
+	R=$(rola_plik)
+	if [ -z "$R" ]; then
+		echo "brak przelacznika rol: drzewo musi miec usb-role-switch"
+		exit 1
+	fi
+
+	# Zachowujemy gorne bity rejestru trybu, zmieniamy tylko cztery dolne.
+	STARY=$(bajt $CNFG_00)
+	if [ -z "$STARY" ]; then
+		echo "nie moge odczytac rejestru trybu"
+		exit 1
+	fi
+	NOWY=$(printf "0x%02x" $(( ($STARY & 0xf0) | $TRYB_OTG )))
+	echo "tryb zasilania $STARY -> $NOWY"
+	"$PISZ" "$I2C" "$LADOWARKA" "$CNFG_00" "$NOWY" >/dev/null || exit 1
+
+	STARY2=$(bajt $CNFG_02)
+	NOWY2=$(printf "0x%02x" $(( ($STARY2 & 0x3f) | 0x40 )))
+	"$PISZ" "$I2C" "$LADOWARKA" "$CNFG_02" "$NOWY2" >/dev/null || true
+
+	sleep 1
+	echo host > "$R" || exit 1
+	sleep 2
+	stan
+	;;
+urzadzenie)
+	R=$(rola_plik)
+	[ -n "$R" ] && echo device > "$R"
+	sleep 1
+	STARY=$(bajt $CNFG_00)
+	if [ -n "$STARY" ]; then
+		NOWY=$(printf "0x%02x" $(( ($STARY & 0xf0) | $TRYB_LADOWANIE )))
+		"$PISZ" "$I2C" "$LADOWARKA" "$CNFG_00" "$NOWY" >/dev/null || true
+	fi
+	stan
+	;;
+stan)
+	stan
+	;;
+*)
+	echo "uzycie: $0 [host|urzadzenie|stan]"
+	exit 2
+	;;
+esac

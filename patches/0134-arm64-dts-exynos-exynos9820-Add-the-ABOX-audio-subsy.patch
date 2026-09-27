@@ -1,0 +1,79 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 08:24:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the ABOX audio subsystem
+
+Describe the audio block driven from the application processor: its
+register window, the bus clock and the bit clock gates and dividers of
+UAIF1 and UAIF0 from CMU_AUD, and the four pins of each port with the
+function and pull the vendor tree gives them (gpb1-0..3 for UAIF1 and
+gpb0-1..4 for UAIF0, function 2, pull-down).
+No interrupt is described: the DMA engines report to the controller
+inside the block.
+
+The node stays disabled; the board enables it with the card that uses it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   | 14 ++++++++++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 22 +++++++++++++++++++
+ 2 files changed, 36 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index f78b2a2e88b..e4934bdf835 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -147,6 +147,20 @@ gpb2: gpb2-gpio-bank {
+ 		interrupt-controller;
+ 		#interrupt-cells = <2>;
+ 	};
++
++	/* UAIF0 of ABOX, to the audio codec */
++	aud_i2s0_bus: aud-i2s0-bus-pins {
++		samsung,pins = "gpb0-1", "gpb0-2", "gpb0-3", "gpb0-4";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_DOWN>;
++	};
++
++	/* UAIF1 of ABOX, to the two speaker amplifiers */
++	aud_i2s1_bus: aud-i2s1-bus-pins {
++		samsung,pins = "gpb1-0", "gpb1-1", "gpb1-2", "gpb1-3";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_DOWN>;
++	};
+ };
+ 
+ &pinctrl_cmgp {
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index b092f12e72a..fcb76c414cb 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -1067,6 +1067,28 @@ cmu_aud: clock-controller@18c00000 {
+ 			clock-names = "oscclk", "cpu";
+ 		};
+ 
++		/*
++		 * Driven from the AP with the DSP core of the block left off; the
++		 * DMA interrupts go to the controller inside the block, so none is
++		 * described.
++		 */
++		abox: audio-controller@18c50000 {
++			compatible = "samsung,exynos9820-abox";
++			reg = <0x18c50000 0x10000>;
++			clocks = <&cmu_aud CLK_GOUT_AUD_ABOX_ACLK>,
++				 <&cmu_aud CLK_GOUT_AUD_ABOX_BCLK_UAIF1>,
++				 <&cmu_aud CLK_DOUT_AUD_UAIF1>,
++				 <&cmu_aud CLK_GOUT_AUD_ABOX_BCLK_UAIF0>,
++				 <&cmu_aud CLK_DOUT_AUD_UAIF0>;
++			clock-names = "aclk", "bclk_uaif1", "div_uaif1",
++				      "bclk_uaif0", "div_uaif0";
++			pinctrl-0 = <&aud_i2s1_bus>, <&aud_i2s0_bus>;
++			pinctrl-names = "default";
++			#sound-dai-cells = <1>;
++
++			status = "disabled";
++		};
++
+ 		pinctrl_aud: pinctrl@18c60000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x18c60000 0x1000>;

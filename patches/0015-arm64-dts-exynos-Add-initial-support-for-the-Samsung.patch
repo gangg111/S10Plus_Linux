@@ -17,8 +17,8 @@ the panel rails.
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---
  arch/arm64/boot/dts/exynos/Makefile           |   1 +
- .../boot/dts/exynos/exynos9820-beyond2lte.dts | 296 ++++++++++++++++++
- 2 files changed, 297 insertions(+)
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts | 304 ++++++++++++++++++
+ 2 files changed, 305 insertions(+)
  create mode 100644 arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
 
 diff --git a/arch/arm64/boot/dts/exynos/Makefile b/arch/arm64/boot/dts/exynos/Makefile
@@ -35,10 +35,10 @@ index 76cc23acb9b..7715b294655 100644
  	exynos990-x1s.dtb		\
 diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
 new file mode 100644
-index 00000000000..5fe21367cb2
+index 00000000000..b2f794ed624
 --- /dev/null
 +++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
-@@ -0,0 +1,296 @@
+@@ -0,0 +1,304 @@
 +// SPDX-License-Identifier: GPL-2.0 OR BSD-3-Clause
 +/*
 + * Samsung Galaxy S10+ (SM-G975F, beyond2lte) device tree source
@@ -111,10 +111,18 @@ index 00000000000..5fe21367cb2
 +		 * the boot loader itself passes on this phone: the vendor kernel
 +		 * receives "s3cfb.bootloaderfb=0xca000000" on its command line.
 +		 */
-+		framebuffer0: framebuffer@ca000000 {
++		framebuffer0: framebuffer@ca000080 {
 +			compatible = "simple-framebuffer";
-+			reg = <0x0 0xca000000 (1440 * 3040 * 4)>;
-+			width = <1440>;
++			/*
++			 * The panel curves along both long edges, so the outermost
++			 * columns are distorted and hard to hit with a finger.  The
++			 * text console cannot offset its own area, so the buffer is
++			 * described 32 pixels narrower on each side instead: the
++			 * start moves by that many pixels and the line length stays
++			 * as the hardware has it.
++			 */
++			reg = <0x0 0xca000080 ((1440 * 3040 - 32) * 4)>;
++			width = <1376>;
 +			height = <3040>;
 +			stride = <(1440 * 4)>;
 +			format = "a8r8g8b8";
@@ -272,7 +280,7 @@ index 00000000000..5fe21367cb2
 +	status = "okay";
 +
 +	touchscreen@48 {
-+		compatible = "samsung,s6sy761";
++		compatible = "samsung,s6sy771";
 +		reg = <0x48>;
 +
 +		avdd-supply = <&reg_tsp_avdd>;

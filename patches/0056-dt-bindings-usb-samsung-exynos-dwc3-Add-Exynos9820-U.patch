@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 07:07:58 +0200
+Subject: [PATCH] dt-bindings: usb: samsung,exynos-dwc3: Add Exynos9820 USB
+ controller
+
+The controller of this SoC is the one another SoC of this family already
+describes, down to the pair of clocks it runs on, so it is added as a
+compatible falling back to that one rather than as a variant of its own.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml b/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml
+index 8af0143c3e4..bb5346e6a8b 100644
+--- a/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml
++++ b/Documentation/devicetree/bindings/usb/samsung,exynos-dwc3.yaml
+@@ -24,6 +24,9 @@ properties:
+       - items:
+           - const: samsung,exynos8890-dwusb3
+           - const: samsung,exynos7-dwusb3
++      - items:
++          - const: samsung,exynos9820-dwusb3
++          - const: samsung,exynos850-dwusb3
+       - items:
+           - const: samsung,exynos990-dwusb3
+           - const: samsung,exynos850-dwusb3

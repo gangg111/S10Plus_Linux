@@ -1,0 +1,1 @@
+Linux pmos 7.2.0-01001-ga9d566a524be-dirty #38 SMP PREEMPT Mon Sep 21 21:59:15 CEST 2026 aarch64 Linux

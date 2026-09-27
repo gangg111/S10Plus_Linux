@@ -1,0 +1,24 @@
+== krok 1: czy Enter jest tam, gdzie mysle
+surowe X=1268 Y=2944  ->  piksel 1268 2944  ->  Ent
+== krok 2: mapa jadra
+	altgr	keycode  44 = zabovedot       
+	altgr	keycode  45 = zacute          
+== krok 3: gesty
+palec:
+palec gotowy, czekam 4000 ms
+palec: 308 2560 na 120 ms
+palec: 308 2560 na 700 ms
+palec: 445 2560 na 120 ms
+palec: 445 2560 na 700 ms
+palec: 1268 2944 na 120 ms
+klawiatura:
+ekran 1440x3040, komorka konsoli 64 px, pas 1152 px od 1888, rzad 192 px
+koniec, konsola przywrocona
+== odebrano z konsoli: [zżxź]
+== bajty odebrane:
+ 7a c5 bc 78 c5 ba 0a
+== bajty oczekiwane:
+ 7a c5 bc 78 c5 ba 0a
+WYNIK: ZGODNE
+== getty: active
+== klawiatura: active

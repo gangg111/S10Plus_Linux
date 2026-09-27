@@ -1,0 +1,51 @@
+From d1c7c1dba2939d7fc61bc38d493c6f66bb7095a5 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 14/40] serial: s5p: leave the divider alone when the rate
+ makes no sense
+
+The register holds one less than the number of clocks in a bit, so a rate
+that gives fewer than sixteen of them is written as a borrow, that is, as
+the largest divider there is.  The port never drains again, and because the
+uclass retries a full port for as long as it stays full, the first
+character of the banner never returns.  On a phone the hang detector left
+armed by the vendor's first stage turns that into a reset, which looks like
+a boot loop with no output at all.
+
+Whatever ran before us had the port working, so the safe answer is to keep
+its divider rather than write a nonsense one.
+
+This is not hypothetical.  A clock fix that made a rate correct rather than
+wrong is what produced such a rate, and the boot loop that followed was
+read for a long time as a fault in the clock tree.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/serial/serial_s5p.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/serial/serial_s5p.c b/drivers/serial/serial_s5p.c
+index d46a8861..8391224c 100644
+--- a/drivers/serial/serial_s5p.c
++++ b/drivers/serial/serial_s5p.c
+@@ -107,6 +107,17 @@ static void __maybe_unused s5p_serial_baud(struct s5p_uart *uart, u8 reg_width,
+ 
+ 	val = uclk / baudrate;
+ 
++	/*
++	 * The register holds one less than the number of clocks in a bit, so
++	 * fewer than sixteen of them would be written as a borrow, that is, as
++	 * the largest divider there is.  The port would never drain again, and
++	 * because the uclass retries a full port for as long as it stays full,
++	 * the first character of the banner would never return.  Leave the
++	 * divider alone instead: whatever ran before us had the port working.
++	 */
++	if (val < 16)
++		return;
++
+ 	writel(val / 16 - 1, &uart->ubrdiv);
+ 
+ 	if (s5p_uart_divslot())
+-- 
+2.47.3
+

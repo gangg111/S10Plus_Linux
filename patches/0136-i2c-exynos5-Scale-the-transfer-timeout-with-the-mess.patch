@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sat, 26 Sep 2026 23:31:23 +0200
+Subject: [PATCH] i2c: exynos5: Scale the transfer timeout with the message
+ length
+
+Every message gets the same 100 ms to complete, which a long one at a
+low bus rate does not fit in: loading the protection firmware of a
+CS35L41 amplifier on the 400 kHz bus of a Galaxy S10+ writes a 6144 byte
+block, about 140 ms on the wire, and the transfer ends in "tx timeout"
+while the bytes are still going out. The controller is reset in the
+middle of the write and the amplifier is left waiting for the rest.
+
+Keep the fixed timeout for short messages and add twice the time the
+bytes of the message need on the wire, nine clocks each. The vendor
+driver sidesteps the same case with a flat 1 s.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/i2c/busses/i2c-exynos5.c | 21 ++++++++++++++++++---
+ 1 file changed, 18 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/i2c/busses/i2c-exynos5.c b/drivers/i2c/busses/i2c-exynos5.c
+index 4b7d99f7e7b..21667fd94a2 100644
+--- a/drivers/i2c/busses/i2c-exynos5.c
++++ b/drivers/i2c/busses/i2c-exynos5.c
+@@ -815,9 +815,25 @@ static bool exynos5_i2c_poll_irqs_timeout(struct exynos5_i2c *i2c,
+ 	return time_before(jiffies, time_left);
+ }
+ 
++/*
++ * The fixed timeout covers a short message at any rate, but not a long one
++ * at a low rate: a 6 KiB write of amplifier firmware takes about 140 ms at
++ * 400 kHz.  Allow twice the time the bytes need on the wire, nine clocks
++ * each, on top of it.
++ */
++static unsigned long exynos5_i2c_timeout(struct exynos5_i2c *i2c,
++					 struct i2c_msg *msg)
++{
++	u64 us = div_u64((u64)(msg->len + 1) * 9 * 2 * USEC_PER_SEC,
++			 i2c->op_clock);
++
++	return EXYNOS5_I2C_TIMEOUT + usecs_to_jiffies(us);
++}
++
+ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c,
+ 			      struct i2c_msg *msgs, int stop)
+ {
++	unsigned long timeout = exynos5_i2c_timeout(i2c, msgs);
+ 	unsigned long time_left;
+ 	int ret;
+ 
+@@ -831,10 +847,9 @@ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c,
+ 
+ 	if (!i2c->atomic)
+ 		time_left = wait_for_completion_timeout(&i2c->msg_complete,
+-							EXYNOS5_I2C_TIMEOUT);
++							timeout);
+ 	else
+-		time_left = exynos5_i2c_poll_irqs_timeout(i2c,
+-							  EXYNOS5_I2C_TIMEOUT);
++		time_left = exynos5_i2c_poll_irqs_timeout(i2c, timeout);
+ 
+ 	if (time_left == 0)
+ 		ret = -ETIMEDOUT;

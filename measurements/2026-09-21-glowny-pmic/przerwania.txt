@@ -1,0 +1,46 @@
+            CPU0       
+  10:          0  GIC-0  498 Level     mct_comp_irq
+  11:          0  GIC-0  502 Level     mct_tick0
+  12:          0  GIC-0  503 Level     
+  13:          0  GIC-0  504 Level     
+  14:          0  GIC-0  505 Level     
+  15:          0  GIC-0  506 Level     
+  16:          0  GIC-0  507 Level     
+  17:          0  GIC-0  508 Level     
+  18:          0  GIC-0  509 Level     
+  21:     111270  GIC-0   27 Level     arch_timer
+  23:          0  GIC-0  412 Level     10430000.pinctrl
+  24:          0  GIC-0  439 Level     10830000.pinctrl
+  25:          0  GIC-0  272 Level     13030000.pinctrl
+  26:          0  GIC-0  283 Level     13c40000.pinctrl
+  94:         98  GIC-0  440 Level     10840000.serial
+  95:       6623  GIC-0  420 Level     104b0000.i2c
+  96:        176  GIC-0  113 Level     15d50000.i2c
+  97:    3879973  GIC-0  114 Level     15d60000.i2c
+  98:      68372  gpa1                6 Level     max77705
+  99:      68340  max77705            2 Edge      max170xx_battery
+ 100:          2  max77705            0 Edge      max77705-charger
+ 101:       1304  GIC-0  273 Level     dwc3
+ 102:          2  max77705-charger    6 Edge      chgin-irq
+ 103:          0  max77705-charger    7 Edge      aicl-irq
+ 105:      13960  GIC-0  281 Level     ufshcd
+ 106:          0  GIC-0  173 Level     arm-pmu
+ 107:          0  GIC-0  174 Level     arm-pmu
+ 108:          0  GIC-0  175 Level     arm-pmu
+ 109:          0  GIC-0  176 Level     arm-pmu
+ 114:          0  gpa0                3 Edge      Volume Up Key
+ 115:          0  gpa0                4 Edge      Volume Down Key
+ 116:          0  gpa0                6 Edge      Wink Key
+ 117:          0  gpa2                4 Edge      Power Key
+ 118:          0  gpa0                1 Level     s2mps19
+ 119:          0  s2mps19             0 Edge      s2mps19-pmic
+ 120:        375  gpa1                0 Level     s6sy761_irq
+IPI0:          0  Rescheduling interrupts
+IPI1:          0  Function call interrupts
+IPI2:          0  CPU stop interrupts
+IPI3:          0  CPU stop NMIs
+IPI4:          0  Timer broadcast interrupts
+IPI5:        305  IRQ work interrupts
+IPI6:          0  CPU backtrace interrupts
+IPI7:          0  KGDB roundup interrupts
+ Err:          0

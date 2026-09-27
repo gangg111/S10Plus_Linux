@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 25 Sep 2026 08:11:44 +0200
+Subject: [PATCH] dt-bindings: mfd: cirrus,madera: Reference the SPI peripheral
+ properties
+
+Madera codecs sit on SPI as often as on I2C, but the schema does not pull
+in the SPI peripheral properties, so a codec node on SPI fails validation
+as soon as it carries spi-max-frequency or a controller specific child
+such as the controller-data node of the Samsung SPI controller.
+
+Reference spi-peripheral-props.yaml the way the Arizona binding already
+does.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ Documentation/devicetree/bindings/mfd/cirrus,madera.yaml | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/Documentation/devicetree/bindings/mfd/cirrus,madera.yaml b/Documentation/devicetree/bindings/mfd/cirrus,madera.yaml
+index 68c75a517c9..da470349945 100644
+--- a/Documentation/devicetree/bindings/mfd/cirrus,madera.yaml
++++ b/Documentation/devicetree/bindings/mfd/cirrus,madera.yaml
+@@ -20,6 +20,7 @@ description: |
+     bindings/sound/cirrus,madera.yaml
+ 
+ allOf:
++  - $ref: /schemas/spi/spi-peripheral-props.yaml
+   - $ref: /schemas/pinctrl/cirrus,madera.yaml#
+   - $ref: /schemas/regulator/wlf,arizona.yaml#
+   - $ref: /schemas/sound/cirrus,madera.yaml#

@@ -1,0 +1,15 @@
+ipc_channels 0x5f0c, num 14
+kanal id 0 field 1 owner 4 type 1 q_len 15 q_elem 16 ap_poll 1
+kanal id 1 field 2 owner 4 type 1 q_len 3 q_elem 16 ap_poll 1
+kanal id 2 field 4 owner 8 type 1 q_len 5 q_elem 16 ap_poll 1
+kanal id 3 field 8 owner 16 type 2 q_len 1 q_elem 16 ap_poll 0
+kanal id 4 field 16 owner 1 type 1 q_len 3 q_elem 16 ap_poll 1
+kanal id 5 field 32 owner 4 type 2 q_len 1 q_elem 16 ap_poll 0
+kanal id 6 field 64 owner 4 type 2 q_len 1 q_elem 16 ap_poll 0
+kanal id 7 field 128 owner 4 type 2 q_len 1 q_elem 2 ap_poll 1
+kanal id 8 field 256 owner 8 type 2 q_len 1 q_elem 2 ap_poll 1
+kanal id 9 field 512 owner 64 type 1 q_len 7 q_elem 16 ap_poll 1
+kanal id 10 field 1024 owner 2 type 1 q_len 3 q_elem 16 ap_poll 1
+kanal id 11 field 1 owner 4 type 2 q_len 1 q_elem 2 ap_poll 0
+kanal id 12 field 2 owner 8 type 2 q_len 1 q_elem 2 ap_poll 0
+kanal id 13 field 4 owner 16 type 2 q_len 1 q_elem 2 ap_poll 0

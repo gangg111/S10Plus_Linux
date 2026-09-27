@@ -1,0 +1,44 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 20:20:00 +0200
+Subject: [PATCH] mfd: max77705: Accept the second revision of the chip
+
+The driver was written against a chip reporting the third revision and
+refuses every other one.  The Galaxy S10+ carries the second, so the whole
+companion chip of its main PMIC, the fuel gauge and the charger with it,
+is turned away at probe.
+
+Everything this driver touches is the same in that revision.  Read from the
+phone over the bus: the identity register answers 0x15 and the revision
+register 0x02, the register map answers over its whole range, and with the
+check relaxed the fuel gauge and the charger both come up and report sane
+values.  The revisions differ in the firmware image the vendor loads into
+the USB-C part of the chip, which is not something this driver has any
+business with.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/mfd/max77705.c | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/mfd/max77705.c b/drivers/mfd/max77705.c
+index e98c76d6b69..c53f21f5444 100644
+--- a/drivers/mfd/max77705.c
++++ b/drivers/mfd/max77705.c
+@@ -105,7 +105,15 @@ static int max77705_i2c_probe(struct i2c_client *i2c)
+ 		return -ENODEV;
+ 
+ 	pmic_rev = pmic_rev_value & MAX77705_REVISION_MASK;
+-	if (pmic_rev != MAX77705_PASS3)
++	/*
++	 * The driver was written against a chip reporting the third revision.
++	 * The Galaxy S10+ carries the second one, and everything this driver
++	 * touches is the same in it: the identity register reads back 0x15, the
++	 * register map answers over its whole range, and the two revisions
++	 * differ only in the firmware image the vendor loads into the USB-C
++	 * part, which is not something this driver has any business with.
++	 */
++	if (pmic_rev != MAX77705_PASS2 && pmic_rev != MAX77705_PASS3)
+ 		return dev_err_probe(dev, -ENODEV, "Rev.0x%x is not tested\n", pmic_rev);
+ 
+ 	/* Active Discharge Enable */

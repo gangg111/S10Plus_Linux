@@ -1,0 +1,134 @@
+From c4c39d98e060b42ce443c816533d4bff5e0090eb Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 17:50:55 +0200
+Subject: [PATCH 39/40] dts: exynos: take the GPU DVFS nodes from the kernel
+ tree
+
+Kernel patch 0114 gives the Exynos9820 GPU an OPP table and throttling in
+its thermal zone.  This tree carries a copy of that SoC file, and the copy
+has to stay a copy, so take the file.  Nothing in this boot loader scales
+the GPU.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ dts/upstream/src/arm64/exynos/exynos9820.dtsi | 73 +++++++++++++++++--
+ 1 file changed, 67 insertions(+), 6 deletions(-)
+
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820.dtsi b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+index 2d7d2007..c6724eb0 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820.dtsi
++++ b/dts/upstream/src/arm64/exynos/exynos9820.dtsi
+@@ -956,8 +956,8 @@
+ 		/*
+ 		 * A Mali-G76 MP12: GPU_ID reads 0x72110000 and SHADER_PRESENT
+ 		 * 0x00770077 on this phone.  The firmware on the APM owns its clock
+-		 * and voltage, and with no operating points the GPU stays at the
+-		 * level the firmware starts it at.  The power domain is left out:
++		 * and voltage; panfrost picks the level through devfreq and the GPU
++		 * thermal zone throttles it.  The power domain is left out:
+ 		 * the bootloader leaves it on, and the vendor saves and restores
+ 		 * the TrustZone setup of the block with an SMC around every power
+ 		 * cycle, which the power domain driver does not do.
+@@ -970,6 +970,8 @@
+ 				     <GIC_SPI 289 IRQ_TYPE_LEVEL_HIGH>;
+ 			interrupt-names = "job", "mmu", "gpu";
+ 			clocks = <&acpm_ipc EXYNOS9820_CLK_ACPM_DVFS_G3D>;
++			operating-points-v2 = <&gpu_opp_table>;
++			#cooling-cells = <2>;
+ 		};
+ 
+ 		pinctrl_aud: pinctrl@18c60000 {
+@@ -1471,10 +1473,55 @@
+ 	};
+ 
+ 	/*
+-	 * Each CPU cluster is throttled through cpufreq from 85 C on.  The
+-	 * critical trip stays 15 C below the hardware trip of the TMU, so the
+-	 * kernel powers the phone off in order before the TMU removes the power;
+-	 * the GPU and ISP zones have nothing to throttle yet.
++	 * The levels the vendor gives the GPU, at the frequencies the DVFS
++	 * firmware keeps for them.  The firmware sets the voltage of a level
++	 * itself.
++	 */
++	gpu_opp_table: opp-table-gpu {
++		compatible = "operating-points-v2";
++
++		opp-156000000 {
++			opp-hz = /bits/ 64 <156000000>;
++		};
++
++		opp-200000000 {
++			opp-hz = /bits/ 64 <200000000>;
++		};
++
++		opp-260000000 {
++			opp-hz = /bits/ 64 <260000000>;
++		};
++
++		opp-325000000 {
++			opp-hz = /bits/ 64 <325000000>;
++		};
++
++		opp-377000000 {
++			opp-hz = /bits/ 64 <377000000>;
++		};
++
++		opp-433000000 {
++			opp-hz = /bits/ 64 <433000000>;
++		};
++
++		opp-572000000 {
++			opp-hz = /bits/ 64 <572000000>;
++		};
++
++		opp-650000000 {
++			opp-hz = /bits/ 64 <650000000>;
++		};
++
++		opp-702000000 {
++			opp-hz = /bits/ 64 <702000000>;
++		};
++	};
++
++	/*
++	 * Each CPU cluster is throttled through cpufreq and the GPU through
++	 * devfreq from 85 C on.  The critical trip stays 15 C below the hardware
++	 * trip of the TMU, so the kernel powers the phone off in order before the
++	 * TMU removes the power; the ISP zone has nothing to throttle yet.
+ 	 */
+ 	thermal-zones {
+ 		big-thermal {
+@@ -1506,16 +1553,30 @@
+ 		};
+ 
+ 		gpu-thermal {
++			polling-delay-passive = <100>;
+ 			polling-delay = <1000>;
+ 			thermal-sensors = <&tmu_sub 3>;
+ 
+ 			trips {
++				gpu_alert: gpu-alert {
++					temperature = <85000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				gpu-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu_alert>;
++					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		isp-thermal {
+-- 
+2.47.3
+

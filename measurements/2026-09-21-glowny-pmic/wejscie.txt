@@ -1,0 +1,31 @@
+I: Bus=0019 Vendor=0001 Product=0001 Version=0100
+N: Name="gpio-keys"
+P: Phys=gpio-keys/input0
+S: Sysfs=/devices/platform/gpio-keys/input/input0
+U: Uniq=
+H: Handlers=kbd event0 
+B: PROP=0
+B: EV=3
+B: KEY=1000000 1c000000000000 0
+
+I: Bus=0018 Vendor=0000 Product=0000 Version=0000
+N: Name="s6sy761"
+P: Phys=
+S: Sysfs=/devices/platform/soc@0/104b00c0.usi/104b0000.i2c/i2c-0/0-0048/input/input1
+U: Uniq=
+H: Handlers=event1 
+B: PROP=2
+B: EV=b
+B: KEY=400 0 0 0 0 0
+B: ABS=663800001000003
+
+I: Bus=0006 Vendor=0001 Product=0001 Version=0001
+N: Name="klawiatura ekranowa"
+P: Phys=
+S: Sysfs=/devices/virtual/input/input2
+U: Uniq=
+H: Handlers=sysrq rfkill kbd event2 
+B: PROP=0
+B: EV=3
+B: KEY=ffffffffffffffff ffffffffffffffff ffffffffffffffff fffffffffffffffe
+

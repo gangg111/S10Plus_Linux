@@ -1,0 +1,86 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 09:40:00 +0200
+Subject: [PATCH] dt-bindings: soc: samsung: Add the Exynos9820 CPU interrupt
+ generator
+
+A core of this SoC does not start on the PSCI call alone: the host has to
+lift the interrupt block of that core first, in a block of its own next to
+the PMU.  Tensor gs101 has the same block, at the same offsets, and this
+binding describes the Exynos one the same way.
+
+The property naming the block stops being tied to one vendor.  The old
+name stays, because the device trees that already carry it are in tree.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../soc/google/google,gs101-pmu-intr-gen.yaml |  8 ++++++--
+ .../bindings/soc/samsung/exynos-pmu.yaml      | 19 +++++++++++++++++++
+ 2 files changed, 25 insertions(+), 2 deletions(-)
+
+diff --git a/Documentation/devicetree/bindings/soc/google/google,gs101-pmu-intr-gen.yaml b/Documentation/devicetree/bindings/soc/google/google,gs101-pmu-intr-gen.yaml
+index 2be022ca6a7..d35aab7bf38 100644
+--- a/Documentation/devicetree/bindings/soc/google/google,gs101-pmu-intr-gen.yaml
++++ b/Documentation/devicetree/bindings/soc/google/google,gs101-pmu-intr-gen.yaml
+@@ -4,10 +4,12 @@
+ $id: http://devicetree.org/schemas/soc/google/google,gs101-pmu-intr-gen.yaml#
+ $schema: http://devicetree.org/meta-schemas/core.yaml#
+ 
+-title: Google Power Management Unit (PMU) Interrupt Generation
++title: Power Management Unit (PMU) Interrupt Generation
+ 
+ description: |
+   PMU interrupt generator for handshaking between PMU through interrupts.
++  A core of these SoCs does not start on the PSCI call alone: the host has to
++  lift the interrupt block of that core in this block first.
+ 
+ maintainers:
+   - Peter Griffin <peter.griffin@linaro.org>
+@@ -15,7 +17,9 @@ maintainers:
+ properties:
+   compatible:
+     items:
+-      - const: google,gs101-pmu-intr-gen
++      - enum:
++          - google,gs101-pmu-intr-gen
++          - samsung,exynos9820-pmu-intr-gen
+       - const: syscon
+ 
+   reg:
+diff --git a/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml b/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml
+index 3d221e41591..80afcc9701a 100644
+--- a/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml
++++ b/Documentation/devicetree/bindings/soc/samsung/exynos-pmu.yaml
+@@ -112,6 +112,13 @@ properties:
+       Node for reboot method
+ 
+   google,pmu-intr-gen-syscon:
++    $ref: /schemas/types.yaml#/definitions/phandle
++    description:
++      Phandle to PMU interrupt generation interface.  Deprecated name, kept
++      for the device trees that already carry it; new ones use the
++      SoC-neutral samsung,pmu-intr-gen-syscon.
++
++  samsung,pmu-intr-gen-syscon:
+     $ref: /schemas/types.yaml#/definitions/phandle
+     description:
+       Phandle to PMU interrupt generation interface.
+@@ -190,6 +197,18 @@ allOf:
+       properties:
+         google,pmu-intr-gen-syscon: false
+ 
++  - if:
++      properties:
++        compatible:
++          contains:
++            const: samsung,exynos9820-pmu
++    then:
++      required:
++        - samsung,pmu-intr-gen-syscon
++    else:
++      properties:
++        samsung,pmu-intr-gen-syscon: false
++
+ examples:
+   - |
+     #include <dt-bindings/clock/exynos5250.h>

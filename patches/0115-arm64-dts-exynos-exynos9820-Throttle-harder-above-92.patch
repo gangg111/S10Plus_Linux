@@ -1,0 +1,152 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 21:00:04 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Throttle harder above 92 C
+
+Give each CPU cluster and the GPU a second passive trip at 92 C that
+forces at least cooling state 8 on the clusters (1144, 1404 and 949 MHz)
+and 4 on the GPU (377 MHz), as a backstop between the 85 C trip and the
+100 C critical one.
+
+step_wise raises the cooling state only while the temperature keeps
+rising, keeps it while the temperature is steady and lowers it when the
+temperature drops, and the TMU reports whole degrees, so the state of
+the 85 C trip follows one-degree swings.  Under an eight-core build the
+big cluster was read at 95 C once.  A 240 s rerun of the same build with
+this trip in place peaked at 91 C, the 85 C trip taking the big cluster
+to states 8 to 10, so the new trip did not have to act there; it is kept
+for loads that heat the SoC faster than that trip reacts.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 61 ++++++++++++++++++++--
+ 1 file changed, 57 insertions(+), 4 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index c6724eb08a0..6d816b49f7d 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -1518,10 +1518,14 @@ opp-702000000 {
+ 	};
+ 
+ 	/*
+-	 * Each CPU cluster is throttled through cpufreq and the GPU through
+-	 * devfreq from 85 C on.  The critical trip stays 15 C below the hardware
+-	 * trip of the TMU, so the kernel powers the phone off in order before the
+-	 * TMU removes the power; the ISP zone has nothing to throttle yet.
++	 * Each CPU cluster and the GPU are throttled through cpufreq or devfreq
++	 * from 85 C on, and from 92 C on at least to about half of their top
++	 * clock: step_wise raises the cooling state only while the temperature
++	 * keeps rising, so with the 1 C steps of the TMU a steady load can sit
++	 * above the first trip without the state moving.  The critical trip stays
++	 * 15 C below the hardware trip of the TMU, so the kernel powers the phone
++	 * off in order before the TMU removes the power; the ISP zone has nothing
++	 * to throttle yet.
+ 	 */
+ 	thermal-zones {
+ 		big-thermal {
+@@ -1536,6 +1540,12 @@ big_alert: big-alert {
+ 					type = "passive";
+ 				};
+ 
++				big_hot: big-hot {
++					temperature = <92000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				big-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+@@ -1549,6 +1559,12 @@ map0 {
+ 					cooling-device = <&cpu6 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+ 							 <&cpu7 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+ 				};
++
++				map1 {
++					trip = <&big_hot>;
++					cooling-device = <&cpu6 8 THERMAL_NO_LIMIT>,
++							 <&cpu7 8 THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 
+@@ -1564,6 +1580,12 @@ gpu_alert: gpu-alert {
+ 					type = "passive";
+ 				};
+ 
++				gpu_hot: gpu-hot {
++					temperature = <92000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				gpu-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+@@ -1576,6 +1598,11 @@ map0 {
+ 					trip = <&gpu_alert>;
+ 					cooling-device = <&gpu THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+ 				};
++
++				map1 {
++					trip = <&gpu_hot>;
++					cooling-device = <&gpu 4 THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 
+@@ -1604,6 +1631,12 @@ little_alert: little-alert {
+ 					type = "passive";
+ 				};
+ 
++				little_hot: little-hot {
++					temperature = <92000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				little-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+@@ -1619,6 +1652,14 @@ map0 {
+ 							 <&cpu2 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+ 							 <&cpu3 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+ 				};
++
++				map1 {
++					trip = <&little_hot>;
++					cooling-device = <&cpu0 8 THERMAL_NO_LIMIT>,
++							 <&cpu1 8 THERMAL_NO_LIMIT>,
++							 <&cpu2 8 THERMAL_NO_LIMIT>,
++							 <&cpu3 8 THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 
+@@ -1634,6 +1675,12 @@ mid_alert: mid-alert {
+ 					type = "passive";
+ 				};
+ 
++				mid_hot: mid-hot {
++					temperature = <92000>;
++					hysteresis = <2000>;
++					type = "passive";
++				};
++
+ 				mid-critical {
+ 					temperature = <100000>;
+ 					hysteresis = <0>;
+@@ -1647,6 +1694,12 @@ map0 {
+ 					cooling-device = <&cpu4 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>,
+ 							 <&cpu5 THERMAL_NO_LIMIT THERMAL_NO_LIMIT>;
+ 				};
++
++				map1 {
++					trip = <&mid_hot>;
++					cooling-device = <&cpu4 8 THERMAL_NO_LIMIT>,
++							 <&cpu5 8 THERMAL_NO_LIMIT>;
++				};
+ 			};
+ 		};
+ 	};

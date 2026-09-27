@@ -1,7 +1,7 @@
-From b86057a4b9d0d658c54f9162a94fb39cf9f9d2b6 Mon Sep 17 00:00:00 2001
+From 2835895dd50f3de71329756fd6fd0892f1e183a3 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sat, 19 Sep 2026 00:52:02 +0200
-Subject: [PATCH 4/8] phy: samsung: add the UFS PHY driver for Exynos9820
+Subject: [PATCH 04/40] phy: samsung: add the UFS PHY driver for Exynos9820
 
 Storage on this SoC sits behind a PHY that has to be calibrated at four
 points of the link bring-up, and upstream has nothing for it: drivers/phy

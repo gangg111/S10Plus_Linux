@@ -28,16 +28,16 @@ UNVERIFIED, listed as open hardware questions in the porting notes:
 
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---
- .../boot/dts/exynos/exynos9820-beyond2lte.dts |  69 ++++++++
+ .../boot/dts/exynos/exynos9820-beyond2lte.dts |  79 +++++++
  .../boot/dts/exynos/exynos9820-pinctrl.dtsi   |  14 ++
- arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 160 ++++++++++++++++++
- 3 files changed, 243 insertions(+)
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 203 ++++++++++++++++++
+ 3 files changed, 296 insertions(+)
 
 diff --git a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
-index 5fe21367cb2..ea48614ada2 100644
+index b2f794ed624..72db040d28a 100644
 --- a/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
 +++ b/arch/arm64/boot/dts/exynos/exynos9820-beyond2lte.dts
-@@ -226,6 +226,31 @@ el2_earlymem@9fd800000 {
+@@ -234,6 +234,31 @@ el2_earlymem@9fd800000 {
  	};
  };
  
@@ -69,7 +69,7 @@ index 5fe21367cb2..ea48614ada2 100644
  &hsi2c10 {
  	clock-frequency = <400000>;
  	status = "okay";
-@@ -244,6 +269,50 @@ touchscreen@48 {
+@@ -252,6 +277,50 @@ touchscreen@48 {
  	};
  };
  
@@ -120,6 +120,20 @@ index 5fe21367cb2..ea48614ada2 100644
  &oscclk {
  	clock-frequency = <26000000>;
  };
+@@ -302,3 +371,13 @@ &usi3 {
+ 	samsung,mode = <USI_V2_I2C>;
+ 	status = "okay";
+ };
++
++/*
++ * This one is wired as the I2C master the display PMIC answers on.  Picking
++ * the mode here is also what releases the block from reset, so the bus below
++ * cannot work without it.
++ */
++&usi_cmgp2 {
++	samsung,mode = <USI_V2_I2C>;
++	status = "okay";
++};
 diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
 index 52757a29a55..e37677140f7 100644
 --- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
@@ -153,10 +167,10 @@ index 52757a29a55..e37677140f7 100644
  
  &pinctrl_vts {
 diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
-index 00da8504c53..155be359ba9 100644
+index f2ec573f675..825ff786249 100644
 --- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
 +++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
-@@ -435,6 +435,16 @@ pd_dpu: power-domain@15861e00 {
+@@ -445,6 +445,35 @@ pd_dpu: power-domain@15861e00 {
  			label = "DPU";
  		};
  
@@ -170,10 +184,29 @@ index 00da8504c53..155be359ba9 100644
 +			clock-names = "oscclk", "bus";
 +		};
 +
++		/*
++		 * Holds the mode registers the USI blocks of this domain use.
++		 * The address is read, not worked out: the vendor tree names
++		 * these registers one by one, usi_00_cmgp at 0x15c22000 through
++		 * usi_03_cmgp_i2c at 0x15c22034, each as its own node.  That
++		 * matters here, because on this SoC a write to a wrong system
++		 * register is how an external abort is earned.
++		 *
++		 * The window starts at the first of those registers rather than
++		 * at the start of the block, because where the block starts is
++		 * exactly the part no source states.
++		 */
++		sysreg_cmgp: syscon@15c22000 {
++			compatible = "samsung,exynos9820-cmgp-sysreg",
++				     "syscon";
++			reg = <0x15c22000 0x1000>;
++			clocks = <&cmu_cmgp CLK_GOUT_CMGP_SYSREG_CMGP_PCLK>;
++		};
++
  		pinctrl_cmgp: pinctrl@15c30000 {
  			compatible = "samsung,exynos9820-pinctrl";
  			reg = <0x15c30000 0x1000>;
-@@ -446,6 +456,27 @@ wakeup-interrupt-controller {
+@@ -456,6 +485,51 @@ wakeup-interrupt-controller {
  			};
  		};
  
@@ -181,27 +214,51 @@ index 00da8504c53..155be359ba9 100644
 +		 * This bus stays awake with the CMGP domain, which is why the
 +		 * display PMIC hangs off it rather than off a PERIC bus: the panel
 +		 * rails have to be reachable while the rest sleeps.
++		 *
++		 * The controller below is the dedicated I2C half of a CMGP
++		 * channel, not the USI half, but it is wrapped the same way and
++		 * has its own mode register, named usi_02_cmgp_i2c by the vendor.
++		 * Mainline describes every such controller like this, dedicated or
++		 * not; see the three hsi2c blocks of exynos850.  Measured on the
++		 * phone without this node: the block stays in reset, the driver's
++		 * writes never land, and the bus raises no interrupt at all.
 +		 */
-+		hsi2c2: i2c@15d50000 {
-+			compatible = "samsung,exynos9820-hsi2c",
-+				     "samsung,exynosautov9-hsi2c";
-+			reg = <0x15d50000 0x1000>;
-+			interrupts = <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>;
++		usi_cmgp2: usi@15d500c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x15d500c0 0x20>;
++			ranges;
 +			#address-cells = <1>;
-+			#size-cells = <0>;
++			#size-cells = <1>;
 +
-+			clocks = <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_IPCLK>,
-+				 <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_PCLK>;
-+			clock-names = "hsi2c", "hsi2c_pclk";
-+			pinctrl-0 = <&hsi2c2_bus>;
-+			pinctrl-names = "default";
++			clocks = <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_PCLK>,
++				 <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_cmgp 0x24>;
++			samsung,clkreq-on;
 +			status = "disabled";
++
++			hsi2c2: i2c@15d50000 {
++				compatible = "samsung,exynos9820-hsi2c",
++					     "samsung,exynosautov9-hsi2c";
++				reg = <0x15d50000 0xc0>;
++				interrupts = <GIC_SPI 81 IRQ_TYPE_LEVEL_HIGH>;
++				#address-cells = <1>;
++				#size-cells = <0>;
++
++				clocks = <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_IPCLK>,
++					 <&cmu_cmgp CLK_GOUT_CMGP_I2C_CMGP2_PCLK>;
++				clock-names = "hsi2c", "hsi2c_pclk";
++				pinctrl-0 = <&hsi2c2_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
 +		};
 +
  		pinctrl_aud: pinctrl@18c60000 {
  			compatible = "samsung,exynos9820-pinctrl";
  			reg = <0x18c60000 0x1000>;
-@@ -462,6 +493,111 @@ cmu_dpu: clock-controller@19000000 {
+@@ -472,6 +546,111 @@ cmu_dpu: clock-controller@19000000 {
  			power-domains = <&pd_dpu>;
  		};
  
@@ -313,7 +370,7 @@ index 00da8504c53..155be359ba9 100644
  		/*
  		 * One system MMU per display data path.  All three have to be
  		 * listed by the controller, because a frame is fetched through
-@@ -497,6 +633,30 @@ sysmmu_dpud2: iommu@190c0000 {
+@@ -507,6 +686,30 @@ sysmmu_dpud2: iommu@190c0000 {
  			#iommu-cells = <0>;
  		};
  

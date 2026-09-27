@@ -1,0 +1,121 @@
+From d84ade4fe6ae576bce2c71c55ee70e969d59bceb Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 23:06:46 +0200
+Subject: [PATCH 23/40] dts: exynos: let the kernel tree describe the whole
+ panel
+
+The kernel series described the boot framebuffer 32 pixels narrower on
+each side, so that the text console kept clear of the curved edges of
+this panel.  That gave its node a different unit address from the one
+this board carries, the two stopped merging, and the built tree ended up
+with two simple-framebuffer nodes.  This file deleted the narrow one to
+keep the boot stripes working.
+
+The series describes the whole panel now, because the phone runs an
+on-screen keyboard that wants to fill those curved edges itself.  Both
+nodes are named for the same address again, so they merge, and what is
+left here is only what the boot loader adds on top: its own compatible
+and the display controller that has to be told to send each frame.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../arm/dts/exynos9820-beyond2lte-u-boot.dtsi | 40 ++++++-------------
+ .../arm64/exynos/exynos9820-beyond2lte.dts    | 21 +++++-----
+ 2 files changed, 24 insertions(+), 37 deletions(-)
+
+diff --git a/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+index 9c220395..6d3e5724 100644
+--- a/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
++++ b/arch/arm/dts/exynos9820-beyond2lte-u-boot.dtsi
+@@ -37,34 +37,6 @@
+ 		#size-cells = <1>;
+ 		ranges;
+ 
+-		/*
+-		 * Zwezony ekran ze wspolnego drzewa nie moze tu zostac.
+-		 *
+-		 * Seria jadra opisuje ten bufor o 32 piksele wezszy z kazdej
+-		 * strony i zaczyna go o tyle dalej, bo panel zakrzywia sie
+-		 * wzdluz obu dlugich krawedzi, a konsola tekstowa Linuksa nie
+-		 * umie odsunac swojego obszaru sama.  Wezel dostal przez to
+-		 * inny adres w nazwie niz nasz, wiec przestal sie z nim scalac
+-		 * i w zbudowanym drzewie stoja DWA wezly simple-framebuffer.
+-		 *
+-		 * Zmierzone skutki, gdyby zostawic oba: exynos_mark() bierze
+-		 * PIERWSZY wezel z tym compatible, a pierwszy jest wlasnie
+-		 * zwezony.  Jego rozmiar jest o 128 bajtow mniejszy niz
+-		 * stride * height, wiec bramka "nie pisz poza bufor" zamyka sie
+-		 * na kazdym stopniu i nie powstaje ani jeden pasek
+-		 * diagnostyczny.  Narzedzie, ktore jako jedyne mowi, gdzie
+-		 * stanal rozruch, przestaloby dzialac bez sladu w logu, bo loga
+-		 * na tym etapie jeszcze nie ma.  Do tego menu jest liczone
+-		 * w znakach czcionki 32x64, czyli 1440 / 32 = 45 kolumn; przy
+-		 * 1376 pikselach wychodzi 43 i caly uklad ekranu wymaga
+-		 * przeliczenia.
+-		 *
+-		 * Czy bootloader tez ma odsuwac sie od zakrzywionych krawedzi,
+-		 * rozstrzygnie spojrzenie na panel.  Do tego czasu obowiazuje
+-		 * geometria, ktora zostala na nim sprawdzona.
+-		 */
+-		/delete-node/ framebuffer@ca000080;
+-
+ 		/*
+ 		 * The screen this phone comes up with, left running by whatever
+ 		 * ran before.  Its address is not guessed: the primary boot
+@@ -72,6 +44,18 @@
+ 		 * as s3cfb.bootloaderfb=0xca000000, and that is what was read
+ 		 * off the device.  The geometry is the panel's own, 1440 by
+ 		 * 3040, four bytes to a pixel.
++		 *
++		 * The kernel series used to describe this buffer 32 pixels
++		 * narrower on each side, which gave its node a different unit
++		 * address, stopped the two from merging and left TWO
++		 * simple-framebuffer nodes in the built tree.  That was not
++		 * cosmetic: exynos_mark() takes the first node with this
++		 * compatible, the narrow one came first, its size is 128 bytes
++		 * short of stride * height, and the guard against writing past
++		 * the buffer then closed on every step, so not one boot stripe
++		 * was drawn.  The series describes the whole panel now, so the
++		 * two nodes are one and this file only adds what the boot
++		 * loader needs on top of it.
+ 		 */
+ 		framebuffer@ca000000 {
+ 			compatible = "samsung,exynos9820-fb",
+diff --git a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+index 6f81f18c..457a1330 100644
+--- a/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
++++ b/dts/upstream/src/arm64/exynos/exynos9820-beyond2lte.dts
+@@ -70,18 +70,21 @@
+ 		 * the boot loader itself passes on this phone: the vendor kernel
+ 		 * receives "s3cfb.bootloaderfb=0xca000000" on its command line.
+ 		 */
+-		framebuffer0: framebuffer@ca000080 {
++		framebuffer0: framebuffer@ca000000 {
+ 			compatible = "simple-framebuffer";
+ 			/*
+-			 * The panel curves along both long edges, so the outermost
+-			 * columns are distorted and hard to hit with a finger.  The
+-			 * text console cannot offset its own area, so the buffer is
+-			 * described 32 pixels narrower on each side instead: the
+-			 * start moves by that many pixels and the line length stays
+-			 * as the hardware has it.
++			 * The panel curves along both long edges.  The buffer used to
++			 * be described 32 pixels narrower on each side, because the
++			 * text console cannot offset its own area and its outermost
++			 * columns landed on the curve.  What runs on this phone now is
++			 * an on-screen keyboard that wants the opposite: it fills the
++			 * curved edges with its own background and keeps the keys
++			 * themselves clear of them.  A program cannot paint outside
++			 * the buffer this node describes, so the node describes the
++			 * panel as it physically is.
+ 			 */
+-			reg = <0x0 0xca000080 ((1440 * 3040 - 32) * 4)>;
+-			width = <1376>;
++			reg = <0x0 0xca000000 (1440 * 3040 * 4)>;
++			width = <1440>;
+ 			height = <3040>;
+ 			stride = <(1440 * 4)>;
+ 			format = "a8r8g8b8";
+-- 
+2.47.3
+

@@ -1,0 +1,103 @@
+==========================================================
+ bramki projektu s10-mainline
+ data: 2026-09-21T17:09:35Z
+==========================================================
+
+[1] seria patchy
+  patchy w serii: 88
+  OK      brak plikow .orig/.rej/~ w patches/
+  OK      seria stosuje sie na 1200d84f4c0a929a0780180d25063d93773be79c (88/88)
+  OK      seria daje dokladnie te pliki, ktore sprawdzaja pozostale bramki
+  OK      drzewo robocze nie ma nic poza seria
+  OK      patche nie wnosza plikow .orig/.rej
+  OK      patche out-of-tree stosuja sie na przypiete drzewo obce
+  OK      patche out-of-tree wnosza komplet identyfikatorow zegarow
+
+[2] checkpatch --strict
+  OK      checkpatch przeliczyl kazdy patch (88/88)
+  errors=0 checks=0 warnings=16 dlugie=125
+  OK      checkpatch: 0 errors
+  OK      checkpatch: 0 checks
+  OK      checkpatch: warningow 16 (limit 16)
+  OK      checkpatch: dlugich linii 125 (limit 125)
+
+[3] device tree
+  OK      dtb bajt w bajt
+  OK      dt-validate na dtb (odpowiednik CHECK_DTBS): 0 naruszen
+  OK      dt-doc-validate na bindingach serii (odpowiednik dt_binding_check)
+  OK      przyklady bindingow (odpowiednik dt_binding_check): check-binding-examples: 26 przykladow zbudowanych i zwalidowanych
+
+[4] kompilacja arm64 (bez make)
+  OK      kompilacja clk-exynos9820.c (0 uwag)
+  OK      kompilacja W=1 clk-exynos9820.c (0 uwag)
+  OK      kompilacja clk-pll.c (0 uwag)
+  OK      kompilacja W=1 clk-pll.c (0 uwag)
+  OK      kompilacja pinctrl-exynos-arm64.c (0 uwag)
+  OK      kompilacja W=1 pinctrl-exynos-arm64.c (0 uwag)
+  OK      kompilacja pinctrl-samsung.c (0 uwag)
+  OK      kompilacja W=1 pinctrl-samsung.c (0 uwag)
+  OK      kompilacja exynos-pm-domains.c (0 uwag)
+  OK      kompilacja W=1 exynos-pm-domains.c (0 uwag)
+  OK      kompilacja panel-samsung-s6e3ha9-main.c (0 uwag)
+  OK      kompilacja W=1 panel-samsung-s6e3ha9-main.c (0 uwag)
+  OK      kompilacja panel-samsung-s6e3ha9-dimming.c (0 uwag)
+  OK      kompilacja W=1 panel-samsung-s6e3ha9-dimming.c (0 uwag)
+  OK      kompilacja exynos9820_drm_decon.c (0 uwag)
+  OK      kompilacja W=1 exynos9820_drm_decon.c (0 uwag)
+  OK      kompilacja phy-exynos9820-dsim.c (0 uwag)
+  OK      kompilacja W=1 phy-exynos9820-dsim.c (0 uwag)
+  OK      kompilacja samsung-dsim.c (0 uwag)
+  OK      kompilacja W=1 samsung-dsim.c (0 uwag)
+  OK      analizator statyczny clang: 2 znalezisk, zgodnie z wzorcem
+
+[5] stale i tablice wobec zrodel producenta
+  OK      PPS panelu beyond2 (128 B)
+  OK      PPS dpu20 (kontrola krzyzowa)
+  OK      model FFC (0xC5)
+  OK      sekwencja init rozwinieta
+  OK      sekwencja display-on
+  OK      DSC panelu: 30/30 pol zgodnych z firmowym PPS
+  OK      DSC enkoderow DECON: 18/18 pol
+  OK      tablice AID: wierszy w sterowniku: 74
+  OK      silnik dimmingu: 74/74 poziomy dla 7 zestawow MTP
+  OK      odsylacze do patchy w dokumentach
+  OK      cytaty do zrodel: cytatow z linia 268
+  OK      rejestry wobec producenta: rozwiazane wobec producenta 265
+  OK      PHY UFS wobec producenta: wpisow zgodnych z producentem 57
+  OK      host UFS wobec producenta: wpisow zgodnych z producentem 38
+  OK      PHY UFS jadra wobec producenta: wpisow zgodnych z producentem 57
+  OK      host UFS jadra wobec producenta: wpisow zgodnych z producentem 38
+  OK      wezel UFS wobec producenta: sprawdzonych zgodnosci z producentem 18
+  OK      DT bootloadera: kopii bajt w bajt z seria jadra 3
+  OK      seria bootloadera: latek 21, wszystko w normie
+  OK      kolejnosc zegarow bootloadera: zegarow 259 w 9 CMU
+  OK      analiza statyczna bootloadera: plikow 6, clang 0
+  OK      predkosc lacza wobec tablicy D-PHY
+  OK      zegary wobec cmucal: offsetow 632/640 offsetow
+  OK      drzewo zegarow bez sierot: zegarow 636
+  OK      rodzice zegarow wobec producenta: zgodnych z producentem 447, udokumentowanych wyjatkow 2
+  OK      kazdy wezel DT ma sterownik: wezlow 88
+  OK      makra zegarow istnieja: uzyc 68
+  OK      zrodla producenta w sources/ds
+  OK      kazde zrodlo producenta opisane w SOURCES.md: plikow 79
+  OK      oba pliki DT zgodne ze swoimi generatorami (10 + 6 etapow)
+  OK      pliki generowane zgodne z generatorami: check-generatory: plikow 3, rozjazdow 0
+  OK      latki serii poprawnie zbudowane: check-latki: latek 88, niespojnych 0
+  OK      latki plikow generowanych zgodne z generatorami
+  OK      czcionka klawiatury zgodna z generatorem
+  OK      uklad klawiatury spojny (wagi, kody, etykiety)
+  OK      mapa pamieci zgodna z odczytem z telefonu: 6 bankow memory@ identycznych z telefonem
+  OK      panel tego egzemplarza wybiera wariant, z ktorego sa tablice
+  OK      D-PHY, PLL, escape i rewizja krzemu zgodne z logiem S-Boota: rewizja EVT1.1
+  OK      zaden PLL nie jest rejestrowany jako PLL: stalych czestotliwosci 9 zgodnych
+  OK      fragment konfiguracji scala sie z defconfigiem: zamowionych symboli 59, swiadomie wylaczonych 2
+
+[6] spojnosc z docs/HW-BLOCKED.md
+  OK      kazdy wiersz mapy wskazuje na adnotacje w serii
+  OK      kazda pozycja z mapy jest opisana w HW-BLOCKED
+  OK      pozycja i wiersz mapy wskazuja ten sam plik
+  OK      liczba adnotacji UNVERIFIED zgadza sie z mapa (12)
+
+==========================================================
+ przeszlo: 81  padlo: 0   nieuruchomione: 0
+==========================================================

@@ -1,0 +1,48 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 23:47:55 +0200
+Subject: [PATCH] fbcon: Let an explicit logo count outlive a quiet boot
+
+A quiet command line turns the boot logo off:  fbcon sees
+console_loglevel at or below CONSOLE_LOGLEVEL_QUIET and decides the
+logo is unwanted.  For a desktop being quietened that is the right
+guess, because quiet is about having less to read and the logo is one
+more thing on the screen.
+
+On a device whose only console is the panel it is the wrong one, and
+there is no way to say so.  The same command line can ask for the logo
+by name, with fbcon=logo-count: and fbcon=logo-pos:, and those requests
+are then thrown away by a guess made from an unrelated option.  What is
+left is a screen that stays black from the moment the loader hands over
+until the login prompt appears, on a phone where that is several
+seconds and the only sign the system is alive.
+
+So let the guess apply only where nothing was said: a count given on
+the command line is already an answer to whether the logo is wanted.
+Where no count is given, quiet behaves exactly as before.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/video/fbdev/core/fbcon.c | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/video/fbdev/core/fbcon.c b/drivers/video/fbdev/core/fbcon.c
+index 23b3c536d53..48c9780ca1e 100644
+--- a/drivers/video/fbdev/core/fbcon.c
++++ b/drivers/video/fbdev/core/fbcon.c
+@@ -1103,7 +1103,14 @@ static void fbcon_init(struct vc_data *vc, bool init)
+ 
+ 	info = fbcon_info_from_console(vc->vc_num);
+ 
+-	if (logo_shown < 0 && console_loglevel <= CONSOLE_LOGLEVEL_QUIET)
++	/*
++	 * A quiet boot asked for less to read, not for no logo.  Where the
++	 * command line names a count of its own, that is already an answer
++	 * to whether the logo is wanted, and this is not the place to
++	 * overrule it.
++	 */
++	if (logo_shown < 0 && console_loglevel <= CONSOLE_LOGLEVEL_QUIET &&
++	    fb_logo_count < 0)
+ 		logo_shown = FBCON_LOGO_DONTSHOW;
+ 
+ 	if (vc != svc || logo_shown == FBCON_LOGO_DONTSHOW ||

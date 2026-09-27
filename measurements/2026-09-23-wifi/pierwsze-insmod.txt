@@ -1,0 +1,88 @@
+== regulator przed insmod ==
+wlan_en state=disabled users=0
+== insmod 14:11:29 ==
+insmod=0
+== dmesg ==
+[   57.467210] exynos9820-pcie 13ed0000.pcie: host bridge /soc@0/pcie@13ed0000 ranges:
+[   57.467257] exynos9820-pcie 13ed0000.pcie:      MEM 0x0014000000..0x0014feffff -> 0x0014000000
+[   57.488050] exynos9820-pcie 13ed0000.pcie: iATU: unroll F, 3 ob, 5 ib, align 4K, limit 4G
+[   57.583050] exynos9820-pcie 13ed0000.pcie: PCIe Gen.1 x1 link up
+[   57.583327] exynos9820-pcie 13ed0000.pcie: PCI host bridge to bus 0000:00
+[   57.583346] pci_bus 0000:00: root bus resource [bus 00-ff]
+[   57.583361] pci_bus 0000:00: root bus resource [mem 0x14000000-0x14feffff]
+[   57.583403] pci 0000:00:00.0: [144d:a598] type 01 class 0x060400 PCIe Root Port
+[   57.583433] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[   57.583449] pci 0000:00:00.0:   bridge window [io  0x0000-0x0fff]
+[   57.583462] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff]
+[   57.583477] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff pref]
+[   57.583529] pci 0000:00:00.0: PME# supported from D0 D3hot D3cold
+[   57.586044] pci 0000:01:00.0: [14e4:4475] type 00 class 0x028000 PCIe Endpoint
+[   57.586284] pci 0000:01:00.0: BAR 0 [mem 0x00000000-0x0000ffff 64bit]
+[   57.586312] pci 0000:01:00.0: BAR 2 [mem 0x00000000-0x003fffff 64bit]
+[   57.586922] pci 0000:01:00.0: supports D1 D2
+[   57.586932] pci 0000:01:00.0: PME# supported from D0 D1 D2 D3hot D3cold
+[   57.587389] pci 0000:01:00.0: 2.000 Gb/s available PCIe bandwidth, limited by 2.5 GT/s PCIe x1 link at 0000:00:00.0 (capable of 4.000 Gb/s with 5.0 GT/s PCIe x1 link)
+[   57.595053] pci 0000:01:00.0: ASPM: default states L1
+[   57.595187] pci 0000:00:00.0: bridge window [mem 0x14000000-0x144fffff]: assigned
+[   57.595209] pci 0000:01:00.0: BAR 2 [mem 0x14000000-0x143fffff 64bit]: assigned
+[   57.595268] pci 0000:01:00.0: BAR 0 [mem 0x14400000-0x1440ffff 64bit]: assigned
+[   57.595325] pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+[   57.595339] pci 0000:00:00.0:   bridge window [mem 0x14000000-0x144fffff]
+[   57.595354] pci_bus 0000:00: resource 4 [mem 0x14000000-0x14feffff]
+[   57.595366] pci_bus 0000:01: resource 1 [mem 0x14000000-0x144fffff]
+[   57.595688] pcieport 0000:00:00.0: PME: Signaling with IRQ 121
+[   57.596005] pcieport 0000:00:00.0: AER: enabled with IRQ 121
+[   57.596712] brcmfmac 0000:01:00.0: enabling device (0000 -> 0002)
+[   57.699577] brcmfmac: brcmf_fw_alloc_request: using brcm/brcmfmac4375-pcie for chip BCM4375/5
+[   58.192681] brcmfmac: brcmf_c_process_txcap_blob: no txcap_blob available (err=-2)
+[   58.194073] brcmfmac: brcmf_c_preinit_dcmds: Firmware: BCM4375/5 wl0: Jul 19 2022 10:52:21 version 18.41.117 (B1 Network/rsdb) FWID 01-1b4772fd
+[   58.411346] ieee80211 phy0: brcmf_dongle_roam: WLC_SET_ROAM_TRIGGER error (-52)
+[   60.619056] ieee80211 phy0: brcmf_p2p_create_p2pdev: timeout occurred
+[   60.619081] ieee80211 phy0: brcmf_cfg80211_add_iface: add iface p2p-dev-wlan0 type 10 failed: err=-5
+== pci ==
+0000:00:00.0 0x144d:0xa598 drv=pcieport
+0000:01:00.0 0x14e4:0x4475 drv=brcmfmac
+== link_history ==
+# entry  ltssm  dstate  l1sub
+      0   0x00    0x0     0x0
+      1   0x00    0x0     0x0
+      2   0x00    0x0     0x0
+      3   0x00    0x0     0x0
+      4   0x00    0x0     0x0
+      5   0x00    0x0     0x0
+      6   0x00    0x0     0x0
+      7   0x00    0x0     0x0
+      8   0x00    0x0     0x0
+      9   0x00    0x0     0x0
+     10   0x00    0x0     0x0
+     11   0x00    0x0     0x0
+     12   0x00    0x0     0x0
+     13   0x00    0x0     0x0
+     14   0x00    0x0     0x0
+     15   0x00    0x0     0x0
+     16   0x00    0x0     0x0
+     17   0x00    0x0     0x0
+     18   0x00    0x0     0x0
+     19   0x00    0x0     0x0
+     20   0x00    0x0     0x0
+     21   0x00    0x0     0x0
+     22   0x00    0x0     0x0
+     23   0x00    0x0     0x0
+     24   0x00    0x0     0x0
+     25   0x00    0x0     0x0
+     26   0x00    0x0     0x0
+     27   0x00    0x0     0x0
+     28   0x00    0x0     0x0
+     29   0x00    0x0     0x0
+     30   0x00    0x0     0x0
+     31   0x00    0x0     0x0
+== przerwania ==
+ 121:        224          0          0          0          0          0          0          0  GIC-0  285 Level     exynos9820-pcie, PCIe PME, aerdrv, brcmf_pcie_intr
+== interfejsy ==
+1: lo: <LOOPBACK,UP,LOWER_UP> mtu 65536 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/loopback 00:00:00:00:00:00 brd 00:00:00:00:00:00
+2: usb0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc pfifo_fast state UP mode DEFAULT group default qlen 1000
+    link/ether (losowy) brd ff:ff:ff:ff:ff:ff
+3: wlan0: <NO-CARRIER,BROADCAST,MULTICAST,UP> mtu 1500 qdisc pfifo_fast state DOWN mode DORMANT group default qlen 1000
+    link/ether (losowy) brd ff:ff:ff:ff:ff:ff permaddr a8:db:03:xx:xx:xx
+wlan_en state=enabled users=1

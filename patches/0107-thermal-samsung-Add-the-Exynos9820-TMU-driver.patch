@@ -1,0 +1,290 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 24 Sep 2026 00:38:46 +0200
+Subject: [PATCH] thermal: samsung: Add the Exynos9820 TMU driver
+
+The TMU of the Exynos9820 is read the way the vendor kernel reads it:
+through the firmware on the APM, over the ACPM TMU channel 9, which
+answers for five zones in whole degrees.  Mainline already speaks that
+protocol; this driver only hands the zones to the thermal framework, one
+instance per block, TOP with the three CPU clusters and SUB with the GPU
+and the ISP.
+
+Measured on a Galaxy S10+ with the firmware the phone ships: INIT returns
+0, including when it is sent again, and READ_TEMP answers for all five
+zones, 43 to 46 C at idle.  Twenty seconds of load on all eight cores
+takes the big cluster to 58 C, and twenty seconds later it is back at
+46 C, so the values are live.
+
+The bootloader arms a hardware trip in both blocks: CONTROL reads
+0x00009503 in each, core and trip enabled, with the top threshold at code
+0x17b, 115 C with the calibration of this unit.  That trip removes the
+power with no shutdown at all.  The driver leaves it alone and warns at
+probe if it finds it disarmed; the orderly shutdown before it comes from
+the critical trips of the device tree.
+
+There is no interrupt and no threshold of the driver's own.  The bus clock
+of the block is held on for the life of the device, because the firmware
+reads the probes through it.  The firmware also knows TMU suspend and
+resume messages, which this driver does not send yet: the platform has no
+system sleep to test them on, and a message the firmware mishandles has
+already left this phone in a reset loop once.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                              |   1 +
+ drivers/thermal/samsung/Kconfig          |  14 ++
+ drivers/thermal/samsung/Makefile         |   1 +
+ drivers/thermal/samsung/exynos9820-tmu.c | 200 +++++++++++++++++++++++
+ 4 files changed, 216 insertions(+)
+ create mode 100644 drivers/thermal/samsung/exynos9820-tmu.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index b61f121a1a8..9809cf78d4a 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24008,6 +24008,7 @@ F:	arch/arm64/boot/dts/exynos/exynos9820*
+ F:	drivers/clk/samsung/clk-exynos9820.c
+ F:	drivers/pci/controller/dwc/pcie-exynos9820.c
+ F:	drivers/phy/samsung/phy-exynos9820-ufs.c
++F:	drivers/thermal/samsung/exynos9820-tmu.c
+ F:	drivers/video/backlight/exynos9820-dsim-lcd.c
+ F:	include/dt-bindings/clock/samsung,exynos9820.h
+ 
+diff --git a/drivers/thermal/samsung/Kconfig b/drivers/thermal/samsung/Kconfig
+index e1e8035d24f..1e4a4846dac 100644
+--- a/drivers/thermal/samsung/Kconfig
++++ b/drivers/thermal/samsung/Kconfig
+@@ -10,3 +10,17 @@ config EXYNOS_THERMAL
+ 	  the TMU, reports temperature and handles cooling action if defined.
+ 	  This driver uses the Exynos core thermal APIs and TMU configuration
+ 	  data from the supported SoCs.
++
++config EXYNOS9820_TMU
++	tristate "Exynos9820 thermal management unit read through ACPM"
++	depends on EXYNOS_ACPM_PROTOCOL
++	depends on THERMAL_OF
++	depends on HAS_IOMEM
++	help
++	  Temperature sensor of the Samsung Exynos9820 SoC.  The firmware on
++	  the APM owns the TMU probes and reports five zones over the ACPM
++	  protocol: the three CPU clusters, the GPU and the ISP.  This driver
++	  hands them to the thermal framework.
++
++	  To compile this driver as a module, choose M here: the module will
++	  be called exynos9820-tmu.
+diff --git a/drivers/thermal/samsung/Makefile b/drivers/thermal/samsung/Makefile
+index f139407150d..c8910c8e1b8 100644
+--- a/drivers/thermal/samsung/Makefile
++++ b/drivers/thermal/samsung/Makefile
+@@ -4,3 +4,4 @@
+ #
+ obj-$(CONFIG_EXYNOS_THERMAL)			+= exynos_thermal.o
+ exynos_thermal-y				:= exynos_tmu.o
++obj-$(CONFIG_EXYNOS9820_TMU)			+= exynos9820-tmu.o
+diff --git a/drivers/thermal/samsung/exynos9820-tmu.c b/drivers/thermal/samsung/exynos9820-tmu.c
+new file mode 100644
+index 00000000000..8a7c773e860
+--- /dev/null
++++ b/drivers/thermal/samsung/exynos9820-tmu.c
+@@ -0,0 +1,200 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * Samsung Exynos9820 thermal management unit, read through the ACPM firmware
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * The TMU of this SoC comes as two blocks, TOP and SUB, with several probes
++ * each, and the vendor kernel never reads a temperature from them itself.  It
++ * asks the firmware on the APM, which owns the probes, over the ACPM TMU
++ * channel.  The firmware groups the probes into five zones and answers in
++ * whole degrees Celsius: the big, middle and little CPU clusters sit in TOP,
++ * the GPU and the ISP in SUB.
++ *
++ * This driver does the same and nothing more: no thresholds of its own and
++ * no interrupt.  The thermal core polls the zones and acts on the trips the
++ * device tree gives.  The bootloader arms a hardware trip in both blocks
++ * that cuts the power without asking anyone, so the driver checks at probe
++ * that it is still armed and says so when it is not.
++ */
++
++#include <linux/bits.h>
++#include <linux/clk.h>
++#include <linux/device.h>
++#include <linux/device-id/of.h>
++#include <linux/err.h>
++#include <linux/firmware/samsung/exynos-acpm-protocol.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/platform_device.h>
++#include <linux/property.h>
++#include <linux/thermal.h>
++#include <linux/units.h>
++
++#define EXYNOS9820_TMU_MAX_ZONES	3
++
++#define EXYNOS9820_TMU_CONTROL		0x50
++#define EXYNOS9820_TMU_CORE_EN		BIT(0)
++#define EXYNOS9820_TMU_THERM_TRIP_EN	BIT(12)
++
++/**
++ * struct exynos9820_tmu_data - what the firmware serves for one block
++ * @acpm_chan_id: ACPM channel of the TMU service
++ * @first_zone: firmware number of the first zone of the block
++ * @nr_zones: number of zones the block has
++ */
++struct exynos9820_tmu_data {
++	unsigned int acpm_chan_id;
++	u8 first_zone;
++	u8 nr_zones;
++};
++
++struct exynos9820_tmu;
++
++struct exynos9820_tmu_zone {
++	struct exynos9820_tmu *tmu;
++	u8 id;
++};
++
++struct exynos9820_tmu {
++	struct acpm_handle *acpm;
++	const struct exynos9820_tmu_data *data;
++	struct exynos9820_tmu_zone zones[EXYNOS9820_TMU_MAX_ZONES];
++};
++
++static int exynos9820_tmu_get_temp(struct thermal_zone_device *tz, int *temp)
++{
++	struct exynos9820_tmu_zone *zone = thermal_zone_device_priv(tz);
++	struct exynos9820_tmu *tmu = zone->tmu;
++	int celsius, ret;
++
++	ret = tmu->acpm->ops->tmu.read_temp(tmu->acpm, tmu->data->acpm_chan_id,
++					    zone->id, &celsius);
++	if (ret)
++		return ret;
++
++	*temp = celsius * MILLIDEGREE_PER_DEGREE;
++
++	return 0;
++}
++
++static const struct thermal_zone_device_ops exynos9820_tmu_ops = {
++	.get_temp = exynos9820_tmu_get_temp,
++};
++
++/*
++ * The hardware trip is the last line: it switches the power off at the
++ * temperature programmed into the block, with no orderly shutdown.  The
++ * driver leaves it as the bootloader set it and only reports its state.
++ */
++static int exynos9820_tmu_check_trip(struct platform_device *pdev)
++{
++	void __iomem *base;
++	u32 ctl;
++
++	base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(base))
++		return PTR_ERR(base);
++
++	ctl = readl(base + EXYNOS9820_TMU_CONTROL);
++	if (!(ctl & EXYNOS9820_TMU_CORE_EN) ||
++	    !(ctl & EXYNOS9820_TMU_THERM_TRIP_EN))
++		dev_warn(&pdev->dev, "hardware trip is not armed (control %#010x)\n",
++			 ctl);
++
++	return 0;
++}
++
++static int exynos9820_tmu_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	struct exynos9820_tmu *tmu;
++	struct clk_bulk_data *clks;
++	int i, ret, registered = 0;
++
++	tmu = devm_kzalloc(dev, sizeof(*tmu), GFP_KERNEL);
++	if (!tmu)
++		return -ENOMEM;
++
++	tmu->data = device_get_match_data(dev);
++	if (!tmu->data || tmu->data->nr_zones > EXYNOS9820_TMU_MAX_ZONES)
++		return -EINVAL;
++
++	tmu->acpm = devm_acpm_get_by_phandle(dev);
++	if (IS_ERR(tmu->acpm))
++		return dev_err_probe(dev, PTR_ERR(tmu->acpm),
++				     "failed to get the ACPM handle\n");
++
++	/* The firmware reads the probes through the bus clock. */
++	ret = devm_clk_bulk_get_all_enabled(dev, &clks);
++	if (ret < 0)
++		return dev_err_probe(dev, ret, "failed to enable the clock\n");
++
++	/* Each block asks for it; a repeated INIT is answered the same way. */
++	ret = tmu->acpm->ops->tmu.init(tmu->acpm, tmu->data->acpm_chan_id);
++	if (ret)
++		return dev_err_probe(dev, ret,
++				     "the firmware did not start the TMU\n");
++
++	ret = exynos9820_tmu_check_trip(pdev);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < tmu->data->nr_zones; i++) {
++		struct exynos9820_tmu_zone *zone = &tmu->zones[i];
++		struct thermal_zone_device *tz;
++
++		zone->tmu = tmu;
++		zone->id = tmu->data->first_zone + i;
++
++		tz = devm_thermal_of_zone_register(dev, zone->id, zone,
++						   &exynos9820_tmu_ops);
++		if (IS_ERR(tz)) {
++			/* A zone the device tree does not describe. */
++			if (PTR_ERR(tz) == -ENODEV)
++				continue;
++			return dev_err_probe(dev, PTR_ERR(tz),
++					     "failed to register zone %u\n",
++					     zone->id);
++		}
++		registered++;
++	}
++
++	if (!registered)
++		return dev_err_probe(dev, -ENODEV,
++				     "no thermal zone uses this sensor\n");
++
++	return 0;
++}
++
++static const struct exynos9820_tmu_data exynos9820_tmu_top = {
++	.acpm_chan_id = 9,
++	.first_zone = 0,
++	.nr_zones = 3,
++};
++
++static const struct exynos9820_tmu_data exynos9820_tmu_sub = {
++	.acpm_chan_id = 9,
++	.first_zone = 3,
++	.nr_zones = 2,
++};
++
++static const struct of_device_id exynos9820_tmu_of_match[] = {
++	{ .compatible = "samsung,exynos9820-tmu-top", .data = &exynos9820_tmu_top },
++	{ .compatible = "samsung,exynos9820-tmu-sub", .data = &exynos9820_tmu_sub },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, exynos9820_tmu_of_match);
++
++static struct platform_driver exynos9820_tmu_driver = {
++	.probe = exynos9820_tmu_probe,
++	.driver = {
++		.name = "exynos9820-tmu",
++		.of_match_table = exynos9820_tmu_of_match,
++	},
++};
++module_platform_driver(exynos9820_tmu_driver);
++
++MODULE_AUTHOR("Artur Szafraniec <ganggg111@gmail.com>");
++MODULE_DESCRIPTION("Samsung Exynos9820 TMU driver over ACPM");
++MODULE_LICENSE("GPL");

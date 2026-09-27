@@ -1,0 +1,125 @@
+From f5af9ee4feb93a64cc0cde4947ecfd3a7f4c262a Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 22 Sep 2026 15:27:49 +0200
+Subject: [PATCH 26/40] board: samsung: exynos-mobile: take the reboot mode
+ from the kernel
+
+"reboot bootloader" under Linux writes a word into the power management
+unit of this phone and asks for a reset.  Nothing read it, so the request
+went nowhere: fastboot could be reached only by holding a volume key
+through the menu, which takes a hand on the phone.  Read, it lets a phone
+at the far end of a cable be sent to fastboot by the system running on
+it, which is the whole loop this port needs to close.
+
+Only "bootloader" changes anything.  The other modes the tree names are
+read, cleared and left in the environment where printenv shows them,
+because this loader has nothing to offer them: download mode belongs to
+the first stage, which acts on the same word long before this runs.
+
+Setting bootcmd rather than running fastboot from the hook is deliberate.
+The hook runs before the main loop, so the command would take it over
+with the console and the environment half in service and nothing to say
+why.  A bootcmd is also visible: printenv answers where the boot is
+going and why.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ board/samsung/exynos-mobile/exynos-mobile.c | 57 +++++++++++++++++++++
+ configs/exynos9820-beyond2lte_defconfig     |  2 +
+ 2 files changed, 59 insertions(+)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index a2703391..3e6b0dd5 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -25,6 +25,7 @@
+ #include <linux/sizes.h>
+ #include <lmb.h>
+ #include <part.h>
++#include <reboot-mode/reboot-mode.h>
+ #include <scsi.h>
+ #include <stdbool.h>
+ #include <video_console.h>
+@@ -592,6 +593,55 @@ int board_early_init_r(void)
+ 	return 0;
+ }
+ 
++/*
++ * Where the last reset asked to go.
++ *
++ * The power management unit of this phone holds a word that outlives a reset,
++ * and an operating system writes into it before asking for one: that is what
++ * "reboot bootloader" does under Linux.  Reading it here is what puts this
++ * loader within reach of a phone nobody is standing next to, because entering
++ * fastboot otherwise takes a finger on the volume key.
++ *
++ * Matching the word against the values the tree names, and clearing the
++ * register afterwards, are the uclass's work.  The clearing is not a detail:
++ * a word left in place would send every later boot to the same place.
++ *
++ * Setting bootcmd rather than running fastboot from here is deliberate.  This
++ * runs before the main loop, so the command would take it over with the
++ * console and the environment only half in service, and nothing would say
++ * why.  A bootcmd is also visible: printenv answers where the boot is going.
++ */
++static void exynos_reboot_mode(void)
++{
++	struct udevice *dev;
++	const char *mode;
++	int ret;
++
++	ret = uclass_first_device_err(UCLASS_REBOOT_MODE, &dev);
++	if (ret) {
++		log_debug("%s: nothing holds a reboot mode (%d)\n",
++			  __func__, ret);
++		return;
++	}
++
++	ret = dm_reboot_mode_update(dev);
++	if (ret) {
++		log_warning("%s: could not read the reboot mode (%d)\n",
++			    __func__, ret);
++		return;
++	}
++
++	/* Nothing is set when the word matched none of the known values. */
++	mode = env_get("reboot-mode");
++	if (!mode)
++		return;
++
++	log_info("The last reset asked for: %s\n", mode);
++
++	if (!strcmp(mode, "bootloader"))
++		env_set("bootcmd", "run fastbootcmd; bootmenu");
++}
++
+ int board_late_init(void)
+ {
+ 	exynos_mark(EXYNOS_MARK_CONSOLE);
+@@ -616,6 +666,13 @@ int board_late_init(void)
+ 	 */
+ 	env_set("stdout", "vidconsole,serial");
+ 
++	/*
++	 * After the line above, so that whatever it has to say about the last
++	 * reset is drawn on the panel rather than sent to a port with nothing
++	 * on the other end.
++	 */
++	exynos_reboot_mode();
++
+ 	return 0;
+ }
+ 
+diff --git a/configs/exynos9820-beyond2lte_defconfig b/configs/exynos9820-beyond2lte_defconfig
+index 3c63f416..dd9e7f58 100644
+--- a/configs/exynos9820-beyond2lte_defconfig
++++ b/configs/exynos9820-beyond2lte_defconfig
+@@ -79,3 +79,5 @@ CONFIG_FASTBOOT_FLASH_BLOCK=y
+ CONFIG_FASTBOOT_FLASH_BLOCK_INTERFACE_NAME="scsi"
+ CONFIG_FASTBOOT_FLASH_BLOCK_DEVICE_ID=0
+ CONFIG_USB_GADGET_OS_DESCRIPTORS=y
++CONFIG_DM_REBOOT_MODE=y
++CONFIG_DM_REBOOT_MODE_SYSCON=y
+-- 
+2.47.3
+

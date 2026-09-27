@@ -1,0 +1,363 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 00:39:04 +0200
+Subject: [PATCH] phy: samsung-ufs: Add Exynos9820 support
+
+The M-PHY of this SoC is taken through the same four points as the ones
+already here, with the calibration values of the vendor kernel for it.
+Each line of the tables names the line it was taken from.
+
+Two things differ from what the driver does by default, and the driver
+data says so rather than the tables working around it.  The calibration
+this PHY reports on is set going by the table written after the link is
+up, not by the first one, so its wait belongs at that later point.  And
+the receiver has to be locked onto the incoming data before the last
+table is written rather than after it, so that wait comes first; each
+miss takes the clock recovery block of the lane down and back up, which
+is what the vendor does, and after a hundred tries it gives up.
+
+The two lanes sit a quarter of the register window apart rather than at
+the usual spacing, and one register takes a different value in the first
+gear than in every gear above it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ MAINTAINERS                              |   1 +
+ drivers/phy/samsung/Makefile             |   1 +
+ drivers/phy/samsung/phy-exynos9820-ufs.c | 275 +++++++++++++++++++++++
+ drivers/phy/samsung/phy-samsung-ufs.c    |   3 +
+ drivers/phy/samsung/phy-samsung-ufs.h    |   1 +
+ 5 files changed, 281 insertions(+)
+ create mode 100644 drivers/phy/samsung/phy-exynos9820-ufs.c
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 995cb5cd331..9a60a94eabd 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -24004,6 +24004,7 @@ S:	Maintained
+ F:	Documentation/devicetree/bindings/clock/samsung,exynos9820-clock.yaml
+ F:	arch/arm64/boot/dts/exynos/exynos9820*
+ F:	drivers/clk/samsung/clk-exynos9820.c
++F:	drivers/phy/samsung/phy-exynos9820-ufs.c
+ F:	include/dt-bindings/clock/samsung,exynos9820.h
+ 
+ SAMSUNG EXYNOS ACPM MAILBOX PROTOCOL
+diff --git a/drivers/phy/samsung/Makefile b/drivers/phy/samsung/Makefile
+index 8771864f75d..bf59e344252 100644
+--- a/drivers/phy/samsung/Makefile
++++ b/drivers/phy/samsung/Makefile
+@@ -7,6 +7,7 @@ obj-$(CONFIG_PHY_SAMSUNG_UFS)		+= phy-exynos-ufs.o
+ phy-exynos-ufs-y			+= phy-gs101-ufs.o
+ phy-exynos-ufs-y			+= phy-samsung-ufs.o
+ phy-exynos-ufs-y			+= phy-exynos7-ufs.o
++phy-exynos-ufs-y			+= phy-exynos9820-ufs.o
+ phy-exynos-ufs-y			+= phy-exynosautov9-ufs.o
+ phy-exynos-ufs-y			+= phy-exynosautov920-ufs.o
+ phy-exynos-ufs-y			+= phy-fsd-ufs.o
+diff --git a/drivers/phy/samsung/phy-exynos9820-ufs.c b/drivers/phy/samsung/phy-exynos9820-ufs.c
+new file mode 100644
+index 00000000000..90b50aaa60b
+--- /dev/null
++++ b/drivers/phy/samsung/phy-exynos9820-ufs.c
+@@ -0,0 +1,275 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * UFS PHY driver data for the Samsung Exynos9820 SoC
++ *
++ * Copyright (C) 2026 Artur Szafraniec <ganggg111@gmail.com>
++ *
++ * Every value below is the one the calibration layer of the vendor kernel for
++ * this SoC writes, and each line names the line of that layer it came from.
++ * That layer gives byte offsets into the physical medium attachment block
++ * while the tables here count registers, so a vendor offset of 0x6d8 appears
++ * as 0x1b6.
++ *
++ * Which of the vendor's tables apply is decided by the board: the second
++ * revision of the silicon, the gear three variant of the table written after
++ * the link is up, and the set without the lines meant for the emulator.  The
++ * tables for a UFS card are absent because the card port of this SoC is not
++ * wired on the board this was brought up on.
++ *
++ * The vendor keeps one table per rate series, A and B.  For this SoC the two
++ * are identical value for value, so there is one table here and the series
++ * only decides what the PHY is told through set_mode.
++ */
++
++#include <linux/delay.h>
++#include <linux/io.h>
++
++#include "phy-samsung-ufs.h"
++
++/* The bit of the power management unit that isolates the pads of this PHY. */
++#define EXYNOS9820_PHY_CTRL		0x724
++#define EXYNOS9820_PHY_CTRL_MASK	0x1
++#define EXYNOS9820_PHY_CTRL_EN		BIT(0)
++
++/*
++ * Distance between the two per lane register banks, counted in registers.
++ * The vendor writes it as the byte figure 0x400.
++ */
++#define EXYNOS9820_LANE_OFFSET		(0x400 / 4)
++
++#define PHY_TRSV_REG_CFG_9820(o, v, d)	\
++	PHY_TRSV_REG_CFG_OFFSET(o, v, d, EXYNOS9820_LANE_OFFSET)
++
++/* What the two waits look at, and the bit each of them waits for. */
++#define EXYNOS9820_CAL_DONE_STATUS	0x1ed
++#define EXYNOS9820_CDR_LOCK_STATUS	0x1ee
++#define EXYNOS9820_LOCK_BIT		BIT(3)
++
++#define EXYNOS9820_LOCK_TRIES		100
++#define EXYNOS9820_LOCK_POLL_US		40
++
++/* Taking the clock recovery block of a lane down and back up between tries. */
++#define EXYNOS9820_CDR_RESTART		0x118
++#define EXYNOS9820_CDR_RESTART_DOWN	0x10
++#define EXYNOS9820_CDR_RESTART_UP	0x18
++#define EXYNOS9820_CDR_SETTLE_US	1
++
++/*
++ * Before the link is started.  Vendor table init_cfg_evt1, line 226.
++ *
++ * The lines of that table that go through the link itself rather than through
++ * this block are not here: the host controller driver writes those.
++ */
++static const struct samsung_ufs_phy_cfg exynos9820_pre_init_cfg[] = {
++	PHY_COMN_REG_CFG(0x3f, 0x10, PWR_MODE_ANY),		/* :256 */
++
++	PHY_TRSV_REG_CFG_9820(0x1b6, 0x40, PWR_MODE_ANY),	/* :258 */
++
++	PHY_TRSV_REG_CFG_9820(0x1c2, 0x25, PWR_MODE_ANY),	/* :260 */
++	PHY_TRSV_REG_CFG_9820(0x10c, 0x04, PWR_MODE_ANY),	/* :261 */
++	PHY_TRSV_REG_CFG_9820(0x18a, 0x13, PWR_MODE_ANY),	/* :262 */
++	PHY_TRSV_REG_CFG_9820(0x19f, 0x19, PWR_MODE_ANY),	/* :263 */
++	PHY_TRSV_REG_CFG_9820(0x1a2, 0x30, PWR_MODE_ANY),	/* :264 */
++
++	/* These three are what the second revision of the silicon added. */
++	PHY_TRSV_REG_CFG_9820(0x168, 0x40, PWR_MODE_ANY),	/* :266 */
++	PHY_TRSV_REG_CFG_9820(0x169, 0x38, PWR_MODE_ANY),	/* :267 */
++	PHY_TRSV_REG_CFG_9820(0x1b9, 0x18, PWR_MODE_ANY),	/* :268 */
++
++	PHY_COMN_REG_CFG(0x3f, 0x18, PWR_MODE_ANY),		/* :270 */
++	PHY_COMN_REG_CFG(0x3f, 0x00, PWR_MODE_ANY),		/* :271 */
++
++	/* Settle after the pair above, which is a reset of this block. */
++	PHY_DELAY_CFG(200),					/* :272 */
++
++	END_UFS_PHY_CFG
++};
++
++/*
++ * After the link has come up.  Vendor table post_init_cfg_evt1_g3, line 388.
++ *
++ * The vendor brackets this whole block with a pair of writes that go over the
++ * link rather than into this block, so the host controller driver owns those
++ * and keeps this table between them.
++ */
++static const struct samsung_ufs_phy_cfg exynos9820_post_init_cfg[] = {
++	PHY_DELAY_CFG(2000),					/* :397 */
++
++	PHY_COMN_REG_CFG(0x3f, 0x10, PWR_MODE_ANY),		/* :399 */
++
++	PHY_TRSV_REG_CFG_9820(0x1b6, 0xc0, PWR_MODE_ANY),	/* :401 */
++	PHY_TRSV_REG_CFG_9820(0x101, 0x06, PWR_MODE_ANY),	/* :402 */
++	PHY_TRSV_REG_CFG_9820(0x102, 0x06, PWR_MODE_ANY),	/* :403 */
++	PHY_TRSV_REG_CFG_9820(0x104, 0x01, PWR_MODE_ANY),	/* :404 */
++	PHY_TRSV_REG_CFG_9820(0x105, 0x11, PWR_MODE_ANY),	/* :405 */
++
++	PHY_TRSV_REG_CFG_9820(0x193, 0x06, PWR_MODE_ANY),	/* :407 */
++	PHY_TRSV_REG_CFG_9820(0x19a, 0x00, PWR_MODE_ANY),	/* :408 */
++	PHY_TRSV_REG_CFG_9820(0x19c, 0x00, PWR_MODE_ANY),	/* :409 */
++
++	PHY_TRSV_REG_CFG_9820(0x12f, 0x12, PWR_MODE_ANY),	/* :411 */
++	PHY_TRSV_REG_CFG_9820(0x131, 0x12, PWR_MODE_ANY),	/* :412 */
++	PHY_TRSV_REG_CFG_9820(0x133, 0x00, PWR_MODE_ANY),	/* :413 */
++	PHY_TRSV_REG_CFG_9820(0x135, 0x00, PWR_MODE_ANY),	/* :414 */
++
++	PHY_COMN_REG_CFG(0x27, 0x11, PWR_MODE_ANY),		/* :416 */
++	PHY_COMN_REG_CFG(0x28, 0x11, PWR_MODE_ANY),		/* :417 */
++	PHY_COMN_REG_CFG(0x43, 0x00, PWR_MODE_ANY),		/* :418 */
++	PHY_TRSV_REG_CFG_9820(0x119, 0x33, PWR_MODE_ANY),	/* :419 */
++	PHY_TRSV_REG_CFG_9820(0x11a, 0x37, PWR_MODE_ANY),	/* :420 */
++	PHY_TRSV_REG_CFG_9820(0x11b, 0x31, PWR_MODE_ANY),	/* :421 */
++	PHY_TRSV_REG_CFG_9820(0x11c, 0x00, PWR_MODE_ANY),	/* :422 */
++
++	PHY_TRSV_REG_CFG_9820(0x181, 0x00, PWR_MODE_ANY),	/* :424 */
++	PHY_TRSV_REG_CFG_9820(0x182, 0x82, PWR_MODE_ANY),	/* :425 */
++	PHY_TRSV_REG_CFG_9820(0x183, 0x00, PWR_MODE_ANY),	/* :426 */
++	PHY_TRSV_REG_CFG_9820(0x184, 0x98, PWR_MODE_ANY),	/* :427 */
++	PHY_TRSV_REG_CFG_9820(0x186, 0x60, PWR_MODE_ANY),	/* :428 */
++	PHY_TRSV_REG_CFG_9820(0x188, 0x70, PWR_MODE_ANY),	/* :429 */
++
++	PHY_TRSV_REG_CFG_9820(0x11d, 0x33, PWR_MODE_ANY),	/* :431 */
++	PHY_TRSV_REG_CFG_9820(0x11e, 0x37, PWR_MODE_ANY),	/* :432 */
++	PHY_TRSV_REG_CFG_9820(0x11f, 0x31, PWR_MODE_ANY),	/* :433 */
++	PHY_TRSV_REG_CFG_9820(0x120, 0x00, PWR_MODE_ANY),	/* :434 */
++
++	PHY_TRSV_REG_CFG_9820(0x126, 0x00, PWR_MODE_ANY),	/* :436 */
++	PHY_TRSV_REG_CFG_9820(0x127, 0x00, PWR_MODE_ANY),	/* :437 */
++
++	PHY_TRSV_REG_CFG_9820(0x152, 0x2d, PWR_MODE_ANY),	/* :439 */
++	PHY_TRSV_REG_CFG_9820(0x153, 0xb7, PWR_MODE_ANY),	/* :440 */
++	PHY_TRSV_REG_CFG_9820(0x154, 0x00, PWR_MODE_ANY),	/* :441 */
++
++	PHY_COMN_REG_CFG(0x3f, 0x18, PWR_MODE_ANY),		/* :443 */
++	PHY_COMN_REG_CFG(0x3f, 0x00, PWR_MODE_ANY),		/* :444 */
++
++	/*
++	 * What the vendor waits for here, line 445, is the calibration this
++	 * table set going, so the wait belongs after the table rather than
++	 * before it, and the driver data below says so.
++	 */
++
++	END_UFS_PHY_CFG
++};
++
++/*
++ * Before the move to a high speed gear.  Vendor table calib_of_hs_rate_b,
++ * line 549.  One register is given one value in the first gear and another in
++ * every gear above it, so the gear decides which line applies.
++ */
++static const struct samsung_ufs_phy_cfg exynos9820_pre_pwr_hs_cfg[] = {
++	PHY_TRSV_REG_CFG_9820(0x106, 0x10, PWR_MODE_HS_G1_ANY),	/* :568 */
++	PHY_TRSV_REG_CFG_9820(0x106, 0x3c, PWR_MODE_HS_G2_ANY),	/* :569 */
++	PHY_TRSV_REG_CFG_9820(0x106, 0x3c, PWR_MODE_HS_G3_ANY),	/* :569 */
++	PHY_TRSV_REG_CFG_9820(0x106, 0x3c, PWR_MODE_HS_G4_ANY),	/* :569 */
++
++	PHY_TRSV_REG_CFG_9820(0x13a, 0x03, PWR_MODE_ANY),	/* :570 */
++
++	END_UFS_PHY_CFG
++};
++
++/*
++ * After that move.  Vendor table post_calib_of_hs_rate_b, line 574.
++ *
++ * The vendor waits for each lane to lock onto the incoming data before the
++ * one write below, not after it, and the driver data says so.
++ */
++static const struct samsung_ufs_phy_cfg exynos9820_post_pwr_hs_cfg[] = {
++	PHY_TRSV_REG_CFG_9820(0x13a, 0x01, PWR_MODE_ANY),	/* :577 */
++
++	END_UFS_PHY_CFG
++};
++
++static const struct samsung_ufs_phy_cfg *exynos9820_ufs_phy_cfgs[CFG_TAG_MAX] = {
++	[CFG_PRE_INIT]		= exynos9820_pre_init_cfg,
++	[CFG_POST_INIT]		= exynos9820_post_init_cfg,
++	[CFG_PRE_PWR_HS]	= exynos9820_pre_pwr_hs_cfg,
++	[CFG_POST_PWR_HS]	= exynos9820_post_pwr_hs_cfg,
++};
++
++static void __iomem *exynos9820_lane_reg(struct samsung_ufs_phy *phy, u8 lane,
++					 u32 reg)
++{
++	return phy->reg_pma +
++	       PHY_APB_ADDR(reg + lane * EXYNOS9820_LANE_OFFSET);
++}
++
++/*
++ * Waiting for a lane to report that its own calibration has finished.
++ *
++ * The vendor returns success even when the bit never appears, so this is
++ * advisory here too: a lane that stays quiet is said out loud and the link is
++ * still brought up.  Refusing to reach the storage over a bit the hardware
++ * itself does not insist on would be the worse failure.  A first bring-up on
++ * new hardware should watch for this message.
++ */
++static int exynos9820_ufs_phy_wait_for_cal(struct phy *phy, u8 lane)
++{
++	struct samsung_ufs_phy *ufs_phy = get_samsung_ufs_phy(phy);
++	void __iomem *reg;
++	unsigned int i;
++
++	reg = exynos9820_lane_reg(ufs_phy, lane, EXYNOS9820_CAL_DONE_STATUS);
++
++	for (i = 0; i < EXYNOS9820_LOCK_TRIES; i++) {
++		udelay(EXYNOS9820_LOCK_POLL_US);
++
++		if (readl(reg) & EXYNOS9820_LOCK_BIT)
++			return 0;
++	}
++
++	dev_warn(ufs_phy->dev, "lane %u did not report calibration done\n",
++		 lane);
++
++	return 0;
++}
++
++/*
++ * Waiting for the receiver of a lane to lock onto the incoming data.  After
++ * every miss the vendor takes the clock recovery block of that lane down and
++ * back up before looking again, and gives up for real once the tries run out.
++ */
++static int exynos9820_ufs_phy_wait_for_cdr(struct phy *phy, u8 lane)
++{
++	struct samsung_ufs_phy *ufs_phy = get_samsung_ufs_phy(phy);
++	void __iomem *restart;
++	void __iomem *reg;
++	unsigned int i;
++
++	reg = exynos9820_lane_reg(ufs_phy, lane, EXYNOS9820_CDR_LOCK_STATUS);
++	restart = exynos9820_lane_reg(ufs_phy, lane, EXYNOS9820_CDR_RESTART);
++
++	for (i = 0; i < EXYNOS9820_LOCK_TRIES; i++) {
++		udelay(EXYNOS9820_LOCK_POLL_US);
++
++		if (readl(reg) & EXYNOS9820_LOCK_BIT)
++			return 0;
++
++		udelay(EXYNOS9820_CDR_SETTLE_US);
++
++		writel(EXYNOS9820_CDR_RESTART_DOWN, restart);
++		writel(EXYNOS9820_CDR_RESTART_UP, restart);
++	}
++
++	dev_err(ufs_phy->dev, "lane %u never locked onto the data\n", lane);
++
++	return -ETIMEDOUT;
++}
++
++static const char * const exynos9820_ufs_phy_clks[] = {
++	"ref_clk",
++};
++
++const struct samsung_ufs_phy_drvdata exynos9820_ufs_phy = {
++	.cfgs = exynos9820_ufs_phy_cfgs,
++	.isol = {
++		.offset = EXYNOS9820_PHY_CTRL,
++		.mask = EXYNOS9820_PHY_CTRL_MASK,
++		.en = EXYNOS9820_PHY_CTRL_EN,
++	},
++	.clk_list = exynos9820_ufs_phy_clks,
++	.num_clks = ARRAY_SIZE(exynos9820_ufs_phy_clks),
++	.wait_for_cal_state = CFG_POST_INIT,
++	.wait_for_cdr_before_cfg = true,
++	.wait_for_cal = exynos9820_ufs_phy_wait_for_cal,
++	.wait_for_cdr = exynos9820_ufs_phy_wait_for_cdr,
++};
+diff --git a/drivers/phy/samsung/phy-samsung-ufs.c b/drivers/phy/samsung/phy-samsung-ufs.c
+index 8ea818105d1..6b9935dcc9c 100644
+--- a/drivers/phy/samsung/phy-samsung-ufs.c
++++ b/drivers/phy/samsung/phy-samsung-ufs.c
+@@ -428,6 +428,9 @@ static const struct of_device_id samsung_ufs_phy_match[] = {
+ 	}, {
+ 		.compatible = "samsung,exynos7-ufs-phy",
+ 		.data = &exynos7_ufs_phy,
++	}, {
++		.compatible = "samsung,exynos9820-ufs-phy",
++		.data = &exynos9820_ufs_phy,
+ 	}, {
+ 		.compatible = "samsung,exynosautov9-ufs-phy",
+ 		.data = &exynosautov9_ufs_phy,
+diff --git a/drivers/phy/samsung/phy-samsung-ufs.h b/drivers/phy/samsung/phy-samsung-ufs.h
+index 77d2905b58f..9729f0f664c 100644
+--- a/drivers/phy/samsung/phy-samsung-ufs.h
++++ b/drivers/phy/samsung/phy-samsung-ufs.h
+@@ -186,6 +186,7 @@ void samsung_ufs_phy_config(struct samsung_ufs_phy *phy,
+ 			    const struct samsung_ufs_phy_cfg *cfg, u8 lane);
+ 
+ extern const struct samsung_ufs_phy_drvdata exynos7_ufs_phy;
++extern const struct samsung_ufs_phy_drvdata exynos9820_ufs_phy;
+ extern const struct samsung_ufs_phy_drvdata exynosautov9_ufs_phy;
+ extern const struct samsung_ufs_phy_drvdata exynosautov920_ufs_phy;
+ extern const struct samsung_ufs_phy_drvdata fsd_ufs_phy;

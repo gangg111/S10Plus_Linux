@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 07:30:00 +0200
+Subject: [PATCH] Bluetooth: hci_bcm: Add BCM4375 support
+
+The BCM4375B1 of the Galaxy S10+ speaks the same protocol as the chips this
+driver already drives, so the entry carries no quirks: the two that exist
+here were each added after someone measured the chip that needed them, and
+nobody has measured this one yet.
+
+Read from the vendor device tree of the Galaxy S10+ (SM-G975F): the
+controller sits on the PERIC1 serial port, with the enable line on gpm8-0
+and the two wake lines on gpg2-0 and gpa2-3.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/bluetooth/hci_bcm.c | 1 +
+ 1 file changed, 1 insertion(+)
+
+diff --git a/drivers/bluetooth/hci_bcm.c b/drivers/bluetooth/hci_bcm.c
+index 1a4fc3882fd..0f925a6fc20 100644
+--- a/drivers/bluetooth/hci_bcm.c
++++ b/drivers/bluetooth/hci_bcm.c
+@@ -1590,6 +1590,7 @@ static const struct of_device_id bcm_bluetooth_of_match[] = {
+ 	{ .compatible = "brcm,bcm43430a1-bt" },
+ 	{ .compatible = "brcm,bcm43438-bt", .data = &bcm43438_device_data },
+ 	{ .compatible = "brcm,bcm4349-bt", .data = &bcm43438_device_data },
++	{ .compatible = "brcm,bcm4375-bt" },
+ 	{ .compatible = "brcm,bcm43540-bt", .data = &bcm4354_device_data },
+ 	{ .compatible = "brcm,bcm4335a0" },
+ 	{ .compatible = "cypress,cyw4373a0-bt", .data = &cyw4373a0_device_data },

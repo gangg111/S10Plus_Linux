@@ -1,0 +1,76 @@
+#!/bin/sh
+# Opakowanie polecen przychodzacych po SSH: kazde idzie przez tok.
+#
+# Po co.  Praca nad tym portem polega dzis na czytaniu telefonu: dmesg,
+# clk_summary, interrupts, drzewo urzadzen, listy plikow.  Kazde takie
+# wyjscie w calosci wchodzi do kontekstu modelu, a wiekszosc z niego to
+# powtorzenia i szum.  Na PC ten sam problem rozwiazuje hook, ktory
+# przepisuje polecenia na `tok <polecenie>`, zanim powloka je zobaczy.
+# Po drugiej stronie kabla takiego hooka nie ma, wiec filtr wpina sie tam,
+# gdzie polecenie i tak musi przejsc: w wymuszone polecenie klucza SSH.
+#
+# Dzieki temu narzedzie dziala BEZ WIEDZY strony wolajacej.  Ktokolwiek
+# wpisze `ssh telefon dmesg`, dostanie wyjscie przefiltrowane, nie musi
+# o niczym pamietac ani niczego dopisywac.
+#
+# Wpiecie (w ~/.ssh/authorized_keys uzytkownika):
+#   command="/home/user/.local/bin/tok-ssh",no-agent-forwarding ssh-ed25519 AAAA...
+#
+# Trzy drogi ominiecia, wszystkie potrzebne:
+#   1. Brak polecenia            -> zwykla sesja interaktywna.
+#   2. scp, sftp, rsync          -> surowo, bo to strumien binarny i filtr
+#                                   zniszczylby przesylany plik.
+#   3. Przedrostek TOK_RAW=1     -> surowo na zadanie, gdy potrzebne jest
+#                                   dokladne wyjscie co do bajtu (sumy
+#                                   kontrolne, zrzuty rejestrow).
+#
+# Gdy tok-a nie ma albo nie da sie go uruchomic, polecenie leci surowo.
+# Filtr, ktory potrafi ZABLOKOWAC dostep do maszyny, byloby lekarstwem
+# gorszym od choroby.
+
+TOK="$HOME/.local/bin/tok"
+POWLOKA=/bin/ash
+C=${SSH_ORIGINAL_COMMAND:-}
+
+# 1. Sesja interaktywna.
+if [ -z "$C" ]; then
+	exec "$POWLOKA" -l
+fi
+
+# 2. Przesylanie plikow.
+#
+# Ten telefon NIE MA binarki scp: sshd obsluguje przesylanie wbudowanym
+# internal-sftp, a wymuszone polecenie przechwytuje takze zadania podsystemu
+# i nie ma jak oddac sterowania z powrotem do wnetrza sshd.  Zamiast
+# zostawiac po sobie mylacy blad, mowimy wprost, co zrobic.  Obie drogi sa
+# sprawdzone: strumien binarny przez `cat` przechodzi przez filtr bez zmiany
+# ani jednego bajtu (200 000 losowych bajtow, ta sama suma sha256).
+case "$C" in
+*sftp-server*|*internal-sftp*|sftp)
+	echo "tok-ssh: ten klucz ma wymuszony filtr, wiec podsystem sftp" >&2
+	echo "  jest niedostepny.  Do przeslania pliku uzyj jednej z dwoch drog:" >&2
+	echo "    ssh <host> 'cat > /sciezka/docelowa' < plik.lokalny" >&2
+	echo "    scp -i <klucz ratunkowy> plik.lokalny <host>:/sciezka" >&2
+	exit 1
+	;;
+scp\ *|*/scp\ *|rsync\ *|*/rsync\ *)
+	exec "$POWLOKA" -c "$C"
+	;;
+esac
+
+# 3. Jawne zadanie surowego wyjscia.
+case "$C" in
+TOK_RAW=1\ *)
+	exec "$POWLOKA" -c "${C#TOK_RAW=1 }"
+	;;
+esac
+
+# Brak narzedzia nie moze oznaczac braku dostepu.
+if [ ! -x "$TOK" ]; then
+	exec "$POWLOKA" -c "$C"
+fi
+
+# Calosc idzie przez powloke, a nie po slowach, bo polecenia niosa potoki,
+# cudzyslowy i przekierowania; rozbicie ich na argumenty zmienialoby ich
+# znaczenie.  Kod wyjscia polecenia tok przepuszcza.
+exec "$TOK" run -- "$POWLOKA" -c "$C"

@@ -1,0 +1,50 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 27 Sep 2026 04:46:04 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the PWM timer block
+
+Add the PWM timer block of PERIC0 at 0x10510000, clocked from the
+PERIC0 PWM bus clock.  The vendor tree lists all five channels as
+outputs and drives the vibration motor of the Galaxy S10 family from
+channel 1.  The node stays disabled until a board routes a channel to
+a pin.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 1d621dde20c..a7d67149a1f 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -457,6 +457,26 @@ hsi2c10: i2c@104b0000 {
+ 			};
+ 		};
+ 
++		/*
++		 * The PWM timer block of PERIC0, vendor pwm@10510000.  The vendor
++		 * binds it as the S3C6400 variant; the Exynos4210 fallback is the
++		 * same 32 bit timer without the external TCLK mux, and nothing on
++		 * this phone feeds a TCLK.  The vendor names a second clock,
++		 * pwm_sclk, that the mainline driver has no use for: it counts from
++		 * the bus clock through its own prescaler.  The vendor lists all
++		 * five channels as outputs; channel 1 drives the vibration motor.
++		 */
++		pwm: pwm@10510000 {
++			compatible = "samsung,exynos9820-pwm",
++				     "samsung,exynos4210-pwm";
++			reg = <0x10510000 0x1000>;
++			clocks = <&cmu_peric0 CLK_GOUT_PERIC0_PWM_I_PCLK_S0>;
++			clock-names = "timers";
++			samsung,pwm-outputs = <0>, <1>, <2>, <3>, <4>;
++			#pwm-cells = <3>;
++			status = "disabled";
++		};
++
+ 		cmu_peric1: clock-controller@10800000 {
+ 			compatible = "samsung,exynos9820-cmu-peric1";
+ 			reg = <0x10800000 0x8000>;
+-- 
+2.53.0.windows.1
+

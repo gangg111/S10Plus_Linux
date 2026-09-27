@@ -1,0 +1,80 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 23 Sep 2026 23:07:23 +0200
+Subject: [PATCH] wifi: brcmfmac: pcie: Tell version 6+ firmware what the host
+ supports
+
+From shared version 6 on, the firmware reads a host capability word at
+offset 84 of the shared area: the IPC version the host speaks and what it
+can do.  The vendor host driver always writes it before it sets up the
+rings (dhd_set_host_cap()), and so does the Infineon fork of this driver.
+brcmfmac never did, so the firmware saw a host of version 0 that can do
+nothing.
+
+With the BCM4375 firmware of the Galaxy S10+ (18.41.117, shared flags
+0x30040007) that goes wrong in a way that is hard to see: control
+messages, events, scans and association all work, but the firmware never
+takes a single buffer from the receive post ring (read pointer stuck at 0
+with 511 buffers posted), so no data frame reaches the host.  The first
+casualty is EAPOL: the access point gives up on the WPA2 handshake with
+reason 15, and wpa_supplicant cannot even tell a wrong key from a dead
+link.
+
+Write the word the way the vendor driver does for this firmware: the
+shared version, no out of band device wake line, and the host ready
+doorbell when the firmware advertises it.  That is 0x00001407 here.
+
+Measured on a Galaxy S10+: before the change, 0 packets received on wlan0
+through twenty connection attempts; with it, the receive completion ring
+moves, the handshake completes, and the phone associates at 270 Mbit/s on
+5 GHz with no loss on a ping to the internet, by itself at boot.  The
+word alone is enough: ringing the doorbell once more after host ready,
+tried along the way, made no difference and is not part of this.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../broadcom/brcm80211/brcmfmac/pcie.c        | 24 +++++++++++++++++++
+ 1 file changed, 24 insertions(+)
+
+diff --git a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+index bf6a77a5fb1..c3c8ef0a72b 100644
+--- a/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
++++ b/drivers/net/wireless/broadcom/brcm80211/brcmfmac/pcie.c
+@@ -237,6 +237,10 @@ static const struct brcmf_firmware_mapping brcmf_pcie_fwnames[] = {
+ #define BRCMF_SHARED_DMA_SCRATCH_ADDR_OFFSET	56
+ #define BRCMF_SHARED_DMA_RINGUPD_LEN_OFFSET	64
+ #define BRCMF_SHARED_DMA_RINGUPD_ADDR_OFFSET	68
++#define BRCMF_SHARED_HOST_CAP_OFFSET		84
++
++#define BRCMF_HOSTCAP_H2D_ENABLE_HOSTRDY	0x00000400
++#define BRCMF_HOSTCAP_DS_NO_OOB_DW		0x00001000
+ 
+ #define BRCMF_RING_H2D_RING_COUNT_OFFSET	0
+ #define BRCMF_RING_D2H_RING_COUNT_OFFSET	1
+@@ -1666,6 +1670,26 @@ brcmf_pcie_init_share_ram_info(struct brcmf_pciedev_info *devinfo,
+ 	addr = sharedram_addr + BRCMF_SHARED_RING_INFO_ADDR_OFFSET;
+ 	shared->ring_info_addr = brcmf_pcie_read_tcm32(devinfo, addr);
+ 
++	/*
++	 * From version 6 on, the firmware takes the host API version and
++	 * what the host can do from this word, and the vendor host driver
++	 * always fills it in before the rings are set up.  Left at zero, the
++	 * BCM4375 firmware of the Galaxy S10+ answers control messages but
++	 * never takes a single buffer from the receive post ring, so no data
++	 * frame, not even EAPOL, ever reaches the host.  The host has no out
++	 * of band device wake line, and takes the host ready doorbell when
++	 * the firmware asks for it.
++	 */
++	if (shared->version >= 6) {
++		u32 host_cap = shared->version | BRCMF_HOSTCAP_DS_NO_OOB_DW;
++
++		if (shared->flags & BRCMF_PCIE_SHARED_HOSTRDY_DB1)
++			host_cap |= BRCMF_HOSTCAP_H2D_ENABLE_HOSTRDY;
++		brcmf_pcie_write_tcm32(devinfo,
++				       sharedram_addr + BRCMF_SHARED_HOST_CAP_OFFSET,
++				       host_cap);
++	}
++
+ 	brcmf_dbg(PCIE, "max rx buf post %d, rx dataoffset %d\n",
+ 		  shared->max_rxbufpost, shared->rx_dataoffset);
+ 

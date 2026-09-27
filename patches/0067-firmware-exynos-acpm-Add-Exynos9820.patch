@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 21:05:00 +0200
+Subject: [PATCH] firmware: exynos-acpm: Add Exynos9820
+
+The protocol itself needs nothing new: the message layout, the field
+positions and the sequence numbering are the same.  What differs is where
+in the shared memory the firmware keeps its channel configuration, and that
+is one number.
+
+Read from the vendor device tree of a Galaxy S10+, whose ACPM node states
+initdata-base = <0x7000> against the 0xa000 of the SoC this driver was
+written for.  Confirmed on the phone: with this offset the driver reads the
+configuration, finds eleven channels of the expected shape, and the
+firmware answers the doorbell.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/firmware/samsung/exynos-acpm.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/firmware/samsung/exynos-acpm.c b/drivers/firmware/samsung/exynos-acpm.c
+index 942a2e9f02f..5a47f12fc16 100644
+--- a/drivers/firmware/samsung/exynos-acpm.c
++++ b/drivers/firmware/samsung/exynos-acpm.c
+@@ -40,6 +40,7 @@
+ #define ACPM_TX_TIMEOUT_US		500000
+ 
+ #define ACPM_GS101_INITDATA_BASE	0xa000
++#define ACPM_EXYNOS9820_INITDATA_BASE	0x7000
+ 
+ /**
+  * struct acpm_shmem - shared memory configuration information.
+@@ -881,10 +882,18 @@ static const struct acpm_match_data acpm_gs101 = {
+ 	.acpm_clk_dev_name = "gs101-acpm-clk",
+ };
+ 
++static const struct acpm_match_data acpm_exynos9820 = {
++	.initdata_base = ACPM_EXYNOS9820_INITDATA_BASE,
++	.acpm_clk_dev_name = "exynos9820-acpm-clk",
++};
++
+ static const struct of_device_id acpm_match[] = {
+ 	{
+ 		.compatible = "google,gs101-acpm-ipc",
+ 		.data = &acpm_gs101,
++	}, {
++		.compatible = "samsung,exynos9820-acpm-ipc",
++		.data = &acpm_exynos9820,
+ 	},
+ 	{},
+ };

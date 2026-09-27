@@ -2,3 +2,6 @@ sources/
 .pc-tools/
 __pycache__/
 *.pyc
+
+# Tymczasowe drzewo robocze do sprawdzania nakladania serii
+.wt-serie/

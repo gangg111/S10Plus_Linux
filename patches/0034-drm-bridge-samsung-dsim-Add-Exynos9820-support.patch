@@ -3,50 +3,49 @@ From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Mon, 7 Sep 2026 14:16:36 +0200
 Subject: [PATCH] drm/bridge: samsung-dsim: Add Exynos9820 support
 
-The Exynos9820 DSI host is the same block the rest of this driver
-already covers, with the register map moved again and the analog side
-taken out into a PHY device. The parameterisation of the previous
-patches is what this entry fills in.
+The Exynos9820 DSI host is the same block the rest of this driver already
+covers, with the register map moved again and the analog side taken out
+into a PHY device. The parameterisation of the previous patches is what
+this entry fills in.
 
-The link registers moved, and the PLL, PHY control and PHY timing
-registers have no counterpart at all, because the PLL lives in the
-D-PHY. The video mode porch registers are deliberately left out: their
-layout differs between EVT0 and later silicon (0x40 with 8 bit fields
-against 0x104 with 16 bit fields plus a separate detail register), and
-which one applies has not been read off a device, so only command mode
-is offered.
+The link registers moved, and the PLL, PHY control and PHY timing registers
+have no counterpart at all, because the PLL lives in the D-PHY. The video
+mode porch registers are deliberately left out: their layout differs
+between EVT0 and later silicon (0x40 with 8 bit fields against 0x104 with
+16 bit fields plus a separate detail register), and which one applies has
+not been read off a device, so only command mode is offered.
 
 The pixel format field is six bits at bit 9 with RGB24 as 0x3e, against
 three bits at bit 12 with RGB888 as 0x7 elsewhere. This is the first
-variant to bring a table of its own, and it has no encoding for RGB565,
-so the lookup now refuses a format its table leaves undefined instead of
+variant to bring a table of its own, and it has no encoding for RGB565, so
+the lookup now refuses a format its table leaves undefined instead of
 writing a zero the field does not accept. Every other variant keeps the
-shared table, which defines all four, so none of them can reach it. The escape prescaler
-counts down from the word clock, that is the link rate over sixteen, so
-the reference divider is 16. DSIM_FUNCRST sits at bit 8 here, so the
-lanes have to be enabled again after a reset on this variant as well.
+shared table, which defines all four, so none of them can reach it. The
+escape prescaler counts down from the word clock, that is the link rate
+over sixteen, so the reference divider is 16. DSIM_FUNCRST sits at bit 8
+here, so the lanes have to be enabled again after a reset on this variant
+as well.
 
-An external PHY cannot be powered on from runtime resume, because it
-needs the link rate first. It is configured and powered on once the mode
-is known, and the host then waits for the PLL stable bit in the link
-status register. Powering it off is paired with that: a suspend that
-never reached the mode set must not power off a PHY that was never
-powered on, or the reference count in the PHY core goes negative.
+An external PHY cannot be powered on from runtime resume, because it needs
+the link rate first. It is configured and powered on once the mode is
+known, and the host then waits for the PLL stable bit in the link status
+register. Powering it off is paired with that: a suspend that never reached
+the mode set must not power off a PHY that was never powered on, or the
+reference count in the PHY core goes negative.
 
-Compression and the command mode tearing windows come with the variant
-as well, both behind capability flags, so nothing changes for a variant
-that does not have those registers. Compression also changes what the
-resolution register counts: the vendor writes the compressed line width
-there, per slice and times the slice count, and this driver wrote the
-width the peripheral shows. That is a factor of three at 8.0 bpp, so the
-host would wait for data that never arrives. It is fixed under a test on
-the peripheral's DSC configuration, which no other variant in this
-driver has.
+Compression and the command mode tearing windows come with the variant as
+well, both behind capability flags, so nothing changes for a variant that
+does not have those registers. Compression also changes what the resolution
+register counts: the vendor writes the compressed line width there, per
+slice and times the slice count, and this driver wrote the width the
+peripheral shows. That is a factor of three at 8.0 bpp, so the host would
+wait for data that never arrives. It is fixed under a test on the
+peripheral's DSC configuration, which no other variant in this driver has.
 
 has_clklane_stop is deliberately not set. The two bits the shared code
 writes for it are the top two of the configuration register, and on this
-block bit 30 gates the PLL clock while bit 31 is not defined at all, so
-the flag would write into the wrong place. Stopping the clock between
+block bit 30 gates the PLL clock while bit 31 is not defined at all, so the
+flag would write into the wrong place. Stopping the clock between
 transmissions is a separate feature here, and it is not wired up.
 
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>

@@ -1,0 +1,47 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 20 Sep 2026 00:30:37 +0200
+Subject: [PATCH] scsi: ufs: exynos: Tell the PHY which power mode was settled
+
+The PHY is asked to calibrate for a high speed mode as soon as the link
+has agreed on one, but it is never told which one that is.  Its
+calibration tables can name a rate series and a gear, so pass both
+before asking, taking the gear from whichever direction asks for more.
+
+No SoC supported today puts either in a table, so nothing changes for
+them.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/ufs/host/ufs-exynos.c | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/drivers/ufs/host/ufs-exynos.c b/drivers/ufs/host/ufs-exynos.c
+index b2f65c46552..e9bd59648a9 100644
+--- a/drivers/ufs/host/ufs-exynos.c
++++ b/drivers/ufs/host/ufs-exynos.c
+@@ -927,11 +927,24 @@ static int exynos_ufs_pre_pwr_mode(struct ufs_hba *hba,
+ 		ufs->drv_data->pre_pwr_change(ufs, dev_req_params);
+ 
+ 	if (ufshcd_is_hs_mode(dev_req_params)) {
++		int gear = max_t(u32, dev_req_params->gear_rx,
++				 dev_req_params->gear_tx);
++
+ 		exynos_ufs_config_sync_pattern_mask(ufs, dev_req_params);
+ 
++		/*
++		 * Tell the PHY what is being asked of it before it is asked to
++		 * calibrate for it.  A calibration entry may name the rate
++		 * series and the gear it belongs to, and without this the PHY
++		 * has no way of knowing which of them has just been settled.
++		 */
+ 		switch (dev_req_params->hs_rate) {
+ 		case PA_HS_MODE_A:
++			phy_set_mode_ext(generic_phy, PHY_MODE_UFS_HS_A, gear);
++			phy_calibrate(generic_phy);
++			break;
+ 		case PA_HS_MODE_B:
++			phy_set_mode_ext(generic_phy, PHY_MODE_UFS_HS_B, gear);
+ 			phy_calibrate(generic_phy);
+ 			break;
+ 		}

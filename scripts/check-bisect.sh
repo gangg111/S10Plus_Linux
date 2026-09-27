@@ -56,7 +56,10 @@ drivers/gpu/drm/exynos/exynos9820_drm_decon.c
 drivers/gpu/drm/exynos/exynos_drm_drv.c
 drivers/gpu/drm/exynos/exynos_drm_dsi.c
 drivers/phy/samsung/phy-exynos9820-dsim.c
-drivers/gpu/drm/bridge/samsung-dsim.c"
+drivers/gpu/drm/bridge/samsung-dsim.c
+drivers/video/backlight/exynos9820-dsim-lcd.c
+drivers/thermal/samsung/exynos9820-tmu.c
+drivers/clk/samsung/clk-acpm.c"
 
 # Drzewo urzadzen ma wlasna kolejnosc zaleznosci i wlasna klase bledu: wezel,
 # ktory odwoluje sie do makra z naglowka wnoszonego przez patch pozniejszy,

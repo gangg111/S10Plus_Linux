@@ -1,0 +1,170 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 07:30:00 +0200
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add CMU_PERIC1 and the
+ Bluetooth UART
+
+Describe what the Bluetooth controller of this SoC hangs off: the clock
+controller of the second peripheral block, its system register, and the USI
+block whose serial port mode drives the line.
+
+The USI block is the same piece of hardware as the I2C masters described
+above; the mode register of this one sits at offset 0x1000 of the PERIC1
+system register, which is the window the vendor tree calls usi_uart_bt.
+The pins are the four the vendor tree gives that port.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-pinctrl.dtsi   | 33 +++++++++
+ arch/arm64/boot/dts/exynos/exynos9820.dtsi    | 67 +++++++++++++++++++
+ 2 files changed, 100 insertions(+)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+index 9541c17b9a2..bf90643b55f 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-pinctrl.dtsi
+@@ -106,6 +106,21 @@ etc0: etc0-gpio-bank {
+ 		gpio-controller;
+ 		#gpio-cells = <2>;
+ 	};
++
++	/* the line the Bluetooth controller pokes to wake the host */
++	bt_hostwake_pins: bt-hostwake-pins {
++		samsung,pins = "gpa2-3";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_INPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_DOWN>;
++	};
++
++	/* to the Bluetooth controller */
++	uart1_bus: uart1-bus-pins {
++		samsung,pins = "gpq0-3", "gpq0-2", "gpq0-1", "gpq0-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_2>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_UP>;
++		samsung,pin-drv = <EXYNOS5420_PIN_DRV_LV1>;
++	};
+ };
+ 
+ &pinctrl_aud {
+@@ -455,6 +470,15 @@ gpm31: gpm31-gpio-bank {
+ 		interrupts = <GIC_SPI 116 IRQ_TYPE_LEVEL_HIGH>;
+ 	};
+ 
++	/* the line the Bluetooth controller powers up from */
++	bt_en_pins: bt-en-pins {
++		samsung,pins = "gpm8-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
++	};
++
+ 	/* to the S2DOS05 display PMIC */
+ 	hsi2c2_bus: hsi2c2-bus-pins {
+ 		samsung,pins = "gpm10-0", "gpm11-0";
+@@ -596,6 +620,15 @@ gpg4: gpg4-gpio-bank {
+ 		#interrupt-cells = <2>;
+ 	};
+ 
++	/* the line the host pokes to wake the Bluetooth controller */
++	bt_btwake_pins: bt-btwake-pins {
++		samsung,pins = "gpg2-0";
++		samsung,pin-function = <EXYNOS_PIN_FUNC_OUTPUT>;
++		samsung,pin-pud = <EXYNOS_PIN_PULL_NONE>;
++		samsung,pin-con-pdn = <EXYNOS_PIN_PDN_PREV>;
++		samsung,pin-pud-pdn = <EXYNOS_PIN_PULL_NONE>;
++	};
++
+ 	/* to the touchscreen */
+ 	hsi2c10_bus: hsi2c10-bus-pins {
+ 		samsung,pins = "gpp1-4", "gpp1-5";
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dtsi b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+index 46aaac77721..42e6ae887a9 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dtsi
+@@ -48,6 +48,7 @@ aliases {
+ 		pinctrl6 = &pinctrl_peric1;
+ 		pinctrl7 = &pinctrl_vts;
+ 		serial0 = &serial0;
++		serial1 = &serial1;
+ 	};
+ 
+ 	/*
+@@ -366,12 +367,78 @@ hsi2c10: i2c@104b0000 {
+ 			};
+ 		};
+ 
++		cmu_peric1: clock-controller@10800000 {
++			compatible = "samsung,exynos9820-cmu-peric1";
++			reg = <0x10800000 0x8000>;
++			#clock-cells = <1>;
++
++			clocks = <&oscclk>,
++				 <&cmu_top CLK_DOUT_CMU_PERIC1_BUS>,
++				 <&cmu_top CLK_DOUT_CMU_PERIC1_IP>;
++			clock-names = "oscclk", "bus", "ip";
++		};
++
++		/* Holds the mode register the USI blocks of this domain use. */
++		sysreg_peric1: syscon@10820000 {
++			compatible = "samsung,exynos9820-peric1-sysreg",
++				     "syscon";
++			reg = <0x10820000 0x2000>;
++			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_SYSREG_PERIC1_PCLK>;
++		};
++
+ 		pinctrl_peric1: pinctrl@10830000 {
+ 			compatible = "samsung,exynos9820-pinctrl";
+ 			reg = <0x10830000 0x1000>;
+ 			interrupts = <GIC_SPI 407 IRQ_TYPE_LEVEL_HIGH>;
+ 		};
+ 
++		/*
++		 * The Bluetooth controller hangs off a serial port, and that port is
++		 * one mode of a USI block, the same kind of block the I2C buses above
++		 * use.  The mode register sits in the PERIC1 system register at
++		 * offset 0x1000, the window the vendor tree calls usi_uart_bt.
++		 */
++		usi_uart_bt: usi@108400c0 {
++			compatible = "samsung,exynos9820-usi",
++				     "samsung,exynos850-usi";
++			reg = <0x108400c0 0x20>;
++			ranges;
++			#address-cells = <1>;
++			#size-cells = <1>;
++
++			clocks = <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_PCLK>,
++				 <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_IPCLK>;
++			clock-names = "pclk", "ipclk";
++			samsung,sysreg = <&sysreg_peric1 0x1000>;
++			/*
++			 * The same reason as on the I2C blocks above: without this the
++			 * block keeps its automatic clock stop.  Carried over from
++			 * those buses, where it was measured on the phone.
++			 */
++			samsung,clkreq-on;
++			status = "disabled";
++
++			serial1: serial@10840000 {
++				compatible = "samsung,exynos9820-uart",
++					     "samsung,exynos8895-uart";
++				/*
++				 * The window stops where the USI one starts: were
++				 * it any longer, both drivers would request the
++				 * same memory and the second one would be turned
++				 * away.
++				 */
++				reg = <0x10840000 0xc0>;
++				interrupts = <GIC_SPI 408 IRQ_TYPE_LEVEL_HIGH>;
++				clocks = <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_PCLK>,
++					 <&cmu_peric1 CLK_GOUT_PERIC1_UART_BT_IPCLK>;
++				clock-names = "uart", "clk_uart_baud0";
++				samsung,uart-fifosize = <256>;
++				pinctrl-0 = <&uart1_bus>;
++				pinctrl-names = "default";
++				status = "disabled";
++			};
++		};
++
+ 		cmu_fsys0a: clock-controller@10a00000 {
+ 			compatible = "samsung,exynos9820-cmu-fsys0a";
+ 			reg = <0x10a00000 0x8000>;

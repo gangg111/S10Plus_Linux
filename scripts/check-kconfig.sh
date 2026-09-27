@@ -18,13 +18,21 @@
 # przygotowane przez scripts/pc-prepare.sh zostaja nietkniete.  Bez tego bramka
 # psulaby wejscie bramki kompilacji.
 #
-# Uzycie: scripts/check-kconfig.sh
+# Z argumentem sprawdza tez nakladke, z ktorej naprawde budowany jest obraz
+# na telefon (scripts/bringup.config: simpledrm zamiast stosu DECON i DSI).
+# Oba pliki ida wtedy tak jak w merge_config.sh przy budowaniu: w kolejnosci,
+# z wierszami "is not set", a o symbolu decyduje jego ostatnie przypisanie.
+# Bez tego sterownik zalezny od wylaczonego DSI mogl wypasc z obrazu po cichu.
+#
+# Uzycie: scripts/check-kconfig.sh [nakladka]
 # Kod:    0 wszystkie symbole zgodne, 1 rozjazd, 2 brak narzedzi
 set -u
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 lin="$root/sources/linux"
 frag="$root/scripts/exynos9820.config"
+nakl=${1:-}
+WZOR='^CONFIG_[A-Z0-9_]+=|^# CONFIG_[A-Z0-9_]+ is not set$'
 
 CONF=""
 for c in "$root/.pc-tools/conf" "$root/.pc-tools/conf.exe"; do
@@ -35,6 +43,9 @@ done
 	exit 2
 }
 [ -f "$frag" ] || { echo "check-kconfig: brak $frag"; exit 2; }
+[ -z "$nakl" ] || [ -f "$nakl" ] || { echo "check-kconfig: brak $nakl"; exit 2; }
+# Sciezka bezwzgledna, bo dalej skrypt pracuje w sources/linux.
+[ -z "$nakl" ] || nakl=$(CDPATH= cd -- "$(dirname -- "$nakl")" && pwd)/$(basename -- "$nakl")
 [ -f "$lin/arch/arm64/configs/defconfig" ] || {
 	echo "check-kconfig: brak defconfiga arm64"
 	exit 2
@@ -53,7 +64,16 @@ export LLVM=1 LLVM_IAS=1
 export LD=${LD:-ld.lld} AR=${AR:-llvm-ar} NM=${NM:-llvm-nm}
 export OBJCOPY=${OBJCOPY:-llvm-objcopy}
 export HOSTCC=${HOSTCC:-gcc} HOSTCXX=${HOSTCXX:-g++}
+# BTF zalezy od wersji pahole; na Windowsie pahole jest tylko w WSL.
+if [ -z "${PAHOLE:-}" ] && ! command -v pahole >/dev/null 2>&1 &&
+   command -v wsl.exe >/dev/null 2>&1; then
+	PAHOLE="$root/scripts/pahole-wsl.sh"
+fi
 export RUSTC=${RUSTC:-rustc} PAHOLE=${PAHOLE:-pahole}
+# Makefile jadra liczy PAHOLE_VERSION sam i podaje ja Kconfigowi przez
+# srodowisko (init/Kconfig: default "$(PAHOLE_VERSION)"); conf wolany wprost
+# tego nie zrobi, a bez niej BTF wypada po cichu.
+export PAHOLE_VERSION=${PAHOLE_VERSION:-$(sh scripts/pahole-version.sh "$PAHOLE")}
 export KCONFIG_CONFIG="$tmp/.config"
 export KCONFIG_AUTOCONFIG="$tmp/auto.conf"
 export KCONFIG_AUTOHEADER="$tmp/autoconf.h"
@@ -65,10 +85,21 @@ if ! "$CONF" --defconfig=arch/arm64/configs/defconfig Kconfig >"$tmp/log" 2>&1; 
 	exit 2
 fi
 
-# Wiersze "CONFIG_X=..." z fragmentu dopisujemy na koniec, bo olddefconfig
-# bierze ostatnie wystapienie symbolu.  Wiersze zakomentowane sa opisem decyzji,
-# nie zadaniem, wiec ich nie dopisujemy i nie sprawdzamy.
-grep -E '^CONFIG_[A-Z0-9_]+=' "$frag" >> "$tmp/.config"
+# Wiersze "CONFIG_X=..." i "# CONFIG_X is not set" z fragmentu dopisujemy na
+# koniec, bo olddefconfig bierze ostatnie wystapienie symbolu.  Tak samo robi
+# merge_config.sh przy budowaniu: "is not set" wylacza symbol, ktory defconfig
+# wlacza (np. DEBUG_INFO_REDUCED blokujacy BTF), a nie tylko go opisuje.
+if [ -z "$nakl" ]; then
+	grep -E "$WZOR" "$frag" >> "$tmp/.config"
+	grep -E "$WZOR" "$frag" > "$tmp/chcemy"
+else
+	grep -hE "$WZOR" "$frag" "$nakl" >> "$tmp/.config"
+	grep -hE "$WZOR" "$frag" "$nakl" | awk '
+		{ s = ($1 == "#") ? $2 : substr($0, 1, index($0, "=") - 1)
+		  if (!(s in ost)) kol[++n] = s
+		  ost[s] = $0 }
+		END { for (i = 1; i <= n; i++) print ost[kol[i]] }' > "$tmp/chcemy"
+fi
 
 if ! "$CONF" --olddefconfig Kconfig >>"$tmp/log" 2>&1; then
 	echo "check-kconfig: olddefconfig sie nie policzyl"
@@ -87,7 +118,7 @@ while IFS= read -r wiersz; do
 		zle=$((zle + 1))
 	fi
 done <<EOF
-$(grep -E '^CONFIG_[A-Z0-9_]+=' "$frag")
+$(grep -E '^CONFIG_[A-Z0-9_]+=' "$tmp/chcemy")
 EOF
 
 # Druga strona: symbole, ktore fragment celowo ZOSTAWIA wylaczone, opisane
@@ -95,7 +126,7 @@ EOF
 # przez select z czegos innego, decyzja z fragmentu przestaje obowiazywac po
 # cichu i trzeba ja przemyslec na nowo, a nie dowiedziec sie o tym na telefonie.
 wylaczone=0
-for nazwa in $(sed -n 's/^# \(CONFIG_[A-Z0-9_]*\) is not set$/\1/p' "$frag"); do
+for nazwa in $(sed -n 's/^# \(CONFIG_[A-Z0-9_]*\) is not set$/\1/p' "$tmp/chcemy"); do
 	wylaczone=$((wylaczone + 1))
 	if grep -qE "^$nazwa=" "$tmp/.config"; then
 		echo "  FAIL $nazwa mial zostac wylaczony, a wszedl: $(grep -E "^$nazwa=" "$tmp/.config")"

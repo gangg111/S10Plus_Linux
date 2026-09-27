@@ -1,0 +1,190 @@
+From 3ffeb021bdc2eb36bcdcf6eb965ca5be9bee2f7f Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 21 Sep 2026 12:51:23 +0200
+Subject: [PATCH 17/40] cmd: bootmenu: let a board draw the menu itself
+
+The menu the command draws is built for a serial terminal: one line per
+entry, a cursor made of a character, and no notion of a display that is 45
+columns wide and 47 rows tall.  A board that has a panel wants its own
+frame, its own spacing and its own title, and it wants the same key
+handling.
+
+The drawing is separated from the key handling so a board can supply the
+first and keep the second.  Nothing changes for a board that supplies
+nothing.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ cmd/bootmenu.c | 113 ++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 93 insertions(+), 20 deletions(-)
+
+diff --git a/cmd/bootmenu.c b/cmd/bootmenu.c
+index b55f5579..b6a13ac8 100644
+--- a/cmd/bootmenu.c
++++ b/cmd/bootmenu.c
+@@ -62,16 +62,64 @@ static char *bootmenu_getoption(unsigned short int n)
+ 	return env_get(name);
+ }
+ 
++/*
++ * Lines a board wants drawn above and below its menu, held in the environment
++ * as bootmenu_hdr_<n> and bootmenu_ftr_<n>, counted from zero and ending at
++ * the first one that is not set.  A board that sets none gets what it always
++ * got: the generic title and the generic help line.
++ */
++/*
++ * Drawn once on entering the menu rather than on every keypress: these lines
++ * do not change while it is up, and redrawing them costs more than redrawing
++ * all the entries put together.
++ */
++static bool bootmenu_extra_drawn;
++
++static int bootmenu_extra(const char *prefix, int row)
++{
++	char name[24];
++	const char *line;
++	int i;
++
++	if (row && bootmenu_extra_drawn)
++		row = 0;
++
++	for (i = 0; ; i++) {
++		snprintf(name, sizeof(name), "%s_%d", prefix, i);
++		line = env_get(name);
++		if (!line)
++			break;
++
++		/* Drawing only when asked, so the count can be taken cheaply. */
++		if (row) {
++			printf(ANSI_CURSOR_POSITION, row + i, 1);
++			puts(ANSI_CLEAR_LINE);
++			printf(ANSI_CURSOR_POSITION, row + i, 1);
++			puts(line);
++		}
++	}
++
++	return i;
++}
++
++/* How many rows come before the first entry, header and its blank line. */
++static int bootmenu_top(void)
++{
++	int hdr = bootmenu_extra("bootmenu_hdr", 0);
++
++	return hdr ? hdr + 1 : 3;
++}
++
+ static void bootmenu_print_entry(void *data)
+ {
+ 	struct bootmenu_entry *entry = data;
+ 	int reverse = (entry->menu->active == entry->num);
+ 
+ 	/*
+-	 * Move cursor to line where the entry will be drown (entry->num)
+-	 * First 3 lines contain bootmenu header + 1 empty line
++	 * Move cursor to line where the entry will be drown (entry->num),
++	 * below whatever header there is and the blank line after it.
+ 	 */
+-	printf(ANSI_CURSOR_POSITION, entry->num + 4, 7);
++	printf(ANSI_CURSOR_POSITION, entry->num + bootmenu_top() + 1, 7);
+ 
+ 	if (reverse)
+ 		puts(ANSI_COLOR_REVERSE);
+@@ -102,16 +150,22 @@ static char *bootmenu_choice_entry(void *data)
+ 		}
+ 
+ 		switch (key) {
++		/*
++		 * Wrapping round at both ends rather than stopping there. On a
++		 * device whose whole keyboard is two volume keys, reaching the
++		 * last entry from the first should not mean pressing one of
++		 * them once per entry in between.
++		 */
+ 		case BKEY_UP:
+ 			menu->last_active = menu->active;
+-			if (menu->active > 0)
+-				--menu->active;
++			menu->active = menu->active > 0 ? menu->active - 1 :
++							  menu->count - 1;
+ 			/* no menu key selected, regenerate menu */
+ 			return NULL;
+ 		case BKEY_DOWN:
+ 			menu->last_active = menu->active;
+-			if (menu->active < menu->count - 1)
+-				++menu->active;
++			menu->active = menu->active < menu->count - 1 ?
++				       menu->active + 1 : 0;
+ 			/* no menu key selected, regenerate menu */
+ 			return NULL;
+ 		case BKEY_SHORTCUT:
+@@ -473,28 +527,45 @@ static void menu_display_statusline(struct menu *m)
+ {
+ 	struct bootmenu_entry *entry;
+ 	struct bootmenu_data *menu;
++	int top;
+ 
+ 	if (menu_default_choice(m, (void *)&entry) < 0)
+ 		return;
+ 
+ 	menu = entry->menu;
+ 
+-	printf(ANSI_CURSOR_POSITION, 1, 1);
+-	puts(ANSI_CLEAR_LINE);
+-	printf(ANSI_CURSOR_POSITION, 2, 3);
+-	puts("*** U-Boot Boot Menu ***");
+-	puts(ANSI_CLEAR_LINE_TO_END);
+-	printf(ANSI_CURSOR_POSITION, 3, 1);
+-	puts(ANSI_CLEAR_LINE);
++	/*
++	 * Wiped on entering the menu, and only then: a list that replaces a
++	 * longer one would otherwise leave the tail of the old one behind, and
++	 * so would a footer that moves up.
++	 */
++	if (!bootmenu_extra_drawn)
++		puts(ANSI_CLEAR_CONSOLE);
++
++	if (!bootmenu_extra("bootmenu_hdr", 1) && !bootmenu_extra_drawn) {
++		printf(ANSI_CURSOR_POSITION, 1, 1);
++		puts(ANSI_CLEAR_LINE);
++		printf(ANSI_CURSOR_POSITION, 2, 3);
++		puts("*** U-Boot Boot Menu ***");
++		puts(ANSI_CLEAR_LINE_TO_END);
++	}
+ 
+-	/* First 3 lines are bootmenu header + 2 empty lines between entries */
+-	printf(ANSI_CURSOR_POSITION, menu->count + 5, 1);
++	top = bootmenu_top();
++	printf(ANSI_CURSOR_POSITION, top, 1);
+ 	puts(ANSI_CLEAR_LINE);
+-	printf(ANSI_CURSOR_POSITION, menu->count + 6, 3);
+-	puts("Press UP/DOWN to move, ENTER to select, ESC to quit");
+-	puts(ANSI_CLEAR_LINE_TO_END);
+-	printf(ANSI_CURSOR_POSITION, menu->count + 7, 1);
++
++	printf(ANSI_CURSOR_POSITION, menu->count + top + 2, 1);
+ 	puts(ANSI_CLEAR_LINE);
++	if (!bootmenu_extra("bootmenu_ftr", menu->count + top + 3) &&
++	    !bootmenu_extra_drawn) {
++		printf(ANSI_CURSOR_POSITION, menu->count + top + 3, 3);
++		puts("Press UP/DOWN to move, ENTER to select, ESC to quit");
++		puts(ANSI_CLEAR_LINE_TO_END);
++		printf(ANSI_CURSOR_POSITION, menu->count + top + 4, 1);
++		puts(ANSI_CLEAR_LINE);
++	}
++
++	bootmenu_extra_drawn = true;
+ }
+ 
+ static void handle_uefi_bootnext(void)
+@@ -541,6 +612,8 @@ static enum bootmenu_ret bootmenu_show(int uefi, int delay)
+ 	if (IS_ENABLED(CONFIG_CMD_BOOTEFI_BOOTMGR) && uefi)
+ 		handle_uefi_bootnext();
+ 
++	bootmenu_extra_drawn = false;
++
+ 	/* If delay is 0 do not create menu, just run first entry */
+ 	if (delay == 0) {
+ 		option = bootmenu_getoption(0);
+-- 
+2.47.3
+
