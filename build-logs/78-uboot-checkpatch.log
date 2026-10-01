@@ -467,3 +467,23 @@ total: 0 errors, 0 warnings, 0 checks, 115 lines checked
 /mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0040-dts-exynos-take-the-second-thermal-trip-from-the-ker.patch has no obvious style problems and is ready for submission.
 
 NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+########## 0041-board-samsung-exynos-mobile-add-fastboot-oem-peek-for-modem-registers.patch
+WARNING: Prefer a maximum 75 chars per line (possible unwrapped commit description?)
+#9: 
+and the MCU_IPC mailbox; see docs/R15-modem.md).  U-Boot runs in a different
+
+WARNING: Misplaced SPDX-License-Identifier tag - use line 1 instead
+#42: FILE: board/samsung/exynos-mobile/exynos-mobile.c:1523:
++// SPDX-License-Identifier: GPL-2.0
+
+total: 0 errors, 2 warnings, 0 checks, 87 lines checked
+
+NOTE: For some of the reported defects, checkpatch may be able to
+      mechanically convert to the typical style using --fix or --fix-inplace.
+
+/mnt/c/Users/Artur/Documents/Serwis/Programowanie/S10Plus_Linux/patches-uboot/0041-board-samsung-exynos-mobile-add-fastboot-oem-peek-for-modem-registers.patch has style problems, please review.
+
+NOTE: Ignored message types: COMPLEX_MACRO CONSIDER_KSTRTO ENOSYS LONG_UDELAY MINMAX MULTISTATEMENT_MACRO_USE_DO_WHILE NETWORKING_BLOCK_COMMENT_STYLE PREFER_ETHER_ADDR_COPY USLEEP_RANGE
+
+NOTE: If any of the errors are false positives, please report
+      them to the maintainer, see CHECKPATCH in MAINTAINERS.

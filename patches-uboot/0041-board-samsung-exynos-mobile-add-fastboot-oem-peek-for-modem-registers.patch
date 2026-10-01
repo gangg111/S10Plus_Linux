@@ -1,0 +1,124 @@
+From 484ea9967ce86fecbb86dff12f31bb50ab83df14 Mon Sep 17 00:00:00 2001
+From: Port S10Plus <port@local>
+Date: Mon, 28 Sep 2026 04:26:57 +0200
+Subject: [PATCH] board: samsung: exynos-mobile: add fastboot oem peek for
+ modem registers
+
+Reading the modem blocks from Linux ends in a synchronous external abort
+(three independent blocks: PMU CP domain registers, the ap2cp_cfg trigger
+and the MCU_IPC mailbox; see docs/R15-modem.md).  U-Boot runs in a different
+context, without runtime power management and without ioremap, so it is the
+only cheap way to tell whether those blocks answer at all.
+
+fastboot cannot print anything by itself: it hands the host OKAY/FAIL and
+nothing else.  This adds the return channel through the already existing
+fastboot_oem_board() hook, reachable as 'fastboot oem peek', which reads
+eight registers and reports them as INFO lines followed by OKAY.
+
+Read only.  No register is written.
+---
+ board/samsung/exynos-mobile/exynos-mobile.c | 74 +++++++++++++++++++++
+ configs/exynos9820-beyond2lte_defconfig     |  1 +
+ 2 files changed, 75 insertions(+)
+
+diff --git a/board/samsung/exynos-mobile/exynos-mobile.c b/board/samsung/exynos-mobile/exynos-mobile.c
+index 72236165..c5d958de 100644
+--- a/board/samsung/exynos-mobile/exynos-mobile.c
++++ b/board/samsung/exynos-mobile/exynos-mobile.c
+@@ -22,6 +22,7 @@
+ #include <efi_loader.h>
+ #include <env.h>
+ #include <errno.h>
++#include <fastboot.h>
+ #include <fdtdec.h>
+ #include <init.h>
+ #include <linux/err.h>
+@@ -1517,3 +1518,76 @@ int misc_init_r(void)
+ 
+ 	return exynos_fastboot_setup();
+ }
++
++/* --- diagnostyka modemu: kanal zwrotny fastboot oem peek --- */
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Diagnostyka modemu: odczyt rejestrow z U-Boota i podanie wartosci do PC
++ * kanalem zwrotnym fastboota.  Powod: z Linuksa dostep do tych blokow konczy
++ * sie "synchronous external abort" (trzy niezalezne bloki, patrz
++ * docs/R15-modem.md), a U-Boot chodzi w innym kontekscie - bez zarzadzania
++ * energia i bez ioremap.  To jedyny tani sposob, zeby rozstrzygnac, czy blok
++ * odpowiada w ogole, czy dopiero po przygotowaniu przez firmware.
++ *
++ * Polecenie:  fastboot oem peek
++ * Odpowiedz:  linie INFO (nazwa, potem wartosc) zakonczone OKAY.
++ *
++ * Tylko ODCZYT.  Zaden zapis nie jest tu wykonywany.
++ */
++
++#define MODEM_AP2CP_CFG		0x15020000
++#define MODEM_MCU_IPC		0x15920000
++#define MODEM_PMU_CP		0x15860000
++
++struct modem_peek {
++	u32 adres;
++	u32 offset;
++	const char *nazwa;
++};
++
++static const struct modem_peek modem_peek_lista[] = {
++	/* punkt odniesienia: bramka APM, ktora w Linuksie czytala sie bez bledu */
++	{ MODEM_PMU_CP,   0x2018, "CMU_APM gate PMU_ALIVE" },
++	/* wyzwalacz rozruchu modemu na tej plycie */
++	{ MODEM_AP2CP_CFG, 0x0000, "ap2cp_cfg" },
++	/* skrzynka MCU_IPC */
++	{ MODEM_MCU_IPC,  0x0000, "MCU_IPC MCUCTLR" },
++	{ MODEM_MCU_IPC,  0x0014, "MCU_IPC INTSR0" },
++	/* rejestry domeny modemu w PMU */
++	{ MODEM_PMU_CP,   0x3000, "PMU CP_CONFIGURATION" },
++	{ MODEM_PMU_CP,   0x3004, "PMU CP_STATUS" },
++	{ MODEM_PMU_CP,   0x3014, "PMU CP_CTRL_S" },
++	{ MODEM_PMU_CP,   0x3024, "PMU CP_IN" },
++};
++
++void fastboot_oem_board(char *cmd_parameter, void *data, u32 size, char *response)
++{
++	char linia[64];
++	int i;
++
++	if (!cmd_parameter || strcmp(cmd_parameter, "peek")) {
++		fastboot_fail("uzycie: fastboot oem peek", response);
++		return;
++	}
++
++	fastboot_response(FASTBOOT_MULTIRESPONSE_START, response, NULL);
++
++	for (i = 0; i < ARRAY_SIZE(modem_peek_lista); i++) {
++		const struct modem_peek *p = &modem_peek_lista[i];
++		void __iomem *mapa;
++
++		snprintf(linia, sizeof(linia), "%s @%x+%x", p->nazwa,
++			 p->adres, p->offset);
++		fastboot_response("INFO", response, "%s", linia);
++
++		mapa = map_physmem(p->adres, 0x1000, MAP_NOCACHE);
++		if (!mapa)
++			snprintf(linia, sizeof(linia), "  brak mapowania");
++		else
++			snprintf(linia, sizeof(linia), "  = 0x%08x",
++				 readl(mapa + p->offset));
++		fastboot_response("INFO", response, "%s", linia);
++	}
++
++	fastboot_okay("koniec odczytu", response);
++}
+diff --git a/configs/exynos9820-beyond2lte_defconfig b/configs/exynos9820-beyond2lte_defconfig
+index 497aa127..9d698606 100644
+--- a/configs/exynos9820-beyond2lte_defconfig
++++ b/configs/exynos9820-beyond2lte_defconfig
+@@ -82,3 +82,4 @@ CONFIG_USB_GADGET_OS_DESCRIPTORS=y
+ CONFIG_DM_REBOOT_MODE=y
+ CONFIG_DM_REBOOT_MODE_SYSCON=y
+ CONFIG_CMD_BCB=y
++CONFIG_FASTBOOT_OEM_BOARD=y
+-- 
+2.47.3
+

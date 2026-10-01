@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Autojasnosc
+Comment=Automatyczna jasnosc ekranu (czujnik swiatla pod ekranem)
+Exec=/usr/bin/python3 /usr/local/lib/autojasnosc/autojasnosc.py
+NoDisplay=true
+X-KDE-autostart-phase=2

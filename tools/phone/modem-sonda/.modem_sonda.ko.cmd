@@ -1,0 +1,1 @@
+savedcmd_modem_sonda.ko := aarch64-linux-gnu-ld -r -EL  -maarch64elf -z noexecstack --no-warn-rwx-segments --build-id=sha1 --force-group-allocation  -T /root/k7/scripts/module.lds -o modem_sonda.ko modem_sonda.o modem_sonda.mod.o .module-common.o

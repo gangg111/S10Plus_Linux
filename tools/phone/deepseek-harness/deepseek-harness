@@ -1,6 +1,6 @@
 #!/bin/sh
 # Aplikacja DeepSeek Harness: uruchamia serwer dsh web jako usluge uzytkownika,
-# pokazuje jego Web UI we wlasnym oknie (Qt WebEngine) i zatrzymuje serwer po
+# pokazuje jego Web UI we wlasnym oknie (WebKitGTK na GPU albo Qt WebEngine) i zatrzymuje serwer po
 # zamknieciu okna.  Token dostepu dsh losuje przy kazdym starcie serwera
 # i wypisuje go w adresie; bierzemy go z dziennika biezacego uruchomienia.
 systemctl --user start dsh-web.service || exit 1
@@ -17,9 +17,39 @@ if [ -z "$url" ]; then
 	notify-send "DeepSeek Harness" "Serwer nie wystartowal w 90 s" 2>/dev/null
 	exit 1
 fi
+
+# Droidian z Panfrostem na kbase (tools/phone/panfrost-kbase) i lata libhybris
+# (tools/phone/hybris-fix): okno WebKitGTK, tresc rysuje Mesa Panfrost, klatki
+# ida do okna jako bufory gralloc bez kopiowania przez CPU. Zmierzone 30.09.2026
+# na przewijanym tekscie: 57 kl/s (Qt na CPU 60), na ciezkiej stronie 26 kl/s
+# (Qt 4). Ale CPU calego telefonu na tekscie: Qt 49%, okno GPU 152%, a czat dsh to
+# prawie sam tekst, wiec domyslne jest okno Qt; okno GPU tylko z DSH_OKNO_GPU=1.
+D=$HOME/.local/lib/deepseek-harness
+P=$HOME/.local/panfrost-kbase
+if [ -n "$DSH_OKNO_GPU" ] && [ -e /usr/lib/aarch64-linux-gnu/libhybris-common.so.1 ] &&
+	[ -x "$D/deepseek-harness-okno" ] && [ -e "$D/libhybris/eglplatform_wayland.so" ] &&
+	[ -e "$P/share/glvnd/egl_vendor.d/50_mesa.json" ]; then
+	# preload sesji libglesshadercache.so psuje kazdy program shaderow w Mesie
+	pre=$(echo "$LD_PRELOAD" | tr ':' '\n' | grep -v glesshadercache | paste -sd:)
+	DSH_OKNO_ADRES="$url" LD_PRELOAD="$pre" LD_LIBRARY_PATH="$D:$P/lib" \
+		__EGL_VENDOR_LIBRARY_FILENAMES=/usr/share/glvnd/egl_vendor.d/10_libhybris.json:$P/share/glvnd/egl_vendor.d/50_mesa.json \
+		MESA_KBASE_NODE=/dev/mali0 PAN_GRALLOC_EXPORT=1 HYBRIS_EGLPLATFORM_DIR="$D/libhybris" \
+		WEBKIT_DISABLE_DMABUF_RENDERER=0 WEBKIT_WEB_RENDER_DEVICE_FILE=/dev/mali0 \
+		WEBKIT_DMABUF_RENDERER_DISABLE_GBM=1 GTK_IM_MODULE=wayland \
+		"$D/deepseek-harness-okno"
+	systemctl --user stop dsh-web.service
+	exit 0
+fi
+
 qml="${XDG_RUNTIME_DIR:-/tmp}/deepseek-harness.qml"
 sed "s|@DSH_URL@|$url|" "$HOME/.local/share/deepseek-harness/deepseek-harness.qml" > "$qml"
 chmod 600 "$qml"
+# Droidian (libhybris): kompozytor GPU Chromium nie dostaje tekstury
+# (eglCreateSync 0x3008, "Compositor returned null texture"), okno jest
+# czarne; renderowanie programowe dziala. Na pmOS (Mesa) flagi sa zbedne.
+if [ -e /usr/lib/aarch64-linux-gnu/libhybris-common.so.1 ]; then
+	export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --disable-gpu-compositing"
+fi
 QT_QPA_PLATFORM=wayland /usr/lib/qt6/bin/qmlscene "$qml"
 rm -f "$qml"
 systemctl --user stop dsh-web.service

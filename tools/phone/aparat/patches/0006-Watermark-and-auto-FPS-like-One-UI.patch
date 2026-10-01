@@ -1,0 +1,399 @@
+From c94c56f2a0321e0846c1d640872e3941fae8ab59 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Thu, 1 Oct 2026 05:21:26 +0200
+Subject: [PATCH] Watermark and auto FPS like One UI
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ debian/changelog                       |   9 ++
+ src/camx/cam2.cpp                      |   3 +-
+ src/camx/cam2.h                        |   2 +
+ src/hybris-camera-cam2.cpp             |   6 ++
+ src/hybris-camera-prefs.cpp            | 140 +++++++++++++++++++++----
+ src/hybris-camera.cpp                  |   2 +
+ src/hybris-camera.h                    |   6 ++
+ src/qml/DefaultUI/ProPanel.qml         |  11 ++
+ src/translations/droidian-camera_pl.ts |   8 ++
+ 9 files changed, 163 insertions(+), 24 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index d2364d1..aab02f7 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,12 @@
++droidian-camera (26.1+s10plus6) unstable; urgency=medium
++
++  * Watermark like One UI: model name and time in the lower left corner of
++    the upright picture, EXIF kept with orientation 1.
++  * Auto FPS: video with automatic exposure may drop to 15 fps in low light
++    (AE target range 15..30 on the live Camera2 session).
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 12:00:00 +0200
++
+ droidian-camera (26.1+s10plus5) unstable; urgency=medium
+ 
+   * One UI style settings page: sections, value rows with option dialogs,
+diff --git a/src/camx/cam2.cpp b/src/camx/cam2.cpp
+index a43e9ba..297fef3 100644
+--- a/src/camx/cam2.cpp
++++ b/src/camx/cam2.cpp
+@@ -845,7 +845,8 @@ ACaptureRequest *streamRequest(Session *S, bool trigger)
+ 		const int64_t frame = S->liveExp > 1000000000LL / fps ? S->liveExp : 1000000000LL / fps;
+ 		ACaptureRequest_setEntry_i64(r, ACAMERA_SENSOR_FRAME_DURATION, 1, &frame);
+ 	} else if (S->cfg.video) {
+-		const int32_t range[2] = { fps, fps };
++		// auto frame rate: longer exposures in low light (the HAL lists [15, 30])
++		const int32_t range[2] = { S->ctl.autoFps && fps > 15 ? 15 : fps, fps };
+ 		ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AE_TARGET_FPS_RANGE, 2, range);
+ 	}
+ 	if (trigger) {
+diff --git a/src/camx/cam2.h b/src/camx/cam2.h
+index 8ac3b72..1abe51d 100644
+--- a/src/camx/cam2.h
++++ b/src/camx/cam2.h
+@@ -50,6 +50,8 @@ struct Cam2Settings {
+ 	// metering mode area (centre-weighted, spot), Camera1 frame; used when no
+ 	// area was tapped; all 0: the HAL's own (matrix) metering
+ 	int meter[4];
++	// video with automatic exposure: the frame rate may drop to 15 in low light
++	int autoFps;
+ };
+ 
+ struct Cam2Dng;
+diff --git a/src/hybris-camera-cam2.cpp b/src/hybris-camera-cam2.cpp
+index e783622..aae90a4 100644
+--- a/src/hybris-camera-cam2.cpp
++++ b/src/hybris-camera-cam2.cpp
+@@ -33,6 +33,7 @@ struct Job {
+ 	int count = 1;
+ 	int orientation = 0;
+ 	bool mirror = false; // selfie saved as previewed
++	int watermark = 0; // JPEG quality of the re-encoded picture with the watermark; 0: none
+ 	QStringList saved;
+ };
+ 
+@@ -45,6 +46,8 @@ void onJpeg(void *ctx, const unsigned char *data, int size, int index)
+ 	QByteArray jpeg(reinterpret_cast<const char *>(data), size);
+ 	if (job->mirror)
+ 		HybrisCamera::mirrorJpeg(jpeg);
++	if (job->watermark)
++		HybrisCamera::watermarkJpeg(jpeg, job->watermark);
+ 	QFile file(path);
+ 	if (file.open(QIODevice::WriteOnly) && file.write(jpeg) == size)
+ 		job->saved.append(path);
+@@ -300,6 +303,7 @@ Cam2Settings HybrisCamera::cam2Settings(bool pro) const
+ 	s.awbLock = p.value("auto-whitebalance-lock") == "true";
+ 	for (int i = 0; i < 4; i++)
+ 		s.region[i] = m_c2Region[i];
++	s.autoFps = m_prefs->value("autoFps").toBool();
+ 	// metering mode (centre-weighted, spot) as a metering area
+ 	const int metering = m_prefs->value("metering").toInt();
+ 	const int half = metering == 1 ? 500 : metering == 2 ? 80 : 0;
+@@ -332,6 +336,7 @@ void HybrisCamera::captureCam2(int count, bool raw)
+ 	job->count = count;
+ 	job->orientation = s.orientation;
+ 	job->mirror = mirrorSelfie();
++	job->watermark = watermarkQuality();
+ 	const int camId = m_cameraManager->camId();
+ 
+ 	m_busy = true;
+@@ -620,6 +625,7 @@ void HybrisCamera::stillCam2(int count, bool raw)
+ 	job->count = count;
+ 	job->orientation = s.orientation;
+ 	job->mirror = mirrorSelfie();
++	job->watermark = watermarkQuality();
+ 	m_busy = true;
+ 	Q_EMIT busyChanged();
+ 	const Cam2Api *api = m_c2;
+diff --git a/src/hybris-camera-prefs.cpp b/src/hybris-camera-prefs.cpp
+index 4d91d32..b81df55 100644
+--- a/src/hybris-camera-prefs.cpp
++++ b/src/hybris-camera-prefs.cpp
+@@ -5,10 +5,15 @@
+  * shutter, reset. Grid, swipe and volume keys are handled in QML.
+  */
+ 
++#include <QBuffer>
++#include <QDateTime>
+ #include <QDebug>
+ #include <QDir>
+ #include <QFile>
+ #include <QGuiApplication>
++#include <QImageReader>
++#include <QImageWriter>
++#include <QPainter>
+ #include <QSettings>
+ #include <QSocketNotifier>
+ 
+@@ -30,6 +35,7 @@ struct Pref {
+ const Pref PREFS[] = {
+ 	{ "qr", true }, { "grid", false }, { "mirror", true }, { "swipe", true },
+ 	{ "volumeKeys", true }, { "vibration", false }, { "metering", 0 }, { "histogram", true },
++	{ "watermark", false }, { "autoFps", false },
+ };
+ 
+ const int CENTRE_HALF = 500; // centre-weighted: the middle half of the frame
+@@ -46,51 +52,137 @@ quint32 read32(const uchar *p, bool le)
+ 		  : quint32(quint32(p[0]) << 24 | p[1] << 16 | p[2] << 8 | p[3]);
+ }
+ 
+-} // namespace
++// The EXIF APP1 segment (from its 0xff marker) and the value field of the
++// orientation entry in it; segment.size() 0: no EXIF, orientation null: no entry
++struct Exif {
++	QByteArray segment;
++	int pos = 0; // segment offset in the file
++	uchar *orientation = nullptr;
++	bool le = false;
++};
+ 
+-// The EXIF orientation of the horizontally mirrored picture (checked for all
+-// eight values against Pillow's exif_transpose): the pixels stay, viewers show
+-// the selfie the way the preview did.
+-bool HybrisCamera::mirrorJpeg(QByteArray &jpeg)
++Exif findExif(QByteArray &jpeg)
+ {
+-	static const quint16 mirrored[9] = { 0, 2, 1, 4, 3, 6, 5, 8, 7 };
++	Exif x;
+ 	uchar *d = reinterpret_cast<uchar *>(jpeg.data());
+ 	const int n = jpeg.size();
+ 	if (n < 4 || d[0] != 0xff || d[1] != 0xd8)
+-		return false;
++		return x;
+ 	int pos = 2;
+ 	while (pos + 4 <= n && d[pos] == 0xff) {
+ 		const int marker = d[pos + 1];
+ 		const int len = d[pos + 2] << 8 | d[pos + 3];
+ 		if (marker == 0xda) // image data: no EXIF before it
+-			return false;
++			return x;
+ 		if (marker == 0xe1 && pos + 10 + 8 <= n && memcmp(d + pos + 4, "Exif\0\0", 6) == 0) {
++			x.pos = pos;
++			x.segment = jpeg.mid(pos, qMin(2 + len, n - pos));
+ 			uchar *t = d + pos + 10;
+ 			const int tlen = qMin(len - 8, n - pos - 10);
+-			const bool le = t[0] == 'I';
+-			const quint32 ifd = read32(t + 4, le);
++			x.le = t[0] == 'I';
++			const quint32 ifd = read32(t + 4, x.le);
+ 			if (ifd + 2 > quint32(tlen))
+-				return false;
+-			const int count = read16(t + ifd, le);
++				return x;
++			const int count = read16(t + ifd, x.le);
+ 			for (int i = 0; i < count; i++) {
+ 				uchar *e = t + ifd + 2 + 12 * i;
+ 				if (e + 12 > t + tlen)
+-					return false;
+-				if (read16(e, le) == 0x0112) {
+-					const quint16 o = read16(e + 8, le);
+-					if (o < 1 || o > 8)
+-						return false;
+-					const quint16 m = mirrored[o];
+-					e[8] = le ? m & 0xff : m >> 8;
+-					e[9] = le ? m >> 8 : m & 0xff;
+-					return true;
++					return x;
++				if (read16(e, x.le) == 0x0112) {
++					x.orientation = e + 8;
++					return x;
+ 				}
+ 			}
+-			return false;
++			return x;
+ 		}
+ 		pos += 2 + len;
+ 	}
+-	return false;
++	return x;
++}
++
++void write16(uchar *p, quint16 v, bool le)
++{
++	p[0] = le ? v & 0xff : v >> 8;
++	p[1] = le ? v >> 8 : v & 0xff;
++}
++
++} // namespace
++
++// The EXIF orientation of the horizontally mirrored picture (checked for all
++// eight values against Pillow's exif_transpose): the pixels stay, viewers show
++// the selfie the way the preview did.
++bool HybrisCamera::mirrorJpeg(QByteArray &jpeg)
++{
++	static const quint16 mirrored[9] = { 0, 2, 1, 4, 3, 6, 5, 8, 7 };
++	const Exif x = findExif(jpeg);
++	if (!x.orientation)
++		return false;
++	const quint16 o = read16(x.orientation, x.le);
++	if (o < 1 || o > 8)
++		return false;
++	write16(x.orientation, mirrored[o], x.le);
++	return true;
++}
++
++// Like One UI: the model name and the time in the lower left corner of the
++// picture as it is viewed. The picture is turned upright for that, so the EXIF
++// block is carried over with orientation 1.
++bool HybrisCamera::watermarkJpeg(QByteArray &jpeg, int quality)
++{
++	QBuffer in(&jpeg);
++	QImageReader reader(&in, "jpeg");
++	reader.setAutoTransform(true);
++	QImage img = reader.read();
++	if (img.isNull())
++		return false;
++	img = img.convertToFormat(QImage::Format_RGB32);
++	{
++		QPainter p(&img);
++		p.setRenderHint(QPainter::Antialiasing);
++		p.setRenderHint(QPainter::TextAntialiasing);
++		const int side = qMin(img.width(), img.height());
++		const int margin = side * 4 / 100;
++		QFont model;
++		model.setPixelSize(qMax(12, side * 33 / 1000));
++		model.setWeight(QFont::DemiBold);
++		QFont time = model;
++		time.setPixelSize(qMax(10, side * 21 / 1000));
++		time.setWeight(QFont::Normal);
++		const QString stamp = QDateTime::currentDateTime().toString("yyyy.MM.dd  HH:mm");
++		const QFontMetrics fm(model), ft(time);
++		const int timeBase = img.height() - margin;
++		const int modelBase = timeBase - ft.height() - fm.descent();
++		const int shadow = qMax(1, side / 600);
++		auto draw = [&](const QFont &f, int base, const QString &text) {
++			p.setFont(f);
++			p.setPen(QColor(0, 0, 0, 110));
++			p.drawText(margin + shadow, base + shadow, text);
++			p.setPen(QColor(255, 255, 255, 235));
++			p.drawText(margin, base, text);
++		};
++		draw(model, modelBase, QStringLiteral("Galaxy S10+"));
++		draw(time, timeBase, stamp);
++	}
++	QByteArray out;
++	QBuffer buf(&out);
++	buf.open(QIODevice::WriteOnly);
++	QImageWriter writer(&buf, "jpeg");
++	writer.setQuality(quality);
++	if (!writer.write(img) || out.size() < 4)
++		return false;
++	Exif x = findExif(jpeg);
++	if (x.segment.size()) {
++		if (x.orientation) // the pixels are upright now
++			write16(reinterpret_cast<uchar *>(x.segment.data()) + (x.orientation - reinterpret_cast<uchar *>(jpeg.data()) - x.pos), 1, x.le);
++		// EXIF right after SOI, in place of Qt's JFIF header
++		int at = 2;
++		const uchar *o = reinterpret_cast<const uchar *>(out.constData());
++		if (o[2] == 0xff && o[3] == 0xe0)
++			at = 4 + (o[4] << 8 | o[5]);
++		out = out.left(2) + x.segment + out.mid(at);
++	}
++	jpeg = out;
++	return true;
+ }
+ 
+ void HybrisCamera::initPrefs()
+@@ -118,6 +210,8 @@ void HybrisCamera::prefChanged(const QString &key)
+ 		applyMetering();
+ 	else if (key == "volumeKeys")
+ 		applyVolumeKeys();
++	else if (key == "autoFps" && m_c2s)
++		pushCam2();
+ }
+ 
+ // Volume keys as the shutter. The compositor keeps them from the window, so
+diff --git a/src/hybris-camera.cpp b/src/hybris-camera.cpp
+index 4bda361..003ef78 100644
+--- a/src/hybris-camera.cpp
++++ b/src/hybris-camera.cpp
+@@ -189,6 +189,8 @@ void HybrisCamera::saveJpegData(const QByteArray &original)
+ 	QByteArray jpeg = original;
+ 	if (mirrorSelfie())
+ 		mirrorJpeg(jpeg); // saved the way the preview showed it
++	if (const int q = watermarkQuality())
++		watermarkJpeg(jpeg, q);
+ 	QString filename =
+ 		m_picturePath + "/IMG" +
+ 		QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz") +
+diff --git a/src/hybris-camera.h b/src/hybris-camera.h
+index b8a6be9..f708cc2 100644
+--- a/src/hybris-camera.h
++++ b/src/hybris-camera.h
+@@ -490,12 +490,18 @@ class HybrisCamera : public QQuickItem {
+     public:
+ 	// mirrored EXIF orientation (selfies saved as previewed); false: no EXIF orientation
+ 	static bool mirrorJpeg(QByteArray &jpeg);
++	// model name and time in the corner, upright; EXIF kept with orientation 1
++	static bool watermarkJpeg(QByteArray &jpeg, int quality);
+ 
+     private:
+ 	bool mirrorSelfie() const
+ 	{
+ 		return m_cameraManager->currentCamera().type != 0 && m_prefs->value("mirror").toBool();
+ 	}
++	int watermarkQuality() const
++	{
++		return m_prefs->value("watermark").toBool() ? m_cameraManager->jpegQuality() : 0;
++	}
+ 	QQmlPropertyMap *m_prefs = nullptr;
+ 	QVariantList m_histogram;
+ 	QVariantMap m_cam2;
+diff --git a/src/qml/DefaultUI/ProPanel.qml b/src/qml/DefaultUI/ProPanel.qml
+index 158c49f..0318588 100644
+--- a/src/qml/DefaultUI/ProPanel.qml
++++ b/src/qml/DefaultUI/ProPanel.qml
+@@ -283,6 +283,11 @@ Rectangle {
+                     onClicked: panel.choose(title, [5, 10, 20, 30].map(n => ({ text: n, value: n })),
+                                             camera.burstCount, v => camera.burstCount = v)
+                 }
++                ToggleRow {
++                    title: qsTr("Watermark")
++                    checked: camera.prefs.watermark
++                    onToggled: on => camera.prefs.watermark = on
++                }
+             }
+ 
+             SectionLabel { text: qsTr("Videos"); visible: panel.video }
+@@ -303,6 +308,12 @@ Rectangle {
+                     onClicked: panel.choose(title, rates.map(r => ({ text: r + " " + qsTr("fps"), value: r })),
+                                             camera.videoFps, v => camera.videoFps = v)
+                 }
++                ToggleRow {
++                    visible: camera.cam2.manualSensor === true && !camera.swEncode && camera.videoFps > 15
++                    title: qsTr("Auto FPS")
++                    checked: camera.prefs.autoFps
++                    onToggled: on => camera.prefs.autoFps = on
++                }
+                 ValueRow {
+                     title: camera.swEncode ? qsTr("Quality (CRF, lower is better)") : qsTr("Bit rate")
+                     value: camera.swEncode ? camera.encCrf : camera.videoBitRate + " Mb/s"
+diff --git a/src/translations/droidian-camera_pl.ts b/src/translations/droidian-camera_pl.ts
+index aa4b45f..a09cfd5 100644
+--- a/src/translations/droidian-camera_pl.ts
++++ b/src/translations/droidian-camera_pl.ts
+@@ -97,6 +97,10 @@
+         <source>Auto</source>
+         <translation>Auto</translation>
+     </message>
++    <message>
++        <source>Auto FPS</source>
++        <translation>Automatyczne kl./s</translation>
++    </message>
+     <message>
+         <source>Bit rate</source>
+         <translation>Przepływność</translation>
+@@ -397,6 +401,10 @@
+         <source>Warm fluorescent</source>
+         <translation>Ciepła świetlówka</translation>
+     </message>
++    <message>
++        <source>Watermark</source>
++        <translation>Znak wodny</translation>
++    </message>
+     <message>
+         <source>White balance</source>
+         <translation>Balans bieli</translation>
+-- 
+2.55.0
+

@@ -55,6 +55,3 @@ index a7d67149a1f..62cee741061 100644
  		ufs_0: ufs@13d60000 {
  			compatible = "samsung,exynos9820-ufs";
  			reg = <0x13d60000 0x200>,
--- 
-2.53.0.windows.1
-

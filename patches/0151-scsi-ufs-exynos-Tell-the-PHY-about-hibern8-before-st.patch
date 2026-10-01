@@ -1,0 +1,43 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 01:16:11 +0200
+Subject: [PATCH] scsi: ufs: exynos: Tell the PHY about hibern8 before stopping
+ its clocks
+
+Once the link is in hibern8 the host stops its clocks and then hands the
+PHY its table for that state.  The clocks it stops include the APB clock
+of the PHY, which is the one those register writes go through, so the
+table is written with that clock already stopped.
+
+Write the table first and stop the clocks after it, which is the order
+the vendor kernel for these SoCs uses.  Only SoCs whose PHY has hibern8
+tables are affected; for the others the notification does nothing.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/ufs/host/ufs-exynos.c | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/ufs/host/ufs-exynos.c b/drivers/ufs/host/ufs-exynos.c
+index 07a8a8d5232..135454a8e27 100644
+--- a/drivers/ufs/host/ufs-exynos.c
++++ b/drivers/ufs/host/ufs-exynos.c
+@@ -1721,11 +1721,16 @@ static void exynos_ufs_post_hibern8(struct ufs_hba *hba, enum uic_cmd_dme cmd)
+ 
+ 	if (cmd == UIC_CMD_DME_HIBER_ENTER) {
+ 		ufs->entry_hibern8_t = ktime_get();
++
++		/*
++		 * The PHY is written through its APB clock, which the clock
++		 * gating below stops as well, so tell the PHY first.
++		 */
++		phy_notify_state(ufs->phy, phystate);
++
+ 		exynos_ufs_gate_clks(ufs);
+ 		if (ufs->opts & EXYNOS_UFS_OPT_BROKEN_AUTO_CLK_CTRL)
+ 			exynos_ufs_enable_auto_ctrl_hcc(ufs);
+-
+-		phy_notify_state(ufs->phy, phystate);
+ 	}
+ }
+ 

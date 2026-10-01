@@ -1,0 +1,2028 @@
+From 5c1833df2e5170054cbbe68a02000e43d17d7d6b Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 23:45:07 +0000
+Subject: [PATCH] Add a Camera2 path: manual ISO, shutter and focus, RAW (DNG),
+ OIS, burst
+
+Camera1 on this HAL has no keys for the HAL3 manual controls. libcamx gains
+a Camera2 still capture through the NDK (cam2.cpp, declarations of the used
+NDK part in ndk-camera.h): Camera1 disconnects, libcamx meters and focuses
+with a small YUV stream, shoots JPEG (and RAW16) with the manual values and
+returns; the app writes the DNG and reconnects Camera1.
+
+The process needs a binder thread pool for the Camera2 callbacks; the pool
+is started without changing its size (the compatibility layer may have
+started it) and the thread name libbinder sets is put back.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ CMakeLists.txt                         |   8 +-
+ debian/changelog                       |  13 +
+ src/CMakeLists.txt                     |   8 +-
+ src/camera-extras.cpp                  |  19 +
+ src/camera-extras.h                    |  14 +
+ src/camera-manager.cpp                 |  13 +-
+ src/camera-manager.h                   |   4 +
+ src/camera-renderer.h                  |   5 +
+ src/camx/cam2.cpp                      | 525 +++++++++++++++++++++++++
+ src/camx/cam2.h                        |  70 ++++
+ src/camx/ndk-camera.h                  | 225 +++++++++++
+ src/dng-writer.cpp                     | 193 +++++++++
+ src/dng-writer.h                       |  11 +
+ src/hybris-camera-cam2.cpp             | 268 +++++++++++++
+ src/hybris-camera.cpp                  |   9 +
+ src/hybris-camera.h                    |  78 ++++
+ src/qml/DefaultUI/DefaultUI.qml        | 158 +++++++-
+ src/qml/DefaultUI/ProPanel.qml         |  31 ++
+ src/translations/droidian-camera_pl.ts |  16 +
+ 19 files changed, 1660 insertions(+), 8 deletions(-)
+ create mode 100644 src/camx/cam2.cpp
+ create mode 100644 src/camx/cam2.h
+ create mode 100644 src/camx/ndk-camera.h
+ create mode 100644 src/dng-writer.cpp
+ create mode 100644 src/dng-writer.h
+ create mode 100644 src/hybris-camera-cam2.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 2f24604..56265db 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -80,12 +80,16 @@ if (CAMX_CXX AND CAMX_LLD AND EXISTS ${ANDROID_SYSTEM_LIBS}/libcamera_client.so)
+ 	set(CAMX_SO ${CMAKE_BINARY_DIR}/libcamx.so)
+ 	add_custom_command(OUTPUT ${CAMX_SO}
+ 		COMMAND ${CAMX_CXX} --target=aarch64-linux-android30 -O2 -fPIC -shared -nostdlib
++			-ffreestanding -nostdlibinc
+ 			-fno-exceptions -fno-rtti -fno-stack-protector -fuse-ld=${CAMX_LLD}
+ 			-Wl,-soname,libcamx.so -Wl,--hash-style=both -Wl,-z,defs
+-			-o ${CAMX_SO} ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp
++			-o ${CAMX_SO} ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp ${CMAKE_SOURCE_DIR}/src/camx/cam2.cpp
+ 			${ANDROID_SYSTEM_LIBS}/libcamera_client.so ${ANDROID_SYSTEM_LIBS}/libutils.so
++			${ANDROID_SYSTEM_LIBS}/libcamera2ndk.so ${ANDROID_SYSTEM_LIBS}/libmediandk.so
++			${ANDROID_SYSTEM_LIBS}/libbinder_ndk.so
+ 			${ANDROID_SYSTEM_LIBS}/libc++.so ${ANDROID_LIBC}
+-		DEPENDS ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp
++		DEPENDS ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp ${CMAKE_SOURCE_DIR}/src/camx/cam2.cpp
++			${CMAKE_SOURCE_DIR}/src/camx/cam2.h ${CMAKE_SOURCE_DIR}/src/camx/ndk-camera.h
+ 		COMMENT "Building libcamx.so for the Android side")
+ 	add_custom_target(camx ALL DEPENDS ${CAMX_SO})
+ 	install(FILES ${CAMX_SO} DESTINATION /usr/lib/droidian-camera)
+diff --git a/debian/changelog b/debian/changelog
+index c6937fc..ddbf643 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,16 @@
++droidian-camera (26.1+s10plus2) unstable; urgency=medium
++
++  * PRO photo mode through Camera2 (NDK, in libcamx): manual ISO and
++    shutter (one of them manual keeps the metered exposure), manual focus
++    distance, OIS off, RAW saved as DNG next to the JPEG. Camera1 hands the
++    camera over for the shot and takes it back.
++  * Burst: hold the shutter, 5 to 30 JPEG frames in one capture sequence.
++  * The Camera2 shot keeps flash (pre-flash metering), white balance,
++    colour effect, anti-flicker, zoom, JPEG quality, orientation and the
++    GPS position of the Camera1 settings.
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 02:00:00 +0200
++
+ droidian-camera (26.1+s10plus1) unstable; urgency=medium
+ 
+   * Build on droidian/droidian-camera feature/next/hybris-compat 7071899.
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 98296fa..2aacd19 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -27,7 +27,9 @@ set(APP_SOURCES
+ 		camera-recorder.cpp
+ 		ffmpeg-recorder.cpp
+ 		camera-extras.cpp
+-		hybris-camera-pro.cpp)
++		hybris-camera-pro.cpp
++		hybris-camera-cam2.cpp
++		dng-writer.cpp)
+ 
+ set(APP_HEADERS
+ 		hybris-camera.h
+@@ -37,7 +39,9 @@ set(APP_HEADERS
+ 		camera-manager.h
+ 		camera-recorder.h
+ 		ffmpeg-recorder.h
+-		camera-extras.h)
++		camera-extras.h
++		dng-writer.h
++		camx/cam2.h)
+ 
+ qt_add_executable(${PROJECT_NAME} ${APP_SOURCES} ${APP_HEADERS})
+ 
+diff --git a/src/camera-extras.cpp b/src/camera-extras.cpp
+index 4728a1c..9229c3a 100644
+--- a/src/camera-extras.cpp
++++ b/src/camera-extras.cpp
+@@ -61,6 +61,9 @@ bool CameraExtras::load()
+ 	m_command = reinterpret_cast<command_t>(android_dlsym(m_lib, "camx_command"));
+ 	m_listen = reinterpret_cast<listen_t>(android_dlsym(m_lib, "camx_listen"));
+ 	m_faces = reinterpret_cast<faces_t>(android_dlsym(m_lib, "camx_faces"));
++	// optional: an older libcamx has no Camera2 part
++	m_cam2Info = reinterpret_cast<cam2_info_t>(android_dlsym(m_lib, "cam2_info"));
++	m_cam2Capture = reinterpret_cast<cam2_capture_t>(android_dlsym(m_lib, "cam2_capture"));
+ 
+ 	if (!m_check || !m_set || !m_get || !m_dump || !m_command || !m_listen || !m_faces) {
+ 		qWarning() << "camx: missing symbols, advanced camera controls disabled";
+@@ -170,6 +173,22 @@ QList<CameraFace> CameraExtras::faces(unsigned *generation)
+ 	return list;
+ }
+ 
++bool CameraExtras::cam2Info(int cameraId, Cam2Info *info)
++{
++	if (!load() || !m_cam2Info)
++		return false;
++	return m_cam2Info(QByteArray::number(cameraId).constData(), info) == 0;
++}
++
++int CameraExtras::cam2Capture(int cameraId, const Cam2Settings &settings, cam2_jpeg_cb onJpeg,
++			      cam2_raw_cb onRaw, void *ctx, int *meteredIso, long long *meteredExpNs)
++{
++	if (!load() || !m_cam2Capture)
++		return -1000;
++	return m_cam2Capture(QByteArray::number(cameraId).constData(), &settings, onJpeg, onRaw, ctx, meteredIso,
++			     meteredExpNs);
++}
++
+ QStringList CameraExtras::splitValues(const QString &values)
+ {
+ 	return values.split(',', Qt::SkipEmptyParts);
+diff --git a/src/camera-extras.h b/src/camera-extras.h
+index 88f49b2..a471f6e 100644
+--- a/src/camera-extras.h
++++ b/src/camera-extras.h
+@@ -16,6 +16,8 @@
+ #include <QStringList>
+ #include <QList>
+ 
++#include <camx/cam2.h>
++
+ struct CameraControl;
+ struct CameraControlListener;
+ 
+@@ -53,7 +55,19 @@ class CameraExtras {
+ 	static QStringList splitValues(const QString &values);
+ 	static QList<QSize> splitSizes(const QString &values);
+ 
++	// Camera2 still capture (camx/cam2.h); needs no attached Camera1 object,
++	// and cam2Capture() needs Camera1 disconnected
++	bool cam2Info(int cameraId, Cam2Info *info);
++	int cam2Capture(int cameraId, const Cam2Settings &settings, cam2_jpeg_cb onJpeg, cam2_raw_cb onRaw,
++			void *ctx, int *meteredIso, long long *meteredExpNs);
++
+     private:
++	typedef int (*cam2_info_t)(const char *, Cam2Info *);
++	typedef int (*cam2_capture_t)(const char *, const Cam2Settings *, cam2_jpeg_cb, cam2_raw_cb, void *, int *,
++				      long long *);
++	cam2_info_t m_cam2Info = nullptr;
++	cam2_capture_t m_cam2Capture = nullptr;
++
+ 	typedef int (*check_t)(void *, void *);
+ 	typedef int (*set_t)(void *, const char *, const char *);
+ 	typedef int (*get_t)(void *, const char *, char *, int);
+diff --git a/src/camera-manager.cpp b/src/camera-manager.cpp
+index 4960d80..a669866 100644
+--- a/src/camera-manager.cpp
++++ b/src/camera-manager.cpp
+@@ -131,7 +131,7 @@ CameraDevice &CameraManager::currentCamera()
+ 	return m_currentCamera;
+ }
+ 
+-void CameraManager::setCurrentCamera(int cameraId)
++void CameraManager::releaseCamera()
+ {
+ 	m_extras.stopFaceDetection();
+ 	m_extras.detach();
+@@ -141,6 +141,17 @@ void CameraManager::setCurrentCamera(int cameraId)
+ 		android_camera_delete(m_cameraControl);
+ 		m_cameraControl = nullptr;
+ 	}
++}
++
++void CameraManager::reconnectCamera()
++{
++	if (m_currentCameraId >= 0)
++		setCurrentCamera(m_currentCameraId);
++}
++
++void CameraManager::setCurrentCamera(int cameraId)
++{
++	releaseCamera();
+ 
+ 	m_cameraControl = android_camera_connect_by_id(cameraId, m_listener);
+ 	m_listener->context = this;
+diff --git a/src/camera-manager.h b/src/camera-manager.h
+index bbca5c8..9c13057 100644
+--- a/src/camera-manager.h
++++ b/src/camera-manager.h
+@@ -144,6 +144,10 @@ class CameraManager : public QObject {
+ 	}
+ 	void setPictureSizeByUser(const QSize &size);
+ 
++	// Camera1 hands the device to a Camera2 capture and takes it back
++	void releaseCamera();
++	void reconnectCamera();
++
+     public Q_SLOTS:
+ 	void onReadyForPreview();
+ 
+diff --git a/src/camera-renderer.h b/src/camera-renderer.h
+index 7c2ea3e..aede0e0 100644
+--- a/src/camera-renderer.h
++++ b/src/camera-renderer.h
+@@ -49,6 +49,11 @@ class CameraRenderer : public QObject, protected QOpenGLFunctions {
+ 		m_window = window;
+ 	}
+ 	void setCameraControl(CameraControl *cc);
++	// stop drawing before the camera is handed to another client
++	void detachCamera()
++	{
++		m_cc = nullptr;
++	}
+ 	void setRenderMode(bool blur)
+ 	{
+ 		if (blur)
+diff --git a/src/camx/cam2.cpp b/src/camx/cam2.cpp
+new file mode 100644
+index 0000000..d410d34
+--- /dev/null
++++ b/src/camx/cam2.cpp
+@@ -0,0 +1,525 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Camera2 (NDK) still capture for the controls Camera1 does not reach on this
++ * HAL. Runs in the application process through libhybris; the process needs a
++ * binder thread pool, otherwise the camera service can neither return buffers
++ * nor deliver results (no frame ever arrives).
++ */
++
++#include "ndk-camera.h"
++#include "cam2.h"
++
++namespace {
++
++void startPool()
++{
++	static bool started = false;
++	if (started)
++		return;
++	started = true;
++	// no setThreadPoolMaxThreadCount: the compatibility layer may have started
++	// the pool already, and shrinking a running pool aborts the process.
++	// libbinder names the calling thread "Binder:<pid>_N"; on the main thread
++	// that renames the whole process (pkill, top), so the name is put back.
++	char name[16] = {};
++	prctl(PR_GET_NAME, name, 0, 0, 0);
++	ABinderProcess_startThreadPool();
++	prctl(PR_SET_NAME, name, 0, 0, 0);
++}
++
++bool entry(const ACameraMetadata *m, uint32_t tag, ACameraMetadata_const_entry *e)
++{
++	return m && ACameraMetadata_getConstEntry(m, tag, e) == ACAMERA_OK && e->count > 0;
++}
++
++bool hasCap(const ACameraMetadata *ch, int cap)
++{
++	ACameraMetadata_const_entry e;
++	if (!entry(ch, ACAMERA_REQUEST_AVAILABLE_CAPABILITIES, &e))
++		return false;
++	for (uint32_t i = 0; i < e.count; i++)
++		if (e.data.u8[i] == cap)
++			return true;
++	return false;
++}
++
++// largest output size of a format (w * h), 0 when none
++void largest(const ACameraMetadata *ch, int format, int *w, int *h)
++{
++	*w = *h = 0;
++	ACameraMetadata_const_entry e;
++	if (!entry(ch, ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, &e))
++		return;
++	for (uint32_t k = 0; k + 3 < e.count; k += 4)
++		if (e.data.i32[k] == format && e.data.i32[k + 3] == 0 &&
++		    (long long)e.data.i32[k + 1] * e.data.i32[k + 2] > (long long)*w * *h) {
++			*w = e.data.i32[k + 1];
++			*h = e.data.i32[k + 2];
++		}
++}
++
++bool hasSize(const ACameraMetadata *ch, int format, int w, int h)
++{
++	ACameraMetadata_const_entry e;
++	if (!entry(ch, ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS, &e))
++		return false;
++	for (uint32_t k = 0; k + 3 < e.count; k += 4)
++		if (e.data.i32[k] == format && e.data.i32[k + 3] == 0 && e.data.i32[k + 1] == w &&
++		    e.data.i32[k + 2] == h)
++			return true;
++	return false;
++}
++
++void matrix(const ACameraMetadata *m, uint32_t tag, float *out, int n)
++{
++	for (int i = 0; i < n; i++)
++		out[i] = 0;
++	ACameraMetadata_const_entry e;
++	if (!entry(m, tag, &e))
++		return;
++	for (int i = 0; i < n && i < (int)e.count; i++)
++		out[i] = e.data.r[i].denominator ? (float)e.data.r[i].numerator / e.data.r[i].denominator : 0;
++}
++
++long long clampLL(long long v, long long lo, long long hi)
++{
++	return v < lo ? lo : v > hi ? hi : v;
++}
++
++// state shared with the capture callbacks (binder threads)
++// the callbacks get a copy of the request, not the submitted pointer: the
++// shot is told apart by its user context
++struct Shared {
++	ACameraMetadata *stillResult = nullptr; // first still result, copied
++	int stillResults = 0;
++	int aeState = -1, afState = -1, previewResults = 0;
++	int iso = 0;
++	long long exp = 0;
++};
++
++void onCompleted(void *ctx, ACameraCaptureSession *, ACaptureRequest *req, const ACameraMetadata *m)
++{
++	Shared *s = static_cast<Shared *>(ctx);
++	ACameraMetadata_const_entry e;
++	void *tag = nullptr;
++	ACaptureRequest_getUserContext(req, &tag);
++	if (tag == &s->stillResults) {
++		if (!__atomic_load_n(&s->stillResult, __ATOMIC_ACQUIRE))
++			__atomic_store_n(&s->stillResult, ACameraMetadata_copy(m), __ATOMIC_RELEASE);
++		__atomic_add_fetch(&s->stillResults, 1, __ATOMIC_RELEASE);
++		return;
++	}
++	if (entry(m, ACAMERA_CONTROL_AE_STATE, &e))
++		__atomic_store_n(&s->aeState, (int)e.data.u8[0], __ATOMIC_RELAXED);
++	if (entry(m, ACAMERA_CONTROL_AF_STATE, &e))
++		__atomic_store_n(&s->afState, (int)e.data.u8[0], __ATOMIC_RELAXED);
++	if (entry(m, ACAMERA_SENSOR_SENSITIVITY, &e))
++		__atomic_store_n(&s->iso, e.data.i32[0], __ATOMIC_RELAXED);
++	if (entry(m, ACAMERA_SENSOR_EXPOSURE_TIME, &e))
++		__atomic_store_n(&s->exp, (long long)e.data.i64[0], __ATOMIC_RELAXED);
++	__atomic_add_fetch(&s->previewResults, 1, __ATOMIC_RELEASE);
++}
++
++void noDevice(void *, ACameraDevice *) {}
++void devError(void *, ACameraDevice *, int) {}
++void noSession(void *, ACameraCaptureSession *) {}
++
++struct Output {
++	AImageReader *reader = nullptr;
++	ANativeWindow *window = nullptr;
++	ACaptureSessionOutput *output = nullptr;
++	ACameraOutputTarget *target = nullptr;
++
++	bool create(int w, int h, int format, int images, ACaptureSessionOutputContainer *c)
++	{
++		if (AImageReader_new(w, h, format, images, &reader) != AMEDIA_OK)
++			return false;
++		AImageReader_getWindow(reader, &window);
++		ACaptureSessionOutput_create(window, &output);
++		ACaptureSessionOutputContainer_add(c, output);
++		ACameraOutputTarget_create(window, &target);
++		return true;
++	}
++	void destroy()
++	{
++		if (target)
++			ACameraOutputTarget_free(target);
++		if (output)
++			ACaptureSessionOutput_free(output);
++		if (reader)
++			AImageReader_delete(reader);
++	}
++};
++
++// JPEG buffers carry a blob trailer after the image; cut at the last EOI
++int jpegSize(const uint8_t *d, int n)
++{
++	for (int i = n - 2; i > 1; i--)
++		if (d[i] == 0xff && d[i + 1] == 0xd9)
++			return i + 2;
++	return n;
++}
++
++// the controls both the metering stream and the shot use
++// flash: 0 off, 1 auto, 2 on (already 0 on a lens without flash)
++void controls(ACaptureRequest *r, const Cam2Settings *s, int iso, long long exp, const int32_t *crop, int flash,
++	      bool still)
++{
++	const uint8_t modeAuto = 1;
++	ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_MODE, 1, &modeAuto);
++	if (iso > 0 && exp > 0) {
++		const uint8_t off = 0;
++		const int32_t i = iso;
++		const int64_t e = exp, frame = exp > 33333333 ? exp : 33333333;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AE_MODE, 1, &off);
++		ACaptureRequest_setEntry_i32(r, ACAMERA_SENSOR_SENSITIVITY, 1, &i);
++		ACaptureRequest_setEntry_i64(r, ACAMERA_SENSOR_EXPOSURE_TIME, 1, &e);
++		ACaptureRequest_setEntry_i64(r, ACAMERA_SENSOR_FRAME_DURATION, 1, &frame);
++		if (still && flash == 2) {
++			const uint8_t single = 1;
++			ACaptureRequest_setEntry_u8(r, ACAMERA_FLASH_MODE, 1, &single);
++		}
++	} else {
++		// ON, ON_AUTO_FLASH, ON_ALWAYS_FLASH
++		const uint8_t on = flash == 1 ? 2 : flash == 2 ? 3 : 1;
++		const int32_t ev = s->evSteps;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AE_MODE, 1, &on);
++		ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION, 1, &ev);
++	}
++	if (s->focus >= 0) {
++		const uint8_t off = 0;
++		const float d = s->focus;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_MODE, 1, &off);
++		ACaptureRequest_setEntry_float(r, ACAMERA_LENS_FOCUS_DISTANCE, 1, &d);
++	} else {
++		const uint8_t continuous = 4; // CONTINUOUS_PICTURE
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_MODE, 1, &continuous);
++	}
++	if (s->awb >= 0) {
++		const uint8_t awb = (uint8_t)s->awb;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AWB_MODE, 1, &awb);
++	}
++	if (s->effect >= 0) {
++		const uint8_t effect = (uint8_t)s->effect;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_EFFECT_MODE, 1, &effect);
++	}
++	if (s->antibanding >= 0) {
++		const uint8_t ab = (uint8_t)s->antibanding;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AE_ANTIBANDING_MODE, 1, &ab);
++	}
++	if (s->ois >= 0) {
++		const uint8_t ois = (uint8_t)s->ois;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_LENS_OPTICAL_STABILIZATION_MODE, 1, &ois);
++	}
++	if (crop)
++		ACaptureRequest_setEntry_i32(r, ACAMERA_SCALER_CROP_REGION, 4, crop);
++}
++
++} // namespace
++
++extern "C" int cam2_info(const char *id, Cam2Info *out)
++{
++	// a plain synchronous query: no binder thread pool needed
++	ACameraManager *mgr = ACameraManager_create();
++	ACameraMetadata *ch = nullptr;
++	if (ACameraManager_getCameraCharacteristics(mgr, id, &ch) != ACAMERA_OK) {
++		ACameraManager_delete(mgr);
++		return -1;
++	}
++	ACameraMetadata_const_entry e;
++	*out = Cam2Info();
++	if (entry(ch, ACAMERA_SENSOR_INFO_SENSITIVITY_RANGE, &e)) {
++		out->isoMin = e.data.i32[0];
++		out->isoMax = e.data.i32[1];
++	}
++	if (entry(ch, ACAMERA_SENSOR_INFO_EXPOSURE_TIME_RANGE, &e)) {
++		out->expMinNs = e.data.i64[0];
++		out->expMaxNs = e.data.i64[1];
++	}
++	if (entry(ch, ACAMERA_LENS_INFO_MINIMUM_FOCUS_DISTANCE, &e))
++		out->minFocusDiopters = e.data.f[0];
++	if (entry(ch, ACAMERA_LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION, &e))
++		for (uint32_t i = 0; i < e.count; i++)
++			if (e.data.u8[i] == 1)
++				out->ois = 1;
++	out->manualSensor = hasCap(ch, CAP_MANUAL_SENSOR);
++	out->manualPost = hasCap(ch, CAP_MANUAL_POST_PROCESSING);
++	out->raw = hasCap(ch, CAP_RAW);
++	out->burst = hasCap(ch, CAP_BURST_CAPTURE);
++	largest(ch, AIMAGE_FORMAT_RAW16, &out->rawWidth, &out->rawHeight);
++	largest(ch, AIMAGE_FORMAT_JPEG, &out->jpegWidth, &out->jpegHeight);
++	if (entry(ch, ACAMERA_CONTROL_AE_COMPENSATION_STEP, &e) && e.data.r[0].denominator)
++		out->evStep = (float)e.data.r[0].numerator / e.data.r[0].denominator;
++	if (!out->rawWidth)
++		out->raw = 0;
++	ACameraMetadata_free(ch);
++	ACameraManager_delete(mgr);
++	return 0;
++}
++
++extern "C" int cam2_capture(const char *id, const Cam2Settings *s, cam2_jpeg_cb onJpeg, cam2_raw_cb onRaw,
++			    void *ctx, int *meteredIso, long long *meteredExpNs)
++{
++	startPool();
++	ACameraManager *mgr = ACameraManager_create();
++	ACameraMetadata *ch = nullptr;
++	if (ACameraManager_getCameraCharacteristics(mgr, id, &ch) != ACAMERA_OK) {
++		ACameraManager_delete(mgr);
++		return -1;
++	}
++	int jw = s->jpegWidth, jh = s->jpegHeight;
++	if (!hasSize(ch, AIMAGE_FORMAT_JPEG, jw, jh))
++		largest(ch, AIMAGE_FORMAT_JPEG, &jw, &jh);
++	int rw = 0, rh = 0;
++	if (s->raw && hasCap(ch, CAP_RAW))
++		largest(ch, AIMAGE_FORMAT_RAW16, &rw, &rh);
++	const bool manualOk = hasCap(ch, CAP_MANUAL_SENSOR);
++	ACameraMetadata_const_entry fe;
++	// automatic flash only with fully automatic exposure: after a precapture
++	// sequence the HAL applies its own flash exposure and ignores manual values
++	int flash = entry(ch, ACAMERA_FLASH_INFO_AVAILABLE, &fe) && fe.data.u8[0] ? s->flash : 0;
++	if (flash == 1 && ((manualOk && s->iso > 0) || (manualOk && s->expNs > 0)))
++		flash = 0;
++
++	int32_t crop[4];
++	const int32_t *cropp = nullptr;
++	ACameraMetadata_const_entry e;
++	if (s->zoom > 1.01f && entry(ch, ACAMERA_SENSOR_INFO_ACTIVE_ARRAY_SIZE, &e)) {
++		const int aw = e.data.i32[2] - e.data.i32[0], ah = e.data.i32[3] - e.data.i32[1];
++		crop[2] = (int32_t)(aw / s->zoom);
++		crop[3] = (int32_t)(ah / s->zoom);
++		crop[0] = e.data.i32[0] + (aw - crop[2]) / 2;
++		crop[1] = e.data.i32[1] + (ah - crop[3]) / 2;
++		cropp = crop;
++	}
++	long long expMin = 0, expMax = 0;
++	int isoMin = 0, isoMax = 0;
++	if (entry(ch, ACAMERA_SENSOR_INFO_EXPOSURE_TIME_RANGE, &e)) {
++		expMin = e.data.i64[0];
++		expMax = e.data.i64[1];
++	}
++	if (entry(ch, ACAMERA_SENSOR_INFO_SENSITIVITY_RANGE, &e)) {
++		isoMin = e.data.i32[0];
++		isoMax = e.data.i32[1];
++	}
++
++	ACameraDevice_StateCallbacks devCb = { nullptr, noDevice, devError };
++	ACameraDevice *dev = nullptr;
++	if (ACameraManager_openCamera(mgr, id, &devCb, &dev) != ACAMERA_OK) {
++		ACameraMetadata_free(ch);
++		ACameraManager_delete(mgr);
++		return -2;
++	}
++
++	ACaptureSessionOutputContainer *container = nullptr;
++	ACaptureSessionOutputContainer_create(&container);
++	Output preview, jpeg, raw;
++	int ret = -3;
++	ACameraCaptureSession *session = nullptr;
++	ACaptureRequest *meter = nullptr, *shot = nullptr;
++	// static: results of the metering stream may still arrive after close()
++	static Shared shared;
++	shared = Shared();
++	ACameraCaptureSession_captureCallbacks cb = {};
++	cb.context = &shared;
++	cb.onCaptureCompleted = onCompleted;
++	ACameraCaptureSession_stateCallbacks sesCb = { nullptr, noSession, noSession, noSession };
++	int iso = manualOk ? s->iso : 0;
++	long long exp = manualOk ? s->expNs : 0;
++	int delivered = 0;
++	AImage *rawImage = nullptr;
++
++	if (!preview.create(640, 480, AIMAGE_FORMAT_YUV_420_888, 3, container) ||
++	    !jpeg.create(jw, jh, AIMAGE_FORMAT_JPEG, 2, container) ||
++	    (rw && !raw.create(rw, rh, AIMAGE_FORMAT_RAW16, 1, container)))
++		goto out;
++	ret = -4;
++	if (ACameraDevice_createCaptureSession(dev, container, &sesCb, &session) != ACAMERA_OK)
++		goto out;
++
++	// metering and focusing stream; with both values manual it only lets the
++	// sensor and the lens settle
++	ACameraDevice_createCaptureRequest(dev, TEMPLATE_PREVIEW, &meter);
++	ACaptureRequest_addTarget(meter, preview.target);
++	controls(meter, s, iso > 0 && exp > 0 ? iso : 0, iso > 0 && exp > 0 ? exp : 0, cropp, flash, false);
++	ret = -5;
++	if (ACameraCaptureSession_setRepeatingRequest(session, &cb, 1, &meter, nullptr) != ACAMERA_OK)
++		goto out;
++	for (int t = 0, settled = 0; t < 300; t++) { // up to 3 s
++		usleep(10000);
++		AImage *img = nullptr;
++		if (AImageReader_acquireLatestImage(preview.reader, &img) == AMEDIA_OK && img)
++			AImage_delete(img);
++		const int n = __atomic_load_n(&shared.previewResults, __ATOMIC_ACQUIRE);
++		const int ae = __atomic_load_n(&shared.aeState, __ATOMIC_RELAXED);
++		const int af = __atomic_load_n(&shared.afState, __ATOMIC_RELAXED);
++		const bool aeOk = (iso > 0 && exp > 0) || ae == 2 || ae == 3 || ae == 4;
++		const bool afOk = s->focus >= 0 || af == 0 || af == 2 || af == 4 || af == 6;
++		settled = aeOk && afOk ? settled + 1 : 0;
++		if (n >= 5 && settled >= 3)
++			break;
++	}
++	// flash with automatic exposure: precapture metering (pre-flash) first
++	if (flash && iso <= 0 && exp <= 0) {
++		const uint8_t start = 1;
++		ACaptureRequest_setEntry_u8(meter, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &start);
++		ACameraCaptureSession_capture(session, &cb, 1, &meter, nullptr);
++		bool seen = false;
++		for (int t = 0; t < 150; t++) { // up to 1.5 s
++			usleep(10000);
++			AImage *img = nullptr;
++			if (AImageReader_acquireLatestImage(preview.reader, &img) == AMEDIA_OK && img)
++				AImage_delete(img);
++			const int ae = __atomic_load_n(&shared.aeState, __ATOMIC_RELAXED);
++			if (ae == 5) // PRECAPTURE
++				seen = true;
++			else if ((seen || t > 50) && (ae == 2 || ae == 3 || ae == 4))
++				break;
++		}
++	}
++	*meteredIso = __atomic_load_n(&shared.iso, __ATOMIC_RELAXED);
++	*meteredExpNs = __atomic_load_n(&shared.exp, __ATOMIC_RELAXED);
++	// one value manual: keep the metered exposure (ISO x time)
++	if (iso > 0 && exp <= 0 && *meteredIso > 0)
++		exp = clampLL((long long)((double)*meteredExpNs * *meteredIso / iso), expMin, expMax);
++	else if (exp > 0 && iso <= 0 && *meteredExpNs > 0)
++		iso = (int)clampLL((long long)((double)*meteredIso * *meteredExpNs / exp), isoMin, isoMax);
++	// the HAL takes the exposure of a still shot from the running stream, not
++	// from the shot's own AE_MODE_OFF: a half-manual setting has to be moved to
++	// the stream first and confirmed by its results
++	if (iso > 0 && exp > 0 && !(manualOk && s->iso > 0 && s->expNs > 0)) {
++		controls(meter, s, iso, exp, cropp, flash == 2 ? 2 : 0, false);
++		if (ACameraCaptureSession_setRepeatingRequest(session, &cb, 1, &meter, nullptr) == ACAMERA_OK)
++			for (int t = 0, ok = 0; t < 150 && ok < 2; t++) { // up to 1.5 s
++				usleep(10000);
++				AImage *img = nullptr;
++				if (AImageReader_acquireLatestImage(preview.reader, &img) == AMEDIA_OK && img)
++					AImage_delete(img);
++				// the sensor rounds the exposure to its line time (30006 for 30000 us)
++				const long long d = __atomic_load_n(&shared.exp, __ATOMIC_RELAXED) - exp;
++				const bool applied = __atomic_load_n(&shared.iso, __ATOMIC_RELAXED) == iso &&
++						     (d < 0 ? -d : d) * 50 < exp;
++				if (applied)
++					ok++;
++			}
++	}
++
++	ACameraDevice_createCaptureRequest(dev, TEMPLATE_STILL_CAPTURE, &shot);
++	ACaptureRequest_addTarget(shot, preview.target);
++	ACaptureRequest_addTarget(shot, jpeg.target);
++	if (rw)
++		ACaptureRequest_addTarget(shot, raw.target);
++	controls(shot, s, iso, exp, cropp, flash, true);
++	{
++		const uint8_t q = (uint8_t)(s->quality > 0 && s->quality <= 100 ? s->quality : 95);
++		const int32_t o = s->orientation;
++		ACaptureRequest_setEntry_u8(shot, ACAMERA_JPEG_QUALITY, 1, &q);
++		ACaptureRequest_setEntry_i32(shot, ACAMERA_JPEG_ORIENTATION, 1, &o);
++		if (s->gps) {
++			const double c[3] = { s->latitude, s->longitude, s->altitude };
++			const int64_t ts = s->gpsTime;
++			static const uint8_t method[] = "GPS";
++			ACaptureRequest_setEntry_double(shot, ACAMERA_JPEG_GPS_COORDINATES, 3, c);
++			ACaptureRequest_setEntry_i64(shot, ACAMERA_JPEG_GPS_TIMESTAMP, 1, &ts);
++			ACaptureRequest_setEntry_u8(shot, ACAMERA_JPEG_GPS_PROCESSING_METHOD, sizeof(method), method);
++		}
++	}
++	ACaptureRequest_setUserContext(shot, &shared.stillResults);
++	{
++		const int count = s->count > 1 ? (s->count > 30 ? 30 : s->count) : 1;
++		ACaptureRequest *shots[30];
++		for (int i = 0; i < count; i++)
++			shots[i] = shot;
++		ret = -6;
++		if (ACameraCaptureSession_capture(session, &cb, count, shots, nullptr) != ACAMERA_OK)
++			goto out;
++		const long long perShot = (exp > 0 ? exp : 100000000LL) / 1000000 + 400;
++		const long long limit = 3000 + perShot * count;
++		bool rawDone = !rw;
++		for (long long t = 0; t < limit && (delivered < count || !rawDone); t += 5) {
++			usleep(5000);
++			AImage *img = nullptr;
++			if (AImageReader_acquireLatestImage(preview.reader, &img) == AMEDIA_OK && img)
++				AImage_delete(img);
++			img = nullptr;
++			if (AImageReader_acquireNextImage(jpeg.reader, &img) == AMEDIA_OK && img) {
++				uint8_t *d = nullptr;
++				int n = 0;
++				AImage_getPlaneData(img, 0, &d, &n);
++				if (d && n > 0)
++					onJpeg(ctx, d, jpegSize(d, n), delivered);
++				delivered++;
++				AImage_delete(img);
++			}
++			if (!rawDone && !rawImage) {
++				if (AImageReader_acquireNextImage(raw.reader, &rawImage) != AMEDIA_OK)
++					rawImage = nullptr;
++			}
++			// the RAW frame waits for its capture result (white balance, gain)
++			ACameraMetadata *res = __atomic_load_n(&shared.stillResult, __ATOMIC_ACQUIRE);
++			if (!rawDone && rawImage && res) {
++				Cam2Dng m = {};
++				uint8_t *d = nullptr;
++				int n = 0;
++				AImage_getPlaneData(rawImage, 0, &d, &n);
++				AImage_getWidth(rawImage, &m.width);
++				AImage_getHeight(rawImage, &m.height);
++				AImage_getPlaneRowStride(rawImage, 0, &m.rowStride);
++				if (entry(ch, ACAMERA_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT, &e))
++					m.cfa = e.data.u8[0];
++				if (entry(ch, ACAMERA_SENSOR_BLACK_LEVEL_PATTERN, &e))
++					for (int i = 0; i < 4 && i < (int)e.count; i++)
++						m.black[i] = e.data.i32[i];
++				if (entry(ch, ACAMERA_SENSOR_INFO_WHITE_LEVEL, &e))
++					m.white = e.data.i32[0];
++				if (entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT1, &e))
++					m.illuminant1 = e.data.u8[0];
++				if (entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT2, &e))
++					m.illuminant2 = e.data.u8[0];
++				matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM1, m.colorMatrix1, 9);
++				matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM2, m.colorMatrix2, 9);
++				matrix(ch, ACAMERA_SENSOR_FORWARD_MATRIX1, m.forwardMatrix1, 9);
++				matrix(ch, ACAMERA_SENSOR_FORWARD_MATRIX2, m.forwardMatrix2, 9);
++				matrix(ch, ACAMERA_SENSOR_CALIBRATION_TRANSFORM1, m.calibration1, 9);
++				matrix(ch, ACAMERA_SENSOR_CALIBRATION_TRANSFORM2, m.calibration2, 9);
++				matrix(res, ACAMERA_SENSOR_NEUTRAL_COLOR_POINT, m.neutral, 3);
++				if (entry(res, ACAMERA_SENSOR_SENSITIVITY, &e))
++					m.iso = e.data.i32[0];
++				if (entry(res, ACAMERA_SENSOR_EXPOSURE_TIME, &e))
++					m.expNs = e.data.i64[0];
++				if (entry(res, ACAMERA_LENS_APERTURE, &e))
++					m.fNumber = e.data.f[0];
++				if (entry(res, ACAMERA_LENS_FOCAL_LENGTH, &e))
++					m.focalLength = e.data.f[0];
++				if (d && n >= m.rowStride * m.height)
++					onRaw(ctx, reinterpret_cast<const unsigned short *>(d), &m);
++				AImage_delete(rawImage);
++				rawImage = nullptr;
++				rawDone = true;
++			}
++		}
++		ret = delivered;
++	}
++
++out:
++	if (rawImage)
++		AImage_delete(rawImage);
++	if (session) {
++		ACameraCaptureSession_stopRepeating(session);
++		ACameraCaptureSession_close(session);
++	}
++	if (meter)
++		ACaptureRequest_free(meter);
++	if (shot)
++		ACaptureRequest_free(shot);
++	ACameraDevice_close(dev);
++	preview.destroy();
++	jpeg.destroy();
++	raw.destroy();
++	ACaptureSessionOutputContainer_free(container);
++	if (ACameraMetadata *res = __atomic_exchange_n(&shared.stillResult, nullptr, __ATOMIC_ACQ_REL))
++		ACameraMetadata_free(res);
++	ACameraMetadata_free(ch);
++	ACameraManager_delete(mgr);
++	return ret;
++}
+diff --git a/src/camx/cam2.h b/src/camx/cam2.h
+new file mode 100644
+index 0000000..f84166a
+--- /dev/null
++++ b/src/camx/cam2.h
+@@ -0,0 +1,70 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Camera2 still capture in libcamx: what Camera1 cannot do on this HAL
++ * (manual ISO and shutter, manual focus distance, OIS off, RAW sensor data,
++ * burst). Shared by cam2.cpp (bionic side) and the application (glibc side),
++ * so it holds plain C types only.
++ */
++#pragma once
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++struct Cam2Info {
++	int isoMin, isoMax;
++	long long expMinNs, expMaxNs;
++	float minFocusDiopters; // 0: fixed focus
++	int manualSensor, manualPost, raw, burst, ois;
++	int rawWidth, rawHeight;
++	int jpegWidth, jpegHeight; // largest JPEG size
++	float evStep; // exposure compensation step in EV
++};
++
++struct Cam2Settings {
++	int iso; // 0: automatic
++	long long expNs; // 0: automatic
++	float focus; // < 0: autofocus, otherwise diopters (0 = infinity)
++	int ois; // -1: HAL default, 0: off, 1: on
++	int awb; // -1: auto, otherwise android.control.awbMode
++	int evSteps; // exposure compensation when exposure is automatic
++	int jpegWidth, jpegHeight, quality, orientation;
++	float zoom; // >= 1, centred crop of the active array
++	int raw; // also deliver the RAW16 frame of the first shot
++	int count; // JPEG frames (burst when > 1)
++	int gps; // write the location below into the EXIF data
++	double latitude, longitude, altitude;
++	long long gpsTime; // seconds since the epoch
++	int flash; // 0: off, 1: auto (automatic exposure only), 2: on
++	int effect; // -1: none, otherwise android.control.effectMode
++	int antibanding; // -1: HAL default, otherwise android.control.aeAntibandingMode
++};
++
++// what a DNG writer needs, from the static and the capture metadata
++struct Cam2Dng {
++	int width, height, rowStride;
++	int cfa; // android.sensor.info.colorFilterArrangement: 0 RGGB, 1 GRBG, 2 GBRG, 3 BGGR
++	int black[4], white;
++	int illuminant1, illuminant2; // EXIF LightSource values
++	float colorMatrix1[9], colorMatrix2[9], forwardMatrix1[9], forwardMatrix2[9];
++	float calibration1[9], calibration2[9], neutral[3];
++	int iso;
++	long long expNs;
++	float fNumber, focalLength;
++};
++
++typedef void (*cam2_jpeg_cb)(void *ctx, const unsigned char *data, int size, int index);
++typedef void (*cam2_raw_cb)(void *ctx, const unsigned short *data, const struct Cam2Dng *meta);
++
++// 0 on success
++int cam2_info(const char *id, struct Cam2Info *out);
++// Opens the camera (Camera1 must be disconnected), meters, focuses and shoots;
++// the callbacks run on the calling thread. metered: ISO and exposure the
++// automatic exposure chose, from which a half-manual setting is completed.
++// Returns the number of JPEG frames delivered, or a negative error.
++int cam2_capture(const char *id, const struct Cam2Settings *s, cam2_jpeg_cb onJpeg, cam2_raw_cb onRaw,
++		 void *ctx, int *meteredIso, long long *meteredExpNs);
++
++#ifdef __cplusplus
++}
++#endif
+diff --git a/src/camx/ndk-camera.h b/src/camx/ndk-camera.h
+new file mode 100644
+index 0000000..3d5b4f2
+--- /dev/null
++++ b/src/camx/ndk-camera.h
+@@ -0,0 +1,225 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * The part of the Android 11 camera NDK (libcamera2ndk, libmediandk,
++ * libbinder_ndk) that cam2.cpp uses, declared by hand so that the build needs
++ * no NDK. Tag and format values are those of the NDK headers of
++ * android-11.0.0_r48 (read from them by the compiler, not typed in).
++ */
++#pragma once
++
++#include <stdint.h>
++#include <stddef.h>
++
++extern "C" {
++
++typedef int32_t camera_status_t;
++typedef int32_t media_status_t;
++enum { ACAMERA_OK = 0, AMEDIA_OK = 0 };
++
++typedef struct ACameraManager ACameraManager;
++typedef struct ACameraDevice ACameraDevice;
++typedef struct ACameraMetadata ACameraMetadata;
++typedef struct ACaptureRequest ACaptureRequest;
++typedef struct ACameraCaptureSession ACameraCaptureSession;
++typedef struct ACaptureSessionOutput ACaptureSessionOutput;
++typedef struct ACaptureSessionOutputContainer ACaptureSessionOutputContainer;
++typedef struct ACameraOutputTarget ACameraOutputTarget;
++typedef struct ANativeWindow ANativeWindow;
++typedef struct AImageReader AImageReader;
++typedef struct AImage AImage;
++
++typedef struct ACameraIdList {
++	int numCameras;
++	const char **cameraIds;
++} ACameraIdList;
++
++typedef struct ACameraMetadata_rational {
++	int32_t numerator;
++	int32_t denominator;
++} ACameraMetadata_rational;
++
++typedef struct ACameraMetadata_const_entry {
++	uint32_t tag;
++	uint8_t type;
++	uint32_t count;
++	union {
++		const uint8_t *u8;
++		const int32_t *i32;
++		const float *f;
++		const int64_t *i64;
++		const double *d;
++		const ACameraMetadata_rational *r;
++	} data;
++} ACameraMetadata_const_entry;
++
++typedef struct ACameraDevice_StateCallbacks {
++	void *context;
++	void (*onDisconnected)(void *context, ACameraDevice *device);
++	void (*onError)(void *context, ACameraDevice *device, int error);
++} ACameraDevice_StateCallbacks;
++
++typedef struct ACameraCaptureSession_stateCallbacks {
++	void *context;
++	void (*onClosed)(void *context, ACameraCaptureSession *session);
++	void (*onReady)(void *context, ACameraCaptureSession *session);
++	void (*onActive)(void *context, ACameraCaptureSession *session);
++} ACameraCaptureSession_stateCallbacks;
++
++typedef struct ACameraCaptureSession_captureCallbacks {
++	void *context;
++	void (*onCaptureStarted)(void *, ACameraCaptureSession *, const ACaptureRequest *, int64_t);
++	void (*onCaptureProgressed)(void *, ACameraCaptureSession *, ACaptureRequest *, const ACameraMetadata *);
++	void (*onCaptureCompleted)(void *, ACameraCaptureSession *, ACaptureRequest *, const ACameraMetadata *);
++	void (*onCaptureFailed)(void *, ACameraCaptureSession *, ACaptureRequest *, void *failure);
++	void (*onCaptureSequenceCompleted)(void *, ACameraCaptureSession *, int, int64_t);
++	void (*onCaptureSequenceAborted)(void *, ACameraCaptureSession *, int);
++	void (*onCaptureBufferLost)(void *, ACameraCaptureSession *, ACaptureRequest *, ANativeWindow *, int64_t);
++} ACameraCaptureSession_captureCallbacks;
++
++// sizes checked against the NDK headers: entry 24 B (count at 8, data at 16),
++// capture callbacks 64 B (onCaptureCompleted at 24), id list 16 B
++static_assert(sizeof(ACameraMetadata_const_entry) == 24, "entry layout");
++static_assert(offsetof(ACameraMetadata_const_entry, data) == 16, "entry layout");
++static_assert(sizeof(ACameraCaptureSession_captureCallbacks) == 64, "callbacks layout");
++static_assert(offsetof(ACameraCaptureSession_captureCallbacks, onCaptureCompleted) == 24, "callbacks layout");
++
++enum {
++	ACAMERA_CONTROL_AE_ANTIBANDING_MODE = 65536,
++	ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION = 65537,
++	ACAMERA_CONTROL_AE_MODE = 65539,
++	ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER = 65542,
++	ACAMERA_CONTROL_AF_MODE = 65543,
++	ACAMERA_CONTROL_AWB_MODE = 65547,
++	ACAMERA_CONTROL_EFFECT_MODE = 65550,
++	ACAMERA_CONTROL_MODE = 65551,
++	ACAMERA_CONTROL_AE_COMPENSATION_STEP = 65558,
++	ACAMERA_CONTROL_AE_STATE = 65567,
++	ACAMERA_CONTROL_AF_STATE = 65568,
++	ACAMERA_FLASH_MODE = 262146,
++	ACAMERA_FLASH_INFO_AVAILABLE = 327680,
++	ACAMERA_JPEG_GPS_COORDINATES = 458752,
++	ACAMERA_JPEG_GPS_PROCESSING_METHOD = 458753,
++	ACAMERA_JPEG_GPS_TIMESTAMP = 458754,
++	ACAMERA_JPEG_ORIENTATION = 458755,
++	ACAMERA_JPEG_QUALITY = 458756,
++	ACAMERA_LENS_APERTURE = 524288,
++	ACAMERA_LENS_FOCAL_LENGTH = 524290,
++	ACAMERA_LENS_FOCUS_DISTANCE = 524291,
++	ACAMERA_LENS_OPTICAL_STABILIZATION_MODE = 524292,
++	ACAMERA_LENS_FACING = 524293,
++	ACAMERA_LENS_INFO_AVAILABLE_OPTICAL_STABILIZATION = 589827,
++	ACAMERA_LENS_INFO_MINIMUM_FOCUS_DISTANCE = 589829,
++	ACAMERA_REQUEST_AVAILABLE_CAPABILITIES = 786444,
++	ACAMERA_SCALER_CROP_REGION = 851968,
++	ACAMERA_SCALER_AVAILABLE_STREAM_CONFIGURATIONS = 851978,
++	ACAMERA_SENSOR_EXPOSURE_TIME = 917504,
++	ACAMERA_SENSOR_FRAME_DURATION = 917505,
++	ACAMERA_SENSOR_SENSITIVITY = 917506,
++	ACAMERA_SENSOR_REFERENCE_ILLUMINANT1 = 917507,
++	ACAMERA_SENSOR_REFERENCE_ILLUMINANT2 = 917508,
++	ACAMERA_SENSOR_CALIBRATION_TRANSFORM1 = 917509,
++	ACAMERA_SENSOR_CALIBRATION_TRANSFORM2 = 917510,
++	ACAMERA_SENSOR_COLOR_TRANSFORM1 = 917511,
++	ACAMERA_SENSOR_COLOR_TRANSFORM2 = 917512,
++	ACAMERA_SENSOR_FORWARD_MATRIX1 = 917513,
++	ACAMERA_SENSOR_FORWARD_MATRIX2 = 917514,
++	ACAMERA_SENSOR_BLACK_LEVEL_PATTERN = 917516,
++	ACAMERA_SENSOR_NEUTRAL_COLOR_POINT = 917522,
++	ACAMERA_SENSOR_INFO_ACTIVE_ARRAY_SIZE = 983040,
++	ACAMERA_SENSOR_INFO_SENSITIVITY_RANGE = 983041,
++	ACAMERA_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT = 983042,
++	ACAMERA_SENSOR_INFO_EXPOSURE_TIME_RANGE = 983043,
++	ACAMERA_SENSOR_INFO_WHITE_LEVEL = 983047,
++};
++
++enum {
++	AIMAGE_FORMAT_RAW16 = 32,
++	AIMAGE_FORMAT_YUV_420_888 = 35,
++	AIMAGE_FORMAT_JPEG = 256,
++};
++
++enum { TEMPLATE_PREVIEW = 1, TEMPLATE_STILL_CAPTURE = 2 };
++
++// request capabilities
++enum {
++	CAP_MANUAL_SENSOR = 1,
++	CAP_MANUAL_POST_PROCESSING = 2,
++	CAP_RAW = 3,
++	CAP_BURST_CAPTURE = 6,
++};
++
++ACameraManager *ACameraManager_create(void);
++void ACameraManager_delete(ACameraManager *manager);
++camera_status_t ACameraManager_getCameraIdList(ACameraManager *manager, ACameraIdList **cameraIdList);
++void ACameraManager_deleteCameraIdList(ACameraIdList *cameraIdList);
++camera_status_t ACameraManager_getCameraCharacteristics(ACameraManager *manager, const char *cameraId,
++							ACameraMetadata **characteristics);
++camera_status_t ACameraManager_openCamera(ACameraManager *manager, const char *cameraId,
++					  ACameraDevice_StateCallbacks *callback, ACameraDevice **device);
++
++camera_status_t ACameraMetadata_getConstEntry(const ACameraMetadata *metadata, uint32_t tag,
++					      ACameraMetadata_const_entry *entry);
++ACameraMetadata *ACameraMetadata_copy(const ACameraMetadata *src);
++void ACameraMetadata_free(ACameraMetadata *metadata);
++
++camera_status_t ACameraDevice_close(ACameraDevice *device);
++camera_status_t ACameraDevice_createCaptureRequest(const ACameraDevice *device, int templateId,
++						   ACaptureRequest **request);
++camera_status_t ACameraDevice_createCaptureSession(ACameraDevice *device,
++						   const ACaptureSessionOutputContainer *outputs,
++						   const ACameraCaptureSession_stateCallbacks *callbacks,
++						   ACameraCaptureSession **session);
++
++camera_status_t ACaptureSessionOutputContainer_create(ACaptureSessionOutputContainer **container);
++void ACaptureSessionOutputContainer_free(ACaptureSessionOutputContainer *container);
++camera_status_t ACaptureSessionOutputContainer_add(ACaptureSessionOutputContainer *container,
++						   const ACaptureSessionOutput *output);
++camera_status_t ACaptureSessionOutput_create(ANativeWindow *anw, ACaptureSessionOutput **output);
++void ACaptureSessionOutput_free(ACaptureSessionOutput *output);
++
++camera_status_t ACameraOutputTarget_create(ANativeWindow *window, ACameraOutputTarget **output);
++void ACameraOutputTarget_free(ACameraOutputTarget *output);
++camera_status_t ACaptureRequest_addTarget(ACaptureRequest *request, const ACameraOutputTarget *output);
++void ACaptureRequest_free(ACaptureRequest *request);
++camera_status_t ACaptureRequest_setUserContext(ACaptureRequest *request, void *context);
++camera_status_t ACaptureRequest_getUserContext(const ACaptureRequest *request, void **context);
++camera_status_t ACaptureRequest_setEntry_u8(ACaptureRequest *request, uint32_t tag, uint32_t count,
++					    const uint8_t *data);
++camera_status_t ACaptureRequest_setEntry_i32(ACaptureRequest *request, uint32_t tag, uint32_t count,
++					     const int32_t *data);
++camera_status_t ACaptureRequest_setEntry_float(ACaptureRequest *request, uint32_t tag, uint32_t count,
++					       const float *data);
++camera_status_t ACaptureRequest_setEntry_double(ACaptureRequest *request, uint32_t tag, uint32_t count,
++						const double *data);
++camera_status_t ACaptureRequest_setEntry_i64(ACaptureRequest *request, uint32_t tag, uint32_t count,
++					     const int64_t *data);
++
++void ACameraCaptureSession_close(ACameraCaptureSession *session);
++camera_status_t ACameraCaptureSession_capture(ACameraCaptureSession *session,
++					      ACameraCaptureSession_captureCallbacks *callbacks, int numRequests,
++					      ACaptureRequest **requests, int *captureSequenceId);
++camera_status_t ACameraCaptureSession_setRepeatingRequest(ACameraCaptureSession *session,
++							  ACameraCaptureSession_captureCallbacks *callbacks,
++							  int numRequests, ACaptureRequest **requests,
++							  int *captureSequenceId);
++camera_status_t ACameraCaptureSession_stopRepeating(ACameraCaptureSession *session);
++
++media_status_t AImageReader_new(int32_t width, int32_t height, int32_t format, int32_t maxImages,
++				AImageReader **reader);
++void AImageReader_delete(AImageReader *reader);
++media_status_t AImageReader_getWindow(AImageReader *reader, ANativeWindow **window);
++media_status_t AImageReader_acquireNextImage(AImageReader *reader, AImage **image);
++media_status_t AImageReader_acquireLatestImage(AImageReader *reader, AImage **image);
++void AImage_delete(AImage *image);
++media_status_t AImage_getPlaneData(const AImage *image, int planeIdx, uint8_t **data, int *dataLength);
++media_status_t AImage_getPlaneRowStride(const AImage *image, int planeIdx, int32_t *rowStride);
++media_status_t AImage_getWidth(const AImage *image, int32_t *width);
++media_status_t AImage_getHeight(const AImage *image, int32_t *height);
++
++void ABinderProcess_startThreadPool(void);
++bool ABinderProcess_setThreadPoolMaxThreadCount(uint32_t numThreads);
++
++int usleep(unsigned usec);
++int prctl(int option, ...);
++enum { PR_SET_NAME = 15, PR_GET_NAME = 16 };
++}
+diff --git a/src/dng-writer.cpp b/src/dng-writer.cpp
+new file mode 100644
+index 0000000..a968457
+--- /dev/null
++++ b/src/dng-writer.cpp
+@@ -0,0 +1,193 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <dng-writer.h>
++
++#include <cmath>
++#include <cstdio>
++#include <cstring>
++#include <string>
++#include <vector>
++
++namespace {
++
++enum Type { BYTE = 1, ASCII = 2, SHORT = 3, LONG = 4, RATIONAL = 5, SRATIONAL = 10 };
++
++struct Tag {
++	unsigned short id;
++	unsigned short type;
++	unsigned count;
++	std::vector<unsigned char> value; // little endian, count * size of type
++};
++
++void put16(std::vector<unsigned char> &v, unsigned x)
++{
++	v.push_back(x & 0xff);
++	v.push_back((x >> 8) & 0xff);
++}
++
++void put32(std::vector<unsigned char> &v, unsigned x)
++{
++	for (int i = 0; i < 4; i++)
++		v.push_back((x >> (8 * i)) & 0xff);
++}
++
++Tag shorts(unsigned short id, std::initializer_list<unsigned> xs)
++{
++	Tag t{ id, SHORT, (unsigned)xs.size(), {} };
++	for (unsigned x : xs)
++		put16(t.value, x);
++	return t;
++}
++
++Tag longs(unsigned short id, const std::vector<unsigned> &xs)
++{
++	Tag t{ id, LONG, (unsigned)xs.size(), {} };
++	for (unsigned x : xs)
++		put32(t.value, x);
++	return t;
++}
++
++Tag bytes(unsigned short id, std::initializer_list<unsigned> xs)
++{
++	Tag t{ id, BYTE, (unsigned)xs.size(), {} };
++	for (unsigned x : xs)
++		t.value.push_back(x);
++	return t;
++}
++
++Tag ascii(unsigned short id, const std::string &s)
++{
++	Tag t{ id, ASCII, (unsigned)s.size() + 1, {} };
++	t.value.assign(s.begin(), s.end());
++	t.value.push_back(0);
++	return t;
++}
++
++// rationals with a fixed denominator are exact enough for camera matrices
++Tag rationals(unsigned short id, const float *xs, int n, bool isSigned)
++{
++	Tag t{ id, (unsigned short)(isSigned ? SRATIONAL : RATIONAL), (unsigned)n, {} };
++	for (int i = 0; i < n; i++) {
++		const int den = 10000;
++		put32(t.value, (unsigned)(int)std::lround(xs[i] * den));
++		put32(t.value, den);
++	}
++	return t;
++}
++
++Tag rational(unsigned short id, double x, unsigned den)
++{
++	Tag t{ id, RATIONAL, 1, {} };
++	put32(t.value, (unsigned)std::llround(x * den));
++	put32(t.value, den);
++	return t;
++}
++
++bool empty(const float *m, int n)
++{
++	for (int i = 0; i < n; i++)
++		if (m[i] != 0)
++			return false;
++	return true;
++}
++
++} // namespace
++
++bool writeDng(const char *path, const unsigned short *data, const Cam2Dng &m, int orientation,
++	      const char *make, const char *model, const char *dateTime)
++{
++	// CFA pattern colours: 0 red, 1 green, 2 blue
++	static const unsigned char cfa[4][4] = { { 0, 1, 1, 2 }, { 1, 0, 2, 1 }, { 1, 2, 0, 1 }, { 2, 1, 1, 0 } };
++	const unsigned char *pat = cfa[m.cfa >= 0 && m.cfa < 4 ? m.cfa : 0];
++	const unsigned tiffOrientation = orientation == 90 ? 6 : orientation == 180 ? 3 : orientation == 270 ? 8 : 1;
++	const unsigned imageBytes = unsigned(m.width) * m.height * 2;
++
++	std::vector<Tag> tags;
++	tags.push_back(longs(254, { 0 })); // NewSubFileType: main image
++	tags.push_back(longs(256, { unsigned(m.width) }));
++	tags.push_back(longs(257, { unsigned(m.height) }));
++	tags.push_back(shorts(258, { 16 }));
++	tags.push_back(shorts(259, { 1 })); // no compression
++	tags.push_back(shorts(262, { 32803 })); // CFA
++	tags.push_back(ascii(271, make));
++	tags.push_back(ascii(272, model));
++	tags.push_back(longs(273, { 0 })); // StripOffsets, patched below
++	tags.push_back(shorts(274, { tiffOrientation }));
++	tags.push_back(shorts(277, { 1 }));
++	tags.push_back(longs(278, { unsigned(m.height) }));
++	tags.push_back(longs(279, { imageBytes }));
++	tags.push_back(shorts(284, { 1 }));
++	tags.push_back(ascii(305, "droidian-camera"));
++	tags.push_back(ascii(306, dateTime));
++	tags.push_back(shorts(33421, { 2, 2 })); // CFARepeatPatternDim
++	tags.push_back(bytes(33422, { pat[0], pat[1], pat[2], pat[3] }));
++	if (m.expNs > 0)
++		tags.push_back(rational(33434, m.expNs / 1e9, 1000000000u)); // ExposureTime
++	if (m.fNumber > 0)
++		tags.push_back(rational(33437, m.fNumber, 100)); // FNumber
++	if (m.iso > 0)
++		tags.push_back(shorts(34855, { unsigned(m.iso) })); // ISO
++	if (m.focalLength > 0)
++		tags.push_back(rational(37386, m.focalLength, 100)); // FocalLength
++	tags.push_back(bytes(50706, { 1, 4, 0, 0 })); // DNGVersion
++	tags.push_back(bytes(50707, { 1, 1, 0, 0 })); // DNGBackwardVersion
++	tags.push_back(ascii(50708, std::string(make) + " " + model)); // UniqueCameraModel
++	tags.push_back(shorts(50713, { 2, 2 })); // BlackLevelRepeatDim
++	tags.push_back(longs(50714, { unsigned(m.black[0]), unsigned(m.black[1]), unsigned(m.black[2]),
++				      unsigned(m.black[3]) }));
++	tags.push_back(longs(50717, { unsigned(m.white) }));
++	tags.push_back(rationals(50721, m.colorMatrix1, 9, true));
++	if (!empty(m.colorMatrix2, 9))
++		tags.push_back(rationals(50722, m.colorMatrix2, 9, true));
++	if (!empty(m.calibration1, 9))
++		tags.push_back(rationals(50723, m.calibration1, 9, true));
++	if (!empty(m.calibration2, 9))
++		tags.push_back(rationals(50724, m.calibration2, 9, true));
++	if (!empty(m.neutral, 3))
++		tags.push_back(rationals(50728, m.neutral, 3, false)); // AsShotNeutral
++	tags.push_back(shorts(50778, { unsigned(m.illuminant1) }));
++	if (!empty(m.colorMatrix2, 9))
++		tags.push_back(shorts(50779, { unsigned(m.illuminant2) }));
++	if (!empty(m.forwardMatrix1, 9))
++		tags.push_back(rationals(50964, m.forwardMatrix1, 9, true));
++	if (!empty(m.forwardMatrix2, 9))
++		tags.push_back(rationals(50965, m.forwardMatrix2, 9, true));
++
++	// layout: header, IFD, out-of-line values, image
++	const unsigned ifdSize = 2 + tags.size() * 12 + 4;
++	unsigned extra = 8 + ifdSize;
++	std::vector<unsigned char> ifd, values;
++	put16(ifd, tags.size());
++	for (Tag &t : tags) {
++		put16(ifd, t.id);
++		put16(ifd, t.type);
++		put32(ifd, t.count);
++		if (t.value.size() <= 4) {
++			std::vector<unsigned char> v = t.value;
++			v.resize(4, 0);
++			ifd.insert(ifd.end(), v.begin(), v.end());
++		} else {
++			put32(ifd, extra + values.size());
++			values.insert(values.end(), t.value.begin(), t.value.end());
++			if (values.size() & 1)
++				values.push_back(0);
++		}
++	}
++	put32(ifd, 0); // no next IFD
++	const unsigned imageOffset = extra + values.size();
++	// StripOffsets is the 9th entry (index 8), value at 2 + 8 * 12 + 8
++	const unsigned at = 2 + 8 * 12 + 8;
++	for (int i = 0; i < 4; i++)
++		ifd[at + i] = (imageOffset >> (8 * i)) & 0xff;
++
++	FILE *f = std::fopen(path, "wb");
++	if (!f)
++		return false;
++	const unsigned char header[8] = { 'I', 'I', 42, 0, 8, 0, 0, 0 };
++	bool ok = std::fwrite(header, 1, 8, f) == 8 && std::fwrite(ifd.data(), 1, ifd.size(), f) == ifd.size() &&
++		  std::fwrite(values.data(), 1, values.size(), f) == values.size();
++	const unsigned char *row = reinterpret_cast<const unsigned char *>(data);
++	for (int y = 0; ok && y < m.height; y++, row += m.rowStride)
++		ok = std::fwrite(row, 1, m.width * 2, f) == size_t(m.width) * 2;
++	return std::fclose(f) == 0 && ok;
++}
+diff --git a/src/dng-writer.h b/src/dng-writer.h
+new file mode 100644
+index 0000000..5c70c80
+--- /dev/null
++++ b/src/dng-writer.h
+@@ -0,0 +1,11 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#pragma once
++
++#include <camx/cam2.h>
++
++// Writes a Bayer RAW16 frame as an uncompressed DNG 1.4 with the colour data
++// of the camera (what Android's DngCreator writes). orientation: clockwise
++// degrees the image must be turned to stand upright (0, 90, 180, 270).
++bool writeDng(const char *path, const unsigned short *data, const Cam2Dng &m, int orientation,
++	      const char *make, const char *model, const char *dateTime);
+diff --git a/src/hybris-camera-cam2.cpp b/src/hybris-camera-cam2.cpp
+new file mode 100644
+index 0000000..18ebe2e
+--- /dev/null
++++ b/src/hybris-camera-cam2.cpp
+@@ -0,0 +1,268 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * The HAL3 features Camera1 cannot reach, through a Camera2 still capture in
++ * libcamx (camx/cam2.cpp): manual ISO and shutter, manual focus distance,
++ * OIS off, RAW (saved as DNG) and burst. Camera1 gives the device up for the
++ * shot and takes it back afterwards; the preview stops for that time.
++ */
++
++#include <QDateTime>
++#include <QDebug>
++#include <QFile>
++#include <QSettings>
++#include <QThread>
++
++#include <dng-writer.h>
++#include <hybris-camera.h>
++
++namespace {
++
++struct Job {
++	QString base; // path without extension
++	int count = 1;
++	int orientation = 0;
++	QStringList saved;
++};
++
++void onJpeg(void *ctx, const unsigned char *data, int size, int index)
++{
++	Job *job = static_cast<Job *>(ctx);
++	// One UI names burst frames like this too
++	const QString path = job->count > 1 ? job->base + QString("_BURST%1.jpg").arg(index + 1, 3, 10, QChar('0'))
++					    : job->base + ".jpg";
++	QFile file(path);
++	if (file.open(QIODevice::WriteOnly) && file.write(reinterpret_cast<const char *>(data), size) == size)
++		job->saved.append(path);
++	else
++		qWarning() << "cam2: could not save" << path;
++}
++
++void onRaw(void *ctx, const unsigned short *data, const Cam2Dng *meta)
++{
++	Job *job = static_cast<Job *>(ctx);
++	const QString path = job->base + ".dng";
++	const QByteArray date = QDateTime::currentDateTime().toString("yyyy:MM:dd hh:mm:ss").toLatin1();
++	if (writeDng(path.toUtf8().constData(), data, *meta, job->orientation, "samsung", "SM-G975F",
++		     date.constData()))
++		job->saved.append(path);
++	else
++		qWarning() << "cam2: could not save" << path;
++}
++
++// Camera1 names of android.control.awbMode values
++int awbMode(const QString &whiteBalance)
++{
++	static const QMap<QString, int> modes = { { "incandescent", 2 }, { "fluorescent", 3 },
++						  { "warm-fluorescent", 4 }, { "daylight", 5 },
++						  { "cloudy-daylight", 6 }, { "twilight", 7 },
++						  { "shade", 8 } };
++	return modes.value(whiteBalance, -1);
++}
++
++// Camera1 names of android.control.effectMode values
++int effectMode(const QString &effect)
++{
++	static const QMap<QString, int> modes = { { "mono", 1 }, { "negative", 2 }, { "solarize", 3 },
++						  { "sepia", 4 }, { "posterize", 5 }, { "whiteboard", 6 },
++						  { "blackboard", 7 }, { "aqua", 8 } };
++	return modes.value(effect, -1);
++}
++
++// Camera1 names of android.control.aeAntibandingMode values
++int antibandingMode(const QString &antibanding)
++{
++	static const QMap<QString, int> modes = { { "off", 0 }, { "50hz", 1 }, { "60hz", 2 }, { "auto", 3 } };
++	return modes.value(antibanding, -1);
++}
++
++} // namespace
++
++void HybrisCamera::loadProSettings()
++{
++	QSettings s;
++	m_manualIso = s.value("Pro/iso", 0).toInt();
++	m_manualExposureUs = s.value("Pro/exposure-us", 0).toInt();
++	m_manualFocus = s.value("Pro/focus", -1.0).toDouble();
++	m_rawCapture = s.value("Pro/raw", false).toBool();
++	m_ois = s.value("Pro/ois", true).toBool();
++	m_burstCount = s.value("Pro/burst", 10).toInt();
++}
++
++void HybrisCamera::refreshCam2()
++{
++	Cam2Info info = {};
++	QVariantMap map;
++	const bool ok = m_cameraManager->extras().cam2Info(m_cameraManager->camId(), &info);
++	map["available"] = ok;
++	if (ok) {
++		map["manualSensor"] = info.manualSensor != 0;
++		map["isoMin"] = info.isoMin;
++		map["isoMax"] = info.isoMax;
++		map["expMinUs"] = double(info.expMinNs) / 1000.0;
++		map["expMaxUs"] = double(info.expMaxNs) / 1000.0;
++		map["minFocus"] = info.minFocusDiopters;
++		map["raw"] = info.raw != 0;
++		map["ois"] = info.ois != 0;
++		map["burst"] = info.burst != 0;
++		map["evStep"] = info.evStep;
++	}
++	m_cam2 = map;
++	Q_EMIT cam2Changed();
++}
++
++void HybrisCamera::setProActive(bool active)
++{
++	if (active == m_proActive)
++		return;
++	m_proActive = active;
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setManualIso(int iso)
++{
++	if (iso == m_manualIso)
++		return;
++	m_manualIso = iso;
++	QSettings().setValue("Pro/iso", iso);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setManualExposureUs(int us)
++{
++	if (us == m_manualExposureUs)
++		return;
++	m_manualExposureUs = us;
++	QSettings().setValue("Pro/exposure-us", us);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setManualFocus(double diopters)
++{
++	if (qFuzzyCompare(diopters + 2, m_manualFocus + 2))
++		return;
++	m_manualFocus = diopters;
++	QSettings().setValue("Pro/focus", diopters);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setRawCapture(bool raw)
++{
++	if (raw == m_rawCapture)
++		return;
++	m_rawCapture = raw;
++	QSettings().setValue("Pro/raw", raw);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setOis(bool on)
++{
++	if (on == m_ois)
++		return;
++	m_ois = on;
++	QSettings().setValue("Pro/ois", on);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setBurstCount(int count)
++{
++	count = qBound(2, count, 30);
++	if (count == m_burstCount)
++		return;
++	m_burstCount = count;
++	QSettings().setValue("Pro/burst", count);
++	Q_EMIT proChanged();
++}
++
++// a PRO value Camera1 has no key for is set
++bool HybrisCamera::needsCam2() const
++{
++	if (!m_proActive || !m_cam2.value("available").toBool() ||
++	    m_cameraManager->camMode() != CameraManager::PictureMode)
++		return false;
++	const bool manual = m_cam2.value("manualSensor").toBool() &&
++			    (m_manualIso > 0 || m_manualExposureUs > 0 ||
++			     (m_manualFocus >= 0 && m_cam2.value("minFocus").toDouble() > 0));
++	return manual || (m_rawCapture && m_cam2.value("raw").toBool()) || (!m_ois && m_cam2.value("ois").toBool());
++}
++
++void HybrisCamera::takeBurst()
++{
++	if (m_cam2.value("burst").toBool() && m_cameraManager->camMode() == CameraManager::PictureMode)
++		captureCam2(m_burstCount, false);
++}
++
++void HybrisCamera::captureCam2(int count, bool raw)
++{
++	if (m_busy || m_isRecording || !m_cameraManager->cameraControl())
++		return;
++
++	const QMap<QString, QString> p = m_cameraManager->parameters();
++	Cam2Settings s = {};
++	const bool pro = m_proActive;
++	s.iso = pro ? m_manualIso : 0;
++	s.expNs = pro ? qint64(m_manualExposureUs) * 1000 : 0;
++	s.focus = pro && m_manualFocus >= 0 ? float(m_manualFocus) : -1.0f;
++	s.ois = pro && !m_ois ? 0 : -1;
++	s.awb = awbMode(p.value("whitebalance"));
++	s.effect = effectMode(p.value("effect"));
++	s.antibanding = antibandingMode(p.value("antibanding"));
++	const double evStep = m_cam2.value("evStep").toDouble();
++	if (evStep > 0)
++		s.evSteps = qRound(p.value("exposure-compensation").toInt() *
++				   p.value("exposure-compensation-step").toDouble() / evStep);
++	const QSize size = m_cameraManager->currentPictureSize();
++	s.jpegWidth = size.width();
++	s.jpegHeight = size.height();
++	s.quality = m_cameraManager->jpegQuality();
++	s.orientation = m_cameraManager->effectiveRotation();
++	const QStringList ratios = p.value("zoom-ratios").split(',', Qt::SkipEmptyParts);
++	const int zoom = m_cameraManager->zoom();
++	s.zoom = zoom >= 0 && zoom < ratios.size() ? ratios[zoom].toFloat() / 100.0f : 1.0f;
++	const CameraManager::Flash flash = m_cameraManager->flash();
++	s.flash = flash == CameraManager::FLASH_OFF ? 0 : flash == CameraManager::FLASH_AUTO ? 1 : 2;
++	s.raw = raw && m_cam2.value("raw").toBool();
++	s.count = count;
++	if (m_geotag && m_position.isValid()) {
++		const QGeoCoordinate c = m_position.coordinate();
++		s.gps = 1;
++		s.latitude = c.latitude();
++		s.longitude = c.longitude();
++		s.altitude = c.type() == QGeoCoordinate::Coordinate3D ? c.altitude() : 0.0;
++		s.gpsTime = m_position.timestamp().toSecsSinceEpoch();
++	}
++
++	Job *job = new Job;
++	job->base = m_picturePath + "/IMG" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz");
++	job->count = count;
++	job->orientation = s.orientation;
++	const int camId = m_cameraManager->camId();
++
++	m_busy = true;
++	Q_EMIT busyChanged();
++	if (m_renderer)
++		m_renderer->detachCamera();
++	// let a frame the render thread may be drawing finish with the old camera
++	QTimer::singleShot(80, this, [this, s, job, camId]() {
++		m_cameraManager->releaseCamera();
++		QThread *worker = QThread::create([this, s, job, camId]() {
++			int iso = 0;
++			long long exp = 0;
++			const int n = m_cameraManager->extras().cam2Capture(camId, s, onJpeg, onRaw, job, &iso, &exp);
++			qDebug() << "cam2 capture:" << n << "frames, settings ISO" << s.iso << "exposure us"
++				 << s.expNs / 1000 << "focus" << s.focus << "ois" << s.ois << "raw" << s.raw
++				 << "zoom" << s.zoom << "metered ISO" << iso << "exposure us" << exp / 1000
++				 << "files" << job->saved;
++			QMetaObject::invokeMethod(this, [this, job]() {
++				m_cameraManager->reconnectCamera();
++				m_busy = false;
++				Q_EMIT busyChanged();
++				for (const QString &path : job->saved)
++					if (path.endsWith(".jpg"))
++						Q_EMIT newMediaSaved(path);
++				delete job;
++			}, Qt::QueuedConnection);
++		});
++		connect(worker, &QThread::finished, worker, &QObject::deleteLater);
++		worker->start();
++	});
++}
+diff --git a/src/hybris-camera.cpp b/src/hybris-camera.cpp
+index fd7beda..da68a92 100644
+--- a/src/hybris-camera.cpp
++++ b/src/hybris-camera.cpp
+@@ -98,6 +98,8 @@ HybrisCamera::HybrisCamera()
+ 	connect(m_faceTimer, &QTimer::timeout, this, &HybrisCamera::pollFaces);
+ 	setFaceDetection(settings.value("AppSettings/face-detection", false).toBool());
+ 	setGeotag(settings.value("AppSettings/geotag", false).toBool());
++	loadProSettings();
++	refreshCam2();
+ 
+ 	connect(m_cameraManager, &CameraManager::rawImageCaptured, this,
+ 		[this]() {
+@@ -149,6 +151,12 @@ void HybrisCamera::restartPreview()
+ 
+ void HybrisCamera::takePicture()
+ {
++	if (m_busy)
++		return;
++	if (needsCam2()) {
++		captureCam2(1, m_rawCapture);
++		return;
++	}
+ 	applyLocation();
+ 	m_cameraManager->takePicture();
+ }
+@@ -387,6 +395,7 @@ void HybrisCamera::setCamId(int id)
+ void HybrisCamera::handleCameraChanged(const CameraDevice &device)
+ {
+ 	qDebug() << "Camera changed. ID:" << device.camId;
++	refreshCam2();
+ 
+ 	m_videoModel.clear();
+ 	for (const QSize &size : device.videoSizes) {
+diff --git a/src/hybris-camera.h b/src/hybris-camera.h
+index 92111cd..8c2fdc9 100644
+--- a/src/hybris-camera.h
++++ b/src/hybris-camera.h
+@@ -69,6 +69,20 @@ class HybrisCamera : public QQuickItem {
+ 	Q_PROPERTY(bool geotag READ geotag WRITE setGeotag NOTIFY geotagChanged)
+ 	Q_PROPERTY(bool hasLocation READ hasLocation NOTIFY hasLocationChanged)
+ 
++	// Camera2 abilities of the current camera: {available, manualSensor, isoMin,
++	// isoMax, expMinUs, expMaxUs, minFocus (diopters), raw, ois, burst}
++	Q_PROPERTY(QVariantMap cam2 READ cam2 NOTIFY cam2Changed)
++	// the PRO photo mode is shown: its manual values apply to the next shot
++	Q_PROPERTY(bool proActive READ proActive WRITE setProActive NOTIFY proChanged)
++	Q_PROPERTY(int manualIso READ manualIso WRITE setManualIso NOTIFY proChanged) // 0: auto
++	Q_PROPERTY(int manualExposureUs READ manualExposureUs WRITE setManualExposureUs NOTIFY proChanged) // 0: auto
++	Q_PROPERTY(double manualFocus READ manualFocus WRITE setManualFocus NOTIFY proChanged) // < 0: AF
++	Q_PROPERTY(bool rawCapture READ rawCapture WRITE setRawCapture NOTIFY proChanged)
++	Q_PROPERTY(bool ois READ ois WRITE setOis NOTIFY proChanged)
++	Q_PROPERTY(int burstCount READ burstCount WRITE setBurstCount NOTIFY proChanged)
++	// a Camera2 shot is running (the preview is stopped meanwhile)
++	Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
++
+     public:
+ 	HybrisCamera();
+ 
+@@ -94,6 +108,52 @@ class HybrisCamera : public QQuickItem {
+ 	// false when the point is outside the picture
+ 	Q_INVOKABLE bool focusAt(qreal x, qreal y);
+ 	Q_INVOKABLE void resetFocus();
++	// burstCount JPEGs in one Camera2 sequence
++	Q_INVOKABLE void takeBurst();
++
++	QVariantMap cam2() const
++	{
++		return m_cam2;
++	}
++	bool proActive() const
++	{
++		return m_proActive;
++	}
++	void setProActive(bool active);
++	int manualIso() const
++	{
++		return m_manualIso;
++	}
++	void setManualIso(int iso);
++	int manualExposureUs() const
++	{
++		return m_manualExposureUs;
++	}
++	void setManualExposureUs(int us);
++	double manualFocus() const
++	{
++		return m_manualFocus;
++	}
++	void setManualFocus(double diopters);
++	bool rawCapture() const
++	{
++		return m_rawCapture;
++	}
++	void setRawCapture(bool raw);
++	bool ois() const
++	{
++		return m_ois;
++	}
++	void setOis(bool on);
++	int burstCount() const
++	{
++		return m_burstCount;
++	}
++	void setBurstCount(int count);
++	bool busy() const
++	{
++		return m_busy;
++	}
+ 
+ 	QVariantList lenses() const;
+ 	bool proAvailable() const
+@@ -268,6 +328,9 @@ class HybrisCamera : public QQuickItem {
+ 	void facesChanged();
+ 	void geotagChanged();
+ 	void hasLocationChanged();
++	void cam2Changed();
++	void proChanged();
++	void busyChanged();
+ 
+     public Q_SLOTS:
+ 	void sync();
+@@ -296,6 +359,21 @@ class HybrisCamera : public QQuickItem {
+ 	void pollFaces();
+ 	void applyLocation();
+ 
++	// Camera2 path (hybris-camera-cam2.cpp)
++	void loadProSettings();
++	void refreshCam2();
++	bool needsCam2() const;
++	void captureCam2(int count, bool raw);
++	QVariantMap m_cam2;
++	bool m_proActive = false;
++	int m_manualIso = 0;
++	int m_manualExposureUs = 0;
++	double m_manualFocus = -1;
++	bool m_rawCapture = false;
++	bool m_ois = true;
++	int m_burstCount = 10;
++	bool m_busy = false;
++
+ 	int m_videoFps = 30;
+ 	bool m_hevc = false;
+ 	bool m_faceDetection = false;
+diff --git a/src/qml/DefaultUI/DefaultUI.qml b/src/qml/DefaultUI/DefaultUI.qml
+index e1afa62..62fd01d 100644
+--- a/src/qml/DefaultUI/DefaultUI.qml
++++ b/src/qml/DefaultUI/DefaultUI.qml
+@@ -72,6 +72,22 @@ Item {
+     readonly property var sideLenses: camera.lenses.filter(l => l.front === root.frontSide)
+     property var lastLens: ({ "front": -1, "back": -1 })
+ 
++    // manual ISO, shutter and focus go through Camera2 (camera.cam2)
++    readonly property var c2: camera.cam2
++    readonly property bool manualPro: uiMode === "pro" && c2.available === true && c2.manualSensor === true
++    Binding {
++        target: camera
++        property: "proActive"
++        value: root.uiMode === "pro"
++    }
++    function shutterName(us) {
++        return "1/" + Math.round(1000000 / us)
++    }
++    readonly property var isoStops: [50, 100, 200, 400, 800, 1600, 3200, 6400]
++        .filter(i => c2.isoMin !== undefined && i >= c2.isoMin && i <= c2.isoMax)
++    readonly property var shutterStops: [125, 250, 500, 1000, 2000, 4000, 8000, 16667, 33333, 66667, 100000]
++        .filter(u => c2.expMinUs !== undefined && u >= c2.expMinUs && u <= c2.expMaxUs)
++
+     function values(key) {
+         const v = p[key]
+         return v ? v.split(",").filter(s => s.length > 0) : []
+@@ -284,6 +300,31 @@ Item {
+             }
+         }
+ 
++        // RAW (DNG next to the JPEG) in PRO
++        Rectangle {
++            visible: root.uiMode === "pro" && root.c2.raw === true
++            readonly property bool on: camera.rawCapture
++            width: 52
++            height: 30
++            y: 5
++            radius: 15
++            color: "transparent"
++            border.color: on ? root.yellow : "white"
++            border.width: 2
++            Text {
++                anchors.centerIn: parent
++                text: "RAW"
++                color: parent.on ? root.yellow : "white"
++                font.pixelSize: 14
++                font.bold: true
++            }
++            MouseArea {
++                anchors.fill: parent
++                anchors.margins: -6
++                onClicked: camera.rawCapture = !camera.rawCapture
++            }
++        }
++
+         // color effects (HAL filters)
+         IconButton {
+             visible: root.values("effect-values").length > 1
+@@ -483,12 +524,13 @@ Item {
+         anchors.horizontalCenter: parent.horizontalCenter
+         width: parent.width
+         spacing: 18
++        enabled: !camera.busy
+ 
+         // pro pickers
+         Item {
+             width: parent.width
+             height: 52
+-            visible: root.proLike && ["ev", "wb", "focus"].indexOf(root.openPicker) >= 0
++            visible: root.proLike && ["ev", "wb", "focus", "iso", "shutter", "mf"].indexOf(root.openPicker) >= 0
+ 
+             // exposure compensation in EV
+             Rectangle {
+@@ -513,6 +555,89 @@ Item {
+                     onMoved: camera.setParameter("exposure-compensation", Math.round(value).toString())
+                 }
+             }
++            OptionPill {
++                anchors.horizontalCenter: parent.horizontalCenter
++                visible: root.openPicker === "iso"
++                Chip {
++                    text: qsTr("AUTO")
++                    selected: camera.manualIso === 0
++                    onClicked: camera.manualIso = 0
++                }
++                Repeater {
++                    model: root.isoStops
++                    delegate: Chip {
++                        required property int modelData
++                        text: modelData
++                        selected: camera.manualIso === modelData
++                        onClicked: camera.manualIso = modelData
++                    }
++                }
++            }
++            OptionPill {
++                anchors.horizontalCenter: parent.horizontalCenter
++                visible: root.openPicker === "shutter"
++                Chip {
++                    text: qsTr("AUTO")
++                    selected: camera.manualExposureUs === 0
++                    onClicked: camera.manualExposureUs = 0
++                }
++                Repeater {
++                    model: root.shutterStops
++                    delegate: Chip {
++                        required property int modelData
++                        text: root.shutterName(modelData)
++                        selected: camera.manualExposureUs === modelData
++                        onClicked: camera.manualExposureUs = modelData
++                    }
++                }
++            }
++            // manual focus: near (minimum focus distance) on the left, infinity on the right
++            Rectangle {
++                visible: root.openPicker === "mf"
++                anchors.horizontalCenter: parent.horizontalCenter
++                width: parent.width - 24
++                height: 52
++                radius: 26
++                color: Qt.rgba(0.25, 0.25, 0.25, 0.8)
++                Chip {
++                    id: afChip
++                    anchors.left: parent.left
++                    anchors.leftMargin: 8
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: qsTr("AF")
++                    selected: camera.manualFocus < 0
++                    onClicked: camera.manualFocus = -1
++                }
++                Text {
++                    anchors.left: afChip.right
++                    anchors.leftMargin: 6
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: ""
++                    font.family: mdiFont.name
++                    font.pixelSize: 22
++                    color: "white"
++                }
++                Slider {
++                    anchors.left: afChip.right
++                    anchors.right: parent.right
++                    anchors.leftMargin: 32
++                    anchors.rightMargin: 40
++                    anchors.verticalCenter: parent.verticalCenter
++                    from: root.c2.minFocus || 0
++                    to: 0
++                    value: camera.manualFocus < 0 ? 0 : camera.manualFocus
++                    onMoved: camera.manualFocus = value
++                }
++                Text {
++                    anchors.right: parent.right
++                    anchors.rightMargin: 12
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: ""
++                    font.family: mdiFont.name
++                    font.pixelSize: 22
++                    color: "white"
++                }
++            }
+             OptionPill {
+                 anchors.horizontalCenter: parent.horizontalCenter
+                 visible: root.openPicker === "wb"
+@@ -541,10 +666,29 @@ Item {
+             }
+         }
+ 
+-        // pro strip: every manual control the HAL has (no ISO / shutter keys on this HAL)
++        // pro strip: ISO, shutter and focus distance (Camera2) and the Camera1 controls
+         OptionPill {
+             anchors.horizontalCenter: parent.horizontalCenter
+             visible: root.proLike && !camera.isRecording
++            Chip {
++                visible: root.manualPro
++                text: "ISO " + (camera.manualIso > 0 ? camera.manualIso : qsTr("AUTO"))
++                selected: root.openPicker === "iso"
++                onClicked: root.togglePicker("iso")
++            }
++            Chip {
++                visible: root.manualPro
++                text: camera.manualExposureUs > 0 ? root.shutterName(camera.manualExposureUs) : "S " + qsTr("AUTO")
++                selected: root.openPicker === "shutter"
++                onClicked: root.togglePicker("shutter")
++            }
++            Chip {
++                visible: root.manualPro && (root.c2.minFocus || 0) > 0
++                text: camera.manualFocus < 0 ? "AF"
++                      : "MF " + (camera.manualFocus < 0.01 ? "∞" : Math.round(100 / camera.manualFocus) + " cm")
++                selected: root.openPicker === "mf"
++                onClicked: root.togglePicker("mf")
++            }
+             Chip {
+                 readonly property real ev: parseInt(root.p["exposure-compensation"] || "0")
+                                            * parseFloat(root.p["exposure-compensation-step"] || "0")
+@@ -648,7 +792,7 @@ Item {
+                 width: 84
+                 height: 84
+                 radius: 42
+-                color: "white"
++                color: camera.busy ? Qt.rgba(1, 1, 1, 0.45) : "white"
+                 scale: shutterArea.pressed ? 0.92 : 1.0
+                 Behavior on scale { NumberAnimation { duration: 80 } }
+                 Rectangle {
+@@ -659,10 +803,18 @@ Item {
+                     radius: camera.isRecording ? 6 : width / 2
+                     color: "#ff453a"
+                 }
++                BusyIndicator {
++                    anchors.centerIn: parent
++                    running: camera.busy
++                    visible: running
++                }
+                 MouseArea {
+                     id: shutterArea
+                     anchors.fill: parent
++                    enabled: !camera.busy
+                     onClicked: root.shoot()
++                    // burst like One UI (hold the shutter)
++                    onPressAndHold: if (!root.videoLike && root.c2.burst === true) camera.takeBurst()
+                 }
+             }
+ 
+diff --git a/src/qml/DefaultUI/ProPanel.qml b/src/qml/DefaultUI/ProPanel.qml
+index f210c29..7375f6d 100644
+--- a/src/qml/DefaultUI/ProPanel.qml
++++ b/src/qml/DefaultUI/ProPanel.qml
+@@ -213,6 +213,37 @@ Rectangle {
+                 onToggled: on => camera.faceDetection = on
+             }
+ 
++            Toggle {
++                visible: camera.cam2.ois === true
++                title: qsTr("Optical stabilization (PRO)")
++                checked: camera.ois
++                onToggled: on => camera.ois = on
++            }
++
++            ColumnLayout {
++                visible: camera.cam2.burst === true && camera.camMode === HybrisCamera.PictureMode
++                Layout.fillWidth: true
++                Text {
++                    text: qsTr("Burst shots (hold the shutter)")
++                    color: "white"
++                    font.pixelSize: 15
++                    font.bold: true
++                }
++                Flow {
++                    Layout.fillWidth: true
++                    spacing: 6
++                    Repeater {
++                        model: [5, 10, 20, 30]
++                        delegate: Chip {
++                            required property int modelData
++                            text: modelData
++                            selected: camera.burstCount === modelData
++                            onClicked: camera.burstCount = modelData
++                        }
++                    }
++                }
++            }
++
+             Toggle {
+                 title: qsTr("Geotag photos") + (camera.geotag && !camera.hasLocation ? " " + qsTr("(no fix yet)") : "")
+                 checked: camera.geotag
+diff --git a/src/translations/droidian-camera_pl.ts b/src/translations/droidian-camera_pl.ts
+index 8f1f868..e385b68 100644
+--- a/src/translations/droidian-camera_pl.ts
++++ b/src/translations/droidian-camera_pl.ts
+@@ -3,6 +3,14 @@
+ <TS version="2.1" language="pl_PL">
+ <context>
+     <name>DefaultUI</name>
++    <message>
++        <source>AF</source>
++        <translation>AF</translation>
++    </message>
++    <message>
++        <source>AUTO</source>
++        <translation>AUTO</translation>
++    </message>
+     <message>
+         <source>Focus</source>
+         <translation>Ostrość</translation>
+@@ -82,6 +90,10 @@
+         <source>Blackboard</source>
+         <translation>Tablica</translation>
+     </message>
++    <message>
++        <source>Burst shots (hold the shutter)</source>
++        <translation>Zdjęcia seryjne (przytrzymaj spust)</translation>
++    </message>
+     <message>
+         <source>Cloudy</source>
+         <translation>Pochmurno</translation>
+@@ -186,6 +198,10 @@
+         <source>On</source>
+         <translation>Wł.</translation>
+     </message>
++    <message>
++        <source>Optical stabilization (PRO)</source>
++        <translation>Stabilizacja optyczna (PRO)</translation>
++    </message>
+     <message>
+         <source>Photo size</source>
+         <translation>Rozmiar zdjęcia</translation>
+-- 
+2.55.0
+

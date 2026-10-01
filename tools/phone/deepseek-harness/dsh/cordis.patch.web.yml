@@ -1,0 +1,32 @@
+# Warstwa usera profilu web na telefonie: te same ustawienia co profil
+# desktop na PC (model, konto, widok czatu).
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: deepseek-account
+    model: deepseek-flash
+    reasoningEffort: max
+- id: ui-settings-account
+  name: "@deepseek-ai/dsh-client-ui-settings-account"
+  config:
+    version: 1
+    step: done
+    purpose: development
+    process: compact
+    completion: completed
+    usage: detailed
+    developerTools: true
+- id: ui-chat
+  name: "@deepseek-ai/dsh-client-ui-chat"
+  config:
+    transcriptView: compact
+    performanceUsage: detailed
+- id: ui-settings
+  name: "@deepseek-ai/dsh-client-ui-settings"
+  config:
+    enabled: true
+# Polski interfejs niezaleznie od jezyka przegladarki (pakiet dsh-locale-pl).
+- id: locale
+  name: "@deepseek-ai/dsh-client-locale"
+  config:
+    preference: pl

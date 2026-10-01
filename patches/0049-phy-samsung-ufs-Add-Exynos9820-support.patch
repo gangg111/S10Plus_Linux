@@ -20,14 +20,21 @@ The two lanes sit a quarter of the register window apart rather than at
 the usual spacing, and one register takes a different value in the first
 gear than in every gear above it.
 
+The PHY also has to be told when the link goes into hibern8 and before
+it leaves it: the vendor quiets the squelch detectors and parks the
+common block on entry and undoes both before the exit, and without that
+the link does not come back out of hibern8.  Those two tables are given
+here too, with the lines the vendor keeps for the high speed modes still
+limited to them, since hibern8 is also entered from the slow modes.
+
 Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
 ---
  MAINTAINERS                              |   1 +
  drivers/phy/samsung/Makefile             |   1 +
- drivers/phy/samsung/phy-exynos9820-ufs.c | 275 +++++++++++++++++++++++
+ drivers/phy/samsung/phy-exynos9820-ufs.c | 321 +++++++++++++++++++++++
  drivers/phy/samsung/phy-samsung-ufs.c    |   3 +
  drivers/phy/samsung/phy-samsung-ufs.h    |   1 +
- 5 files changed, 281 insertions(+)
+ 5 files changed, 327 insertions(+)
  create mode 100644 drivers/phy/samsung/phy-exynos9820-ufs.c
 
 diff --git a/MAINTAINERS b/MAINTAINERS
@@ -56,10 +63,10 @@ index 8771864f75d..bf59e344252 100644
  phy-exynos-ufs-y			+= phy-fsd-ufs.o
 diff --git a/drivers/phy/samsung/phy-exynos9820-ufs.c b/drivers/phy/samsung/phy-exynos9820-ufs.c
 new file mode 100644
-index 00000000000..90b50aaa60b
+index 00000000000..a590465373d
 --- /dev/null
 +++ b/drivers/phy/samsung/phy-exynos9820-ufs.c
-@@ -0,0 +1,275 @@
+@@ -0,0 +1,321 @@
 +// SPDX-License-Identifier: GPL-2.0-only
 +/*
 + * UFS PHY driver data for the Samsung Exynos9820 SoC
@@ -248,6 +255,51 @@ index 00000000000..90b50aaa60b
 +	[CFG_POST_PWR_HS]	= exynos9820_post_pwr_hs_cfg,
 +};
 +
++/*
++ * Once the link has gone into hibern8.  Vendor table post_h8_enter, line 587.
++ *
++ * The vendor writes two of these lines per connected receive lane rather than
++ * per lane; both lanes of this board are connected, so they are ordinary
++ * per lane entries here.  The lines it gives for the high speed modes only
++ * stay limited to them, because this table runs in the slow modes too.
++ */
++static const struct samsung_ufs_phy_cfg exynos9820_post_h8_enter_cfg[] = {
++	PHY_TRSV_REG_CFG_9820(0x156, 0x10, PWR_MODE_ANY),	/* :588 */
++	PHY_TRSV_REG_CFG_9820(0x15a, 0x0a, PWR_MODE_ANY),	/* :589 */
++	PHY_COMN_REG_CFG(0x01, 0x08, PWR_MODE_ANY),		/* :590 */
++	PHY_COMN_REG_CFG(0x00, 0x86, PWR_MODE_ANY),		/* :591 */
++
++	PHY_COMN_REG_CFG(0x06, 0x60, PWR_MODE_HS_ANY),		/* :593 */
++	PHY_TRSV_REG_CFG_9820(0x118, 0x08, PWR_MODE_HS_ANY),	/* :594 */
++	PHY_TRSV_REG_CFG_9820(0x13a, 0x01, PWR_MODE_HS_ANY),	/* :595 */
++
++	END_UFS_PHY_CFG
++};
++
++/*
++ * Before the link leaves hibern8.  Vendor table pre_h8_exit, line 599.
++ *
++ * The vendor ends it by waiting for each receive lane to lock onto the data
++ * again; the core runs the wait_for_cdr hook of this driver at that point.
++ */
++static const struct samsung_ufs_phy_cfg exynos9820_pre_h8_exit_cfg[] = {
++	PHY_COMN_REG_CFG(0x00, 0xc6, PWR_MODE_ANY),		/* :600 */
++	PHY_COMN_REG_CFG(0x01, 0x0c, PWR_MODE_ANY),		/* :601 */
++	PHY_TRSV_REG_CFG_9820(0x156, 0x00, PWR_MODE_ANY),	/* :602 */
++	PHY_TRSV_REG_CFG_9820(0x15a, 0x00, PWR_MODE_ANY),	/* :603 */
++
++	PHY_COMN_REG_CFG(0x06, 0xe0, PWR_MODE_HS_ANY),		/* :605 */
++	PHY_TRSV_REG_CFG_9820(0x13a, 0x03, PWR_MODE_HS_ANY),	/* :606 */
++	PHY_TRSV_REG_CFG_9820(0x118, 0x18, PWR_MODE_HS_ANY),	/* :607 */
++
++	END_UFS_PHY_CFG
++};
++
++static const struct samsung_ufs_phy_cfg *exynos9820_ufs_phy_hibern8_cfgs[] = {
++	[CFG_POST_HIBERN8_ENTER]	= exynos9820_post_h8_enter_cfg,
++	[CFG_PRE_HIBERN8_EXIT]		= exynos9820_pre_h8_exit_cfg,
++};
++
 +static void __iomem *exynos9820_lane_reg(struct samsung_ufs_phy *phy, u8 lane,
 +					 u32 reg)
 +{
@@ -323,6 +375,7 @@ index 00000000000..90b50aaa60b
 +
 +const struct samsung_ufs_phy_drvdata exynos9820_ufs_phy = {
 +	.cfgs = exynos9820_ufs_phy_cfgs,
++	.cfgs_hibern8 = exynos9820_ufs_phy_hibern8_cfgs,
 +	.isol = {
 +		.offset = EXYNOS9820_PHY_CTRL,
 +		.mask = EXYNOS9820_PHY_CTRL_MASK,

@@ -95,6 +95,40 @@ def znajdz_als():
     return None
 
 
+class SensorProxy:
+    """Luksy z iio-sensor-proxy (Droidian: czujnik za hubem Samsunga, bez IIO `als`)."""
+
+    def __init__(self):
+        bus = dbus.SystemBus()
+        obj = bus.get_object('net.hadess.SensorProxy', '/net/hadess/SensorProxy')
+        self.proxy = dbus.Interface(obj, 'net.hadess.SensorProxy')
+        self.wl = dbus.Interface(obj, 'org.freedesktop.DBus.Properties')
+        if not bool(self.wl.Get('net.hadess.SensorProxy', 'HasAmbientLight')):
+            raise RuntimeError('brak czujnika swiatla w iio-sensor-proxy')
+        self.proxy.ClaimLight()
+
+    def lux(self):
+        try:
+            return int(round(float(self.wl.Get('net.hadess.SensorProxy', 'LightLevel'))))
+        except dbus.DBusException:
+            return None
+
+
+def ekran_zgaszony():
+    """Mainline: lcd_power panelu.  Droidian: IdleHint sesji, ktory powloka
+    ustawia przy wygaszaniu (wlr-output-power)."""
+    moc = czytaj_int(LCD_POWER)
+    if moc is not None:
+        return moc != 0
+    try:
+        bus = dbus.SystemBus()
+        login = bus.get_object('org.freedesktop.login1', '/org/freedesktop/login1/session/auto')
+        return bool(dbus.Interface(login, 'org.freedesktop.DBus.Properties').Get(
+            'org.freedesktop.login1.Session', 'IdleHint'))
+    except dbus.DBusException:
+        return False
+
+
 def czytaj_int(sciezka):
     try:
         with open(sciezka) as f:
@@ -120,9 +154,16 @@ class Autojasnosc:
         self.ekran = dbus.Interface(self.bus.get_object(SERWIS, OBIEKT), INTERFEJS)
         wl = dbus.Interface(self.bus.get_object(SERWIS, OBIEKT), 'org.freedesktop.DBus.Properties')
         self.maks = int(wl.Get(INTERFEJS, 'MaxBrightness'))
-        # sterownik s6e3ha9_jas liczy w 0,1 nita (8000 = 800 nitow)
-        self.nity_maks = (czytaj_int('/sys/class/backlight/s6e3ha9/max_brightness') or 8000) / 10
+        # sterownik s6e3ha9_jas liczy w 0,1 nita (8000 = 800 nitow); stockowy
+        # panel (Droidian) nie mowi w nitach, przyjmujemy jego reczne maksimum
+        self.nity_maks = (czytaj_int('/sys/class/backlight/s6e3ha9/max_brightness') or 4200) / 10
         self.als = znajdz_als()
+        self.proxy = None
+        if not self.als:
+            try:
+                self.proxy = SensorProxy()
+            except (dbus.DBusException, RuntimeError) as e:
+                log('iio-sensor-proxy: %s' % e)
         self.mnoznik, self.wlaczona = self.wczytaj_stan()
         self.wygladzone = None      # log1p(lux) po wygladzeniu
         self.ostatnio = None        # obecna jasnosc w skali Plasmy (float, nasza albo suwaka)
@@ -132,7 +173,7 @@ class Autojasnosc:
         self.bus.add_signal_receiver(self.zmiana, 'BrightnessChanged', SERWIS, SERWIS,
                                      '/org/kde/ScreenBrightness')
         log('start: als=%s, skala Plasmy 0..%d = 0..%d nitow, mnoznik %.2f, %s'
-            % (self.als, self.maks, self.nity_maks, self.mnoznik,
+            % (self.als or ('iio-sensor-proxy' if self.proxy else None), self.maks, self.nity_maks, self.mnoznik,
                'wlaczona' if self.wlaczona else 'wylaczona'))
 
     def wczytaj_stan(self):
@@ -176,7 +217,9 @@ class Autojasnosc:
             return
         cel = krzywa(math.expm1(self.wygladzone))
         nity = self.z_plasmy(int(wartosc))
-        if cel <= 0 or nity <= 0:
+        # powloka Droidiana przygasza do zera przed wygaszeniem i rozjasnia po
+        # wybudzeniu; to nie jest ruch suwaka
+        if cel <= 0 or nity < 2 or ekran_zgaszony():
             return
         self.mnoznik = min(max(nity / cel, MNOZNIK_MIN), MNOZNIK_MAKS)
         self.zatrzymaj_animacje()
@@ -189,14 +232,14 @@ class Autojasnosc:
     def krok(self):
         if not self.wlaczona:
             return True
-        if czytaj_int(LCD_POWER) not in (0, None):
+        if ekran_zgaszony():
             return True                 # ekran wygaszony: nic nie ustawiamy
-        if not self.als:
+        if not self.als and not self.proxy:
             self.als = znajdz_als()
             return True
         if self.animacja is not None or time.monotonic() < self.cisza_do:
             return True
-        lux = czytaj_int(self.als)
+        lux = czytaj_int(self.als) if self.als else self.proxy.lux()
         if lux is None:
             return True
         lux = max(lux - przeciek(), 0)
@@ -273,7 +316,17 @@ class Przelacznik(dbus.service.Object):
 def main():
     dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
     petla = GLib.MainLoop()
-    a = Autojasnosc()
+    # z autostartu sesji (Droidian) nie ma ponawiania jak w systemd: poczekaj,
+    # az PowerDevil wystawi org.kde.ScreenBrightness
+    for proba in range(60):
+        try:
+            a = Autojasnosc()
+            break
+        except dbus.DBusException as e:
+            if proba == 59:
+                raise
+            log('czekam na %s: %s' % (SERWIS, e.get_dbus_name()))
+            time.sleep(2)
     nazwa = dbus.service.BusName(USLUGA, a.bus)
     przelacznik = Przelacznik(a.bus, a)
     GLib.timeout_add(OKRES_MS, a.krok)

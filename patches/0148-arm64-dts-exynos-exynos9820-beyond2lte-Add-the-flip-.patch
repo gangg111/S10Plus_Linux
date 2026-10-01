@@ -83,6 +83,3 @@ index 9c28c742cc3..70cf91c2f12 100644
  /*
   * The sensor hub and GNSS receiver, a Broadcom BCM47752 the vendor tree
   * still calls BCM4773, answers on the vendor spi_17.  The groups below carry
--- 
-2.53.0.windows.1
-

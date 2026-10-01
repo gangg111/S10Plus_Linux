@@ -1,0 +1,112 @@
+From db8d762e8b4d6d9b215519f561edbaf18e344956 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Thu, 1 Oct 2026 19:03:31 +0200
+Subject: [PATCH] Keep the volume keys from the compositor while they are the
+ shutter
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ debian/changelog            |  9 ++++++++
+ src/hybris-camera-prefs.cpp | 41 +++++++++++++++++++++++++++++++++++++
+ src/hybris-camera.h         |  2 ++
+ 3 files changed, 52 insertions(+)
+
+diff --git a/debian/changelog b/debian/changelog
+index 24662fa..fccce54 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,12 @@
++droidian-camera (26.1+s10plus8) unstable; urgency=medium
++
++  * Volume keys as the shutter no longer change the volume as well: while
++    the camera is active it registers with the podglad wayfire plugin
++    (podglad/volume-keys), which keeps the keys from the compositor's
++    amixer bindings.
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 19:00:00 +0200
++
+ droidian-camera (26.1+s10plus7) unstable; urgency=medium
+ 
+   * Install the camera and QR scanner icons into the hicolor theme
+diff --git a/src/hybris-camera-prefs.cpp b/src/hybris-camera-prefs.cpp
+index b81df55..026544f 100644
+--- a/src/hybris-camera-prefs.cpp
++++ b/src/hybris-camera-prefs.cpp
+@@ -20,6 +20,8 @@
+ #include <cstring>
+ #include <fcntl.h>
+ #include <linux/input.h>
++#include <sys/socket.h>
++#include <sys/un.h>
+ #include <unistd.h>
+ 
+ #include <hybris-camera.h>
+@@ -214,6 +216,44 @@ void HybrisCamera::prefChanged(const QString &key)
+ 		pushCam2();
+ }
+ 
++// While the volume keys are the shutter, the compositor must not change the
++// volume with them too. The podglad wayfire plugin drops the keys while a
++// window of a registered app is active; the registration lives as long as
++// this IPC connection.
++void HybrisCamera::claimCompositorVolumeKeys(bool claim)
++{
++	if (!claim) {
++		if (m_wfIpcFd >= 0)
++			::close(m_wfIpcFd);
++		m_wfIpcFd = -1;
++		return;
++	}
++	if (m_wfIpcFd >= 0)
++		return;
++	const QByteArray path = qgetenv("WAYFIRE_SOCKET");
++	sockaddr_un addr = {};
++	addr.sun_family = AF_UNIX;
++	if (path.isEmpty() || size_t(path.size()) >= sizeof(addr.sun_path))
++		return;
++	memcpy(addr.sun_path, path.constData(), path.size());
++	const int fd = ::socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
++	if (fd < 0)
++		return;
++	if (::connect(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) != 0) {
++		::close(fd);
++		return;
++	}
++	// wayfire IPC: 32-bit little-endian length, then JSON
++	const QByteArray msg = R"({"method":"podglad/volume-keys","data":{"app-id":"droidian-camera","enabled":true}})";
++	const quint32 len = msg.size();
++	const char header[4] = { char(len & 0xff), char(len >> 8 & 0xff), char(len >> 16 & 0xff), char(len >> 24) };
++	if (::write(fd, header, 4) != 4 || ::write(fd, msg.constData(), len) != qint64(len)) {
++		::close(fd);
++		return;
++	}
++	m_wfIpcFd = fd;
++}
++
+ // Volume keys as the shutter. The compositor keeps them from the window, so
+ // they are read from the key device (group android_input). No exclusive grab:
+ // the same device carries the power key.
+@@ -221,6 +261,7 @@ void HybrisCamera::applyVolumeKeys()
+ {
+ 	const bool on = m_prefs->value("volumeKeys").toBool() &&
+ 			qGuiApp->applicationState() == Qt::ApplicationActive;
++	claimCompositorVolumeKeys(on);
+ 	if (on && !m_keyNotifier) {
+ 		const QDir dir("/sys/class/input");
+ 		for (const QString &ev : dir.entryList({ "event*" }, QDir::Dirs | QDir::System)) {
+diff --git a/src/hybris-camera.h b/src/hybris-camera.h
+index f708cc2..89ddfc5 100644
+--- a/src/hybris-camera.h
++++ b/src/hybris-camera.h
+@@ -486,6 +486,8 @@ class HybrisCamera : public QQuickItem {
+ 	void applyVolumeKeys();
+ 	class QSocketNotifier *m_keyNotifier = nullptr;
+ 	int m_keyFd = -1;
++	int m_wfIpcFd = -1; // podglad/volume-keys registration, see claimCompositorVolumeKeys
++	void claimCompositorVolumeKeys(bool claim);
+ 
+     public:
+ 	// mirrored EXIF orientation (selfies saved as previewed); false: no EXIF orientation
+-- 
+2.55.0
+

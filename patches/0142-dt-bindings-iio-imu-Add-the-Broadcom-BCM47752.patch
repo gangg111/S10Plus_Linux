@@ -1,7 +1,7 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sun, 27 Sep 2026 02:46:06 +0200
-Subject: [PATCH 142/144] dt-bindings: iio: imu: Add the Broadcom BCM47752
+Subject: [PATCH] dt-bindings: iio: imu: Add the Broadcom BCM47752
 
 The BCM47752 is a GNSS receiver with a Cortex-M4 sensor hub.  On the
 Samsung Galaxy S10 family every motion and environment sensor sits

@@ -65,6 +65,8 @@ TABLES = {
     "exynos9820_post_init_cfg": "post_init_cfg_evt1_g3",
     "exynos9820_pre_pwr_hs_cfg": "calib_of_hs_rate_b",
     "exynos9820_post_pwr_hs_cfg": "post_calib_of_hs_rate_b",
+    "exynos9820_post_h8_enter_cfg": "post_h8_enter",
+    "exynos9820_pre_h8_exit_cfg": "pre_h8_exit",
 }
 
 # Tablice, ktore biegna dopiero przy przejsciu na tryb szybki. Tylko w nich
@@ -76,6 +78,9 @@ HS_ONLY_TABLES = {"calib_of_hs_rate_b", "post_calib_of_hs_rate_b"}
 PHY_LAYERS = {
     "PHY_PMA_COMN": "COMN",
     "PHY_PMA_TRSV": "TRSV",
+    # Zapis na kazdy PODLACZONY pas odbiorczy; na tej plycie podlaczone sa
+    # oba, wiec to zwykly wpis na pas.
+    "PHY_PMA_TRSV_SQ": "TRSV",
     "COMMON_WAIT": "DELAY",
     "PHY_EMB_CAL_WAIT": "WAIT_CAL",
     "PHY_EMB_CDR_WAIT": "WAIT_CDR",
@@ -250,10 +255,10 @@ def main():
             if want_modes is None:
                 fail("%s: nieznana maska trybu %s w linii %d, dopisz ja do "
                      "PMD_TO_MODES razem z uzasadnieniem" % (our_name, pmd, no))
+            # Poza tablicami trybu szybkiego PWR_MODE_ANY byloby za szerokie:
+            # tam linia PMD_HS musi byc ograniczona do trybu szybkiego wprost.
             if pmd == "PMD_HS" and their_name not in HS_ONLY_TABLES:
-                fail("%s: linia %d ma maske PMD_HS, a ta tablica biegnie takze "
-                     "poza trybem szybkim, wiec PWR_MODE_ANY jest za szerokie\n  %s"
-                     % (our_name, no, items[0]["src"]))
+                want_modes = {"PWR_MODE_HS_ANY"}
 
             have_modes = {it["mode"] for it in items}
             if have_modes != want_modes:

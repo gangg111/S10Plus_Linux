@@ -45,6 +45,3 @@ index 1d621dde20c..a7d67149a1f 100644
  		cmu_peric1: clock-controller@10800000 {
  			compatible = "samsung,exynos9820-cmu-peric1";
  			reg = <0x10800000 0x8000>;
--- 
-2.53.0.windows.1
-

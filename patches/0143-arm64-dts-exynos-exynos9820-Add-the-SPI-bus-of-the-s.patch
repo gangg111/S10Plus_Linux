@@ -1,8 +1,8 @@
 From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
 From: Artur Szafraniec <ganggg111@gmail.com>
 Date: Sun, 27 Sep 2026 02:46:07 +0200
-Subject: [PATCH 143/144] arm64: dts: exynos: exynos9820: Add the SPI bus of
- the sensor hub
+Subject: [PATCH] arm64: dts: exynos: exynos9820: Add the SPI bus of the sensor
+ hub
 
 The sensor hub of the Galaxy S10 family answers on the SPI master the
 vendor tree calls spi_17, which is the SPI function of USI16 in PERIC1.

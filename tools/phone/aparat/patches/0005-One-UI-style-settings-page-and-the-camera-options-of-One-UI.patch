@@ -1,0 +1,1953 @@
+From ee10a1fe6d70c8398606beecb920bba2b64b52af Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Thu, 1 Oct 2026 05:08:45 +0200
+Subject: [PATCH] One UI style settings page and the camera options of One UI
+
+The settings become a page like the One UI one: sections of rounded
+groups, value rows whose options open in a dialog, switches; a row shows
+only when the camera offers it. New options: QR codes in photo mode, a
+histogram and the metering mode (matrix, centre-weighted, spot, set as
+metering areas in Camera1 and Camera2) in PRO, a composition grid over the
+picture, a vertical swipe to switch cameras, selfies saved as previewed
+(mirrored EXIF orientation), the volume keys as the shutter (read from the
+key device, the compositor keeps them from the window), vibration on the
+shutter, reset of all settings, and the package version in About.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ CMakeLists.txt                         |   5 +
+ debian/changelog                       |  12 +
+ src/CMakeLists.txt                     |   1 +
+ src/camera-renderer.cpp                |  19 +
+ src/camera-renderer.h                  |  10 +
+ src/camx/cam2.cpp                      |  19 +-
+ src/camx/cam2.h                        |   3 +
+ src/hybris-camera-cam2.cpp             |  15 +-
+ src/hybris-camera-prefs.cpp            | 229 ++++++++
+ src/hybris-camera.cpp                  |  29 +-
+ src/hybris-camera.h                    |  48 ++
+ src/main.cpp                           |   1 +
+ src/qml/DefaultUI/DefaultUI.qml        |  65 ++-
+ src/qml/DefaultUI/ProPanel.qml         | 739 ++++++++++++++-----------
+ src/qml/main.qml                       |  62 ++-
+ src/translations/droidian-camera_pl.ts | 124 +++++
+ 16 files changed, 1019 insertions(+), 362 deletions(-)
+ create mode 100644 src/hybris-camera-prefs.cpp
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ea69c73..30a51fa 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -3,6 +3,11 @@ project (droidian-camera LANGUAGES C CXX)
+ 
+ set(CMAKE_AUTOMOC ON)
+ 
++# package version for "Camera info": first line of debian/changelog
++file(STRINGS ${CMAKE_SOURCE_DIR}/debian/changelog CHANGELOG_TOP LIMIT_COUNT 1)
++string(REGEX MATCH "\\(([^)]+)\\)" _ "${CHANGELOG_TOP}")
++add_compile_definitions(APP_VERSION="${CMAKE_MATCH_1}")
++
+ set(CMAKE_INCLUDE_CURRENT_DIR ON)
+ 
+ set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+diff --git a/debian/changelog b/debian/changelog
+index ae205b1..d2364d1 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,15 @@
++droidian-camera (26.1+s10plus5) unstable; urgency=medium
++
++  * One UI style settings page: sections, value rows with option dialogs,
++    switches; rows only for what the camera offers.
++  * QR codes scanned in photo mode, histogram and metering mode (matrix,
++    centre-weighted, spot through metering areas) in PRO, composition grid,
++    swipe up/down to switch cameras, selfies saved as previewed (mirrored
++    EXIF orientation), volume keys as the shutter (read from the key
++    device), vibration on the shutter, reset settings, version in About.
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 06:00:00 +0200
++
+ droidian-camera (26.1+s10plus4) unstable; urgency=medium
+ 
+   * PRO: white balance in Kelvin (2300-10000 K), gains from the sensor's own
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 2aacd19..987821d 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -29,6 +29,7 @@ set(APP_SOURCES
+ 		camera-extras.cpp
+ 		hybris-camera-pro.cpp
+ 		hybris-camera-cam2.cpp
++		hybris-camera-prefs.cpp
+ 		dng-writer.cpp)
+ 
+ set(APP_HEADERS
+diff --git a/src/camera-renderer.cpp b/src/camera-renderer.cpp
+index dce8027..ad343fc 100644
+--- a/src/camera-renderer.cpp
++++ b/src/camera-renderer.cpp
+@@ -226,6 +226,12 @@ void CameraRenderer::paint()
+ 	    readQrFrame();
+ 	}
+ 
++	if (m_histogramOn && m_histogramTimer.elapsed() >= 250) {
++		m_histogramTimer.restart();
++		renderQrFrame(); // the same small luminance frame
++		readHistogram();
++	}
++
+ 	if(m_needRecFrames){
+ 		renderToFBO(false);
+ 		createFrameBuffer(false);
+@@ -448,6 +454,19 @@ void CameraRenderer::readQrFrame()
+ 	});
+ }
+ 
++void CameraRenderer::readHistogram()
++{
++	std::vector<uint8_t> px(size_t(m_qrWidth) * m_qrHeight * 4);
++	glBindFramebuffer(GL_FRAMEBUFFER, m_qrFbo);
++	glPixelStorei(GL_PACK_ALIGNMENT, 1);
++	glReadPixels(0, 0, m_qrWidth, m_qrHeight, GL_RGBA, GL_UNSIGNED_BYTE, px.data());
++	glBindFramebuffer(GL_FRAMEBUFFER, 0);
++	QVector<int> bins(32, 0);
++	for (size_t i = 0; i < px.size(); i += 4)
++		bins[px[i] >> 3]++;
++	Q_EMIT histogramReady(bins);
++}
++
+ void CameraRenderer::decodeQr(const std::vector<uint8_t> &buffer)
+ {
+     struct quirc *quirc = quirc_new();
+diff --git a/src/camera-renderer.h b/src/camera-renderer.h
+index 4e8e6f1..88abd58 100644
+--- a/src/camera-renderer.h
++++ b/src/camera-renderer.h
+@@ -91,12 +91,19 @@ class CameraRenderer : public QObject, protected QOpenGLFunctions {
+ 	}
+ 
+ 	void setQrScan(bool scan);
++	// luminance histogram of the viewfinder, 4 times a second
++	void setHistogram(bool on)
++	{
++		m_histogramOn = on;
++		m_histogramTimer.restart();
++	}
+ 
+     Q_SIGNALS:
+ 	void readyForPreview();
+ 	void newFrameAvailable(std::vector<uint8_t> buffer);
+ 	void snapshotTaken(QImage image);
+ 	void newQrCode(QString qrCode);
++	void histogramReady(QVector<int> bins);
+ 
+     public Q_SLOTS:
+ 	void init();
+@@ -125,6 +132,9 @@ class CameraRenderer : public QObject, protected QOpenGLFunctions {
+     void decodeQr(const std::vector<uint8_t> &buffer);
+ 	void updateCam2Texture();
+ 	void dropCam2Frame();
++	void readHistogram();
++	bool m_histogramOn = false;
++	QElapsedTimer m_histogramTimer;
+ 
+ 	// Camera2 frames reach the texture as EGLImages of their hardware buffers
+ 	QMutex m_cam2Mutex;
+diff --git a/src/camx/cam2.cpp b/src/camx/cam2.cpp
+index 05fe745..a43e9ba 100644
+--- a/src/camx/cam2.cpp
++++ b/src/camx/cam2.cpp
+@@ -293,14 +293,23 @@ void controls(ACaptureRequest *r, const Cam2Settings *s, int iso, long long exp,
+ 			ACaptureRequest_setEntry_u8(r, ACAMERA_FLASH_MODE, 1, &torch);
+ 		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AE_LOCK, 1, &aeLock);
+ 		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AWB_LOCK, 1, &awbLock);
+-		const int *g = s->region;
++		const int aw = active[2] - active[0], ah = active[3] - active[1];
++		const auto area = [&](const int *g, int32_t *reg) {
++			reg[0] = active[0] + (g[0] + 1000) * aw / 2000;
++			reg[1] = active[1] + (g[1] + 1000) * ah / 2000;
++			reg[2] = active[0] + (g[2] + 1000) * aw / 2000;
++			reg[3] = active[1] + (g[3] + 1000) * ah / 2000;
++			reg[4] = 1000;
++		};
++		int32_t reg[5];
++		const int *g = s->region, *m = s->meter;
+ 		if (g[0] || g[1] || g[2] || g[3]) {
+-			const int aw = active[2] - active[0], ah = active[3] - active[1];
+-			const int32_t reg[5] = { active[0] + (g[0] + 1000) * aw / 2000, active[1] + (g[1] + 1000) * ah / 2000,
+-						 active[0] + (g[2] + 1000) * aw / 2000, active[1] + (g[3] + 1000) * ah / 2000,
+-						 1000 };
++			area(g, reg);
+ 			ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AF_REGIONS, 5, reg);
+ 			ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AE_REGIONS, 5, reg);
++		} else if (m[0] || m[1] || m[2] || m[3]) {
++			area(m, reg);
++			ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AE_REGIONS, 5, reg);
+ 		}
+ 		const uint8_t trigger = 0; // IDLE: a START goes out once, with capture()
+ 		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_TRIGGER, 1, &trigger);
+diff --git a/src/camx/cam2.h b/src/camx/cam2.h
+index 0374dd7..8ac3b72 100644
+--- a/src/camx/cam2.h
++++ b/src/camx/cam2.h
+@@ -47,6 +47,9 @@ struct Cam2Settings {
+ 	int kelvin; // 0: automatic white balance, otherwise colour temperature
+ 	int contrast; // 0: the HAL's tone curve, -2..2 flatter / steeper
+ 	int noise, edge; // -1: HAL default, otherwise android.noiseReduction.mode / android.edge.mode
++	// metering mode area (centre-weighted, spot), Camera1 frame; used when no
++	// area was tapped; all 0: the HAL's own (matrix) metering
++	int meter[4];
+ };
+ 
+ struct Cam2Dng;
+diff --git a/src/hybris-camera-cam2.cpp b/src/hybris-camera-cam2.cpp
+index 12955cb..e783622 100644
+--- a/src/hybris-camera-cam2.cpp
++++ b/src/hybris-camera-cam2.cpp
+@@ -32,6 +32,7 @@ struct Job {
+ 	QString base; // path without extension
+ 	int count = 1;
+ 	int orientation = 0;
++	bool mirror = false; // selfie saved as previewed
+ 	QStringList saved;
+ };
+ 
+@@ -41,8 +42,11 @@ void onJpeg(void *ctx, const unsigned char *data, int size, int index)
+ 	// One UI names burst frames like this too
+ 	const QString path = job->count > 1 ? job->base + QString("_BURST%1.jpg").arg(index + 1, 3, 10, QChar('0'))
+ 					    : job->base + ".jpg";
++	QByteArray jpeg(reinterpret_cast<const char *>(data), size);
++	if (job->mirror)
++		HybrisCamera::mirrorJpeg(jpeg);
+ 	QFile file(path);
+-	if (file.open(QIODevice::WriteOnly) && file.write(reinterpret_cast<const char *>(data), size) == size)
++	if (file.open(QIODevice::WriteOnly) && file.write(jpeg) == size)
+ 		job->saved.append(path);
+ 	else
+ 		qWarning() << "cam2: could not save" << path;
+@@ -296,6 +300,13 @@ Cam2Settings HybrisCamera::cam2Settings(bool pro) const
+ 	s.awbLock = p.value("auto-whitebalance-lock") == "true";
+ 	for (int i = 0; i < 4; i++)
+ 		s.region[i] = m_c2Region[i];
++	// metering mode (centre-weighted, spot) as a metering area
++	const int metering = m_prefs->value("metering").toInt();
++	const int half = metering == 1 ? 500 : metering == 2 ? 80 : 0;
++	if (half) {
++		s.meter[0] = s.meter[1] = -half;
++		s.meter[2] = s.meter[3] = half;
++	}
+ 	if (m_geotag && m_position.isValid()) {
+ 		const QGeoCoordinate c = m_position.coordinate();
+ 		s.gps = 1;
+@@ -320,6 +331,7 @@ void HybrisCamera::captureCam2(int count, bool raw)
+ 	job->base = m_picturePath + "/IMG" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz");
+ 	job->count = count;
+ 	job->orientation = s.orientation;
++	job->mirror = mirrorSelfie();
+ 	const int camId = m_cameraManager->camId();
+ 
+ 	m_busy = true;
+@@ -607,6 +619,7 @@ void HybrisCamera::stillCam2(int count, bool raw)
+ 	job->base = m_picturePath + "/IMG" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz");
+ 	job->count = count;
+ 	job->orientation = s.orientation;
++	job->mirror = mirrorSelfie();
+ 	m_busy = true;
+ 	Q_EMIT busyChanged();
+ 	const Cam2Api *api = m_c2;
+diff --git a/src/hybris-camera-prefs.cpp b/src/hybris-camera-prefs.cpp
+new file mode 100644
+index 0000000..4d91d32
+--- /dev/null
++++ b/src/hybris-camera-prefs.cpp
+@@ -0,0 +1,229 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Preferences of the One UI style settings page: QR codes in photo mode,
++ * histogram, metering mode, selfies saved as previewed (mirrored), haptic
++ * shutter, reset. Grid, swipe and volume keys are handled in QML.
++ */
++
++#include <QDebug>
++#include <QDir>
++#include <QFile>
++#include <QGuiApplication>
++#include <QSettings>
++#include <QSocketNotifier>
++
++#include <cstring>
++#include <fcntl.h>
++#include <linux/input.h>
++#include <unistd.h>
++
++#include <hybris-camera.h>
++
++namespace {
++
++struct Pref {
++	const char *key;
++	QVariant value;
++};
++
++// defaults like One UI
++const Pref PREFS[] = {
++	{ "qr", true }, { "grid", false }, { "mirror", true }, { "swipe", true },
++	{ "volumeKeys", true }, { "vibration", false }, { "metering", 0 }, { "histogram", true },
++};
++
++const int CENTRE_HALF = 500; // centre-weighted: the middle half of the frame
++const int SPOT_HALF = 80; // spot: about 8% of the width
++
++quint16 read16(const uchar *p, bool le)
++{
++	return le ? quint16(p[0] | p[1] << 8) : quint16(p[0] << 8 | p[1]);
++}
++
++quint32 read32(const uchar *p, bool le)
++{
++	return le ? quint32(p[0] | p[1] << 8 | p[2] << 16 | quint32(p[3]) << 24)
++		  : quint32(quint32(p[0]) << 24 | p[1] << 16 | p[2] << 8 | p[3]);
++}
++
++} // namespace
++
++// The EXIF orientation of the horizontally mirrored picture (checked for all
++// eight values against Pillow's exif_transpose): the pixels stay, viewers show
++// the selfie the way the preview did.
++bool HybrisCamera::mirrorJpeg(QByteArray &jpeg)
++{
++	static const quint16 mirrored[9] = { 0, 2, 1, 4, 3, 6, 5, 8, 7 };
++	uchar *d = reinterpret_cast<uchar *>(jpeg.data());
++	const int n = jpeg.size();
++	if (n < 4 || d[0] != 0xff || d[1] != 0xd8)
++		return false;
++	int pos = 2;
++	while (pos + 4 <= n && d[pos] == 0xff) {
++		const int marker = d[pos + 1];
++		const int len = d[pos + 2] << 8 | d[pos + 3];
++		if (marker == 0xda) // image data: no EXIF before it
++			return false;
++		if (marker == 0xe1 && pos + 10 + 8 <= n && memcmp(d + pos + 4, "Exif\0\0", 6) == 0) {
++			uchar *t = d + pos + 10;
++			const int tlen = qMin(len - 8, n - pos - 10);
++			const bool le = t[0] == 'I';
++			const quint32 ifd = read32(t + 4, le);
++			if (ifd + 2 > quint32(tlen))
++				return false;
++			const int count = read16(t + ifd, le);
++			for (int i = 0; i < count; i++) {
++				uchar *e = t + ifd + 2 + 12 * i;
++				if (e + 12 > t + tlen)
++					return false;
++				if (read16(e, le) == 0x0112) {
++					const quint16 o = read16(e + 8, le);
++					if (o < 1 || o > 8)
++						return false;
++					const quint16 m = mirrored[o];
++					e[8] = le ? m & 0xff : m >> 8;
++					e[9] = le ? m >> 8 : m & 0xff;
++					return true;
++				}
++			}
++			return false;
++		}
++		pos += 2 + len;
++	}
++	return false;
++}
++
++void HybrisCamera::initPrefs()
++{
++	m_prefs = new QQmlPropertyMap(this);
++	QSettings s;
++	for (const Pref &p : PREFS)
++		m_prefs->insert(p.key, s.value(QString("Prefs/") + p.key, p.value));
++	connect(m_prefs, &QQmlPropertyMap::valueChanged, this, [this](const QString &key, const QVariant &value) {
++		QSettings().setValue("Prefs/" + key, value);
++		prefChanged(key);
++	});
++	connect(this, &HybrisCamera::proChanged, this, &HybrisCamera::applyQrScan);
++	connect(this, &HybrisCamera::camModeChanged, this, &HybrisCamera::applyQrScan);
++	connect(m_cameraManager, &CameraManager::cameraChanged, this, &HybrisCamera::applyMetering);
++	connect(qGuiApp, &QGuiApplication::applicationStateChanged, this, &HybrisCamera::applyVolumeKeys);
++	applyVolumeKeys();
++}
++
++void HybrisCamera::prefChanged(const QString &key)
++{
++	if (key == "qr" || key == "histogram")
++		applyQrScan();
++	else if (key == "metering")
++		applyMetering();
++	else if (key == "volumeKeys")
++		applyVolumeKeys();
++}
++
++// Volume keys as the shutter. The compositor keeps them from the window, so
++// they are read from the key device (group android_input). No exclusive grab:
++// the same device carries the power key.
++void HybrisCamera::applyVolumeKeys()
++{
++	const bool on = m_prefs->value("volumeKeys").toBool() &&
++			qGuiApp->applicationState() == Qt::ApplicationActive;
++	if (on && !m_keyNotifier) {
++		const QDir dir("/sys/class/input");
++		for (const QString &ev : dir.entryList({ "event*" }, QDir::Dirs | QDir::System)) {
++			QFile name(dir.filePath(ev + "/device/name"));
++			if (!name.open(QIODevice::ReadOnly) || name.readAll().trimmed() != "gpio_keys")
++				continue;
++			m_keyFd = ::open(("/dev/input/" + ev).toUtf8().constData(), O_RDONLY | O_NONBLOCK | O_CLOEXEC);
++			break;
++		}
++		if (m_keyFd < 0) {
++			qWarning() << "volume keys: no readable gpio_keys device";
++			return;
++		}
++		m_keyNotifier = new QSocketNotifier(m_keyFd, QSocketNotifier::Read, this);
++		connect(m_keyNotifier, &QSocketNotifier::activated, this, [this]() {
++			input_event ev;
++			while (::read(m_keyFd, &ev, sizeof(ev)) == sizeof(ev))
++				if (ev.type == EV_KEY && ev.value == 1 && (ev.code == KEY_VOLUMEUP || ev.code == KEY_VOLUMEDOWN))
++					Q_EMIT volumeKeyPressed();
++		});
++	} else if (!on && m_keyNotifier) {
++		delete m_keyNotifier;
++		m_keyNotifier = nullptr;
++		::close(m_keyFd);
++		m_keyFd = -1;
++	}
++}
++
++// QR codes in QR mode and, with prefs.qr, in photo mode; the histogram in PRO
++void HybrisCamera::applyQrScan()
++{
++	if (!m_renderer)
++		return;
++	const CameraManager::CamMode mode = m_cameraManager->camMode();
++	const bool pro = m_proActive || m_proVideoActive;
++	m_renderer->setQrScan(mode == CameraManager::QrMode ||
++			      (mode == CameraManager::PictureMode && !pro && m_prefs->value("qr").toBool()));
++	const bool histogram = pro && m_prefs->value("histogram").toBool();
++	m_renderer->setHistogram(histogram);
++	if (!histogram && !m_histogram.isEmpty()) {
++		m_histogram.clear();
++		Q_EMIT histogramChanged();
++	}
++}
++
++// metering mode as a metering area; a tapped area takes over until reset
++void HybrisCamera::applyMetering()
++{
++	const int m = m_prefs->value("metering").toInt();
++	const int half = m == 1 ? CENTRE_HALF : m == 2 ? SPOT_HALF : 0;
++	if (m_c2s) {
++		pushCam2(); // cam2Settings() fills the meter area
++		return;
++	}
++	CameraControl *cc = m_cameraManager->cameraControl();
++	if (!cc)
++		return;
++	if (!half) {
++		android_camera_reset_metering_region(cc);
++		return;
++	}
++	FocusRegion region{ -half, -half, half, half, 1000 };
++	android_camera_set_metering_region(cc, &region);
++}
++
++void HybrisCamera::vibrate(int ms)
++{
++	if (!m_prefs->value("vibration").toBool())
++		return;
++	QFile f("/sys/class/timed_output/vibrator/enable");
++	if (f.open(QIODevice::WriteOnly))
++		f.write(QByteArray::number(qBound(5, ms, 200)));
++}
++
++void HybrisCamera::resetSettings()
++{
++	if (m_isRecording || m_busy)
++		return;
++	exitCam2();
++	QSettings s;
++	const QVariant lastCamera = s.value("AppSettings/last-camera");
++	s.clear();
++	s.setValue("AppSettings/last-camera", lastCamera);
++	for (const Pref &p : PREFS)
++		m_prefs->insert(p.key, p.value);
++	loadProSettings();
++	m_cameraManager->setJpegQuality(95);
++	m_cameraManager->setWithMic(true);
++	setVideoFps(30);
++	setHevc(false);
++	setFaceDetection(false);
++	setGeotag(false);
++	setBurstCount(10);
++	Q_EMIT proChanged();
++	m_cameraManager->reconnectCamera(); // HAL parameters back to the defaults
++	applyQrScan();
++	applyMetering();
++	scheduleCam2();
++	qDebug() << "settings reset";
++}
+\ No newline at end of file
+diff --git a/src/hybris-camera.cpp b/src/hybris-camera.cpp
+index 3236441..4bda361 100644
+--- a/src/hybris-camera.cpp
++++ b/src/hybris-camera.cpp
+@@ -12,6 +12,8 @@
+ #include <QDir>
+ #include <QTimer>
+ 
++#include <algorithm>
++
+ #include <fcntl.h>
+ #include <unistd.h>
+ 
+@@ -99,6 +101,7 @@ HybrisCamera::HybrisCamera()
+ 	setFaceDetection(settings.value("AppSettings/face-detection", false).toBool());
+ 	setGeotag(settings.value("AppSettings/geotag", false).toBool());
+ 	loadProSettings();
++	initPrefs();
+ 	refreshCam2();
+ 
+ 	// live Camera2 session of the PRO modes
+@@ -181,8 +184,11 @@ void HybrisCamera::takePicture()
+ 	m_cameraManager->takePicture();
+ }
+ 
+-void HybrisCamera::saveJpegData(const QByteArray &jpeg)
++void HybrisCamera::saveJpegData(const QByteArray &original)
+ {
++	QByteArray jpeg = original;
++	if (mirrorSelfie())
++		mirrorJpeg(jpeg); // saved the way the preview showed it
+ 	QString filename =
+ 		m_picturePath + "/IMG" +
+ 		QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz") +
+@@ -353,6 +359,20 @@ void HybrisCamera::sync()
+ 		            m_qrCode = qrCode;
+ 		            Q_EMIT qrCodeChanged();
+ 		        });
++			connect(m_renderer, &CameraRenderer::histogramReady, this,
++				[this](const QVector<int> &bins) {
++					// 0..1 against the fullest bin, for the overlay
++					const int top = qMax(1, *std::max_element(bins.begin(), bins.end()));
++					QVariantList list;
++					for (int b : bins)
++						list.append(double(b) / top);
++					m_histogram = list;
++					Q_EMIT histogramChanged();
++				}, Qt::QueuedConnection);
++			QMetaObject::invokeMethod(this, [this]() {
++				applyQrScan();
++				applyMetering();
++			}, Qt::QueuedConnection);
+ 		}
+ 	}
+ 	m_renderer->setWindow(window());
+@@ -408,12 +428,7 @@ void HybrisCamera::setCamMode(CameraManager::CamMode mode)
+ 		m_c2Failures = 0;
+ 		scheduleCam2();
+ 		m_cameraManager->setCamMode(mode);
+-		Q_EMIT camModeChanged();
+-
+-		if(mode != CameraManager::CamMode::QrMode)
+-			setQrScan(false);
+-		else
+-			setQrScan(true);
++		Q_EMIT camModeChanged(); // applyQrScan() follows the mode
+ 	}
+ }
+ 
+diff --git a/src/hybris-camera.h b/src/hybris-camera.h
+index 63a4b43..b8a6be9 100644
+--- a/src/hybris-camera.h
++++ b/src/hybris-camera.h
+@@ -17,6 +17,7 @@
+ #include <QVariantMap>
+ #include <QGeoPositionInfo>
+ #include <QGeoPositionInfoSource>
++#include <QQmlPropertyMap>
+ 
+ #include <camera-renderer.h>
+ #include <videoquality.h>
+@@ -94,6 +95,13 @@ class HybrisCamera : public QQuickItem {
+ 	// what the sensor uses right now (automatic values included)
+ 	Q_PROPERTY(int liveIso READ liveIso NOTIFY liveStateChanged)
+ 	Q_PROPERTY(int liveExposureUs READ liveExposureUs NOTIFY liveStateChanged)
++	// app preferences of the One UI style settings page, saved under "Prefs/":
++	// qr (scan codes in photo mode), grid, mirror (selfies as previewed), swipe
++	// (switch cameras by swiping), volumeKeys, vibration, metering (0 matrix,
++	// 1 centre-weighted, 2 spot), histogram
++	Q_PROPERTY(QQmlPropertyMap *prefs READ prefs CONSTANT)
++	// luminance histogram of the viewfinder (32 bins, 0..1) while prefs.histogram is on
++	Q_PROPERTY(QVariantList histogram READ histogram NOTIFY histogramChanged)
+ 
+     public:
+ 	HybrisCamera();
+@@ -124,6 +132,24 @@ class HybrisCamera : public QQuickItem {
+ 	Q_INVOKABLE void resetFocus();
+ 	// burstCount JPEGs in one Camera2 sequence
+ 	Q_INVOKABLE void takeBurst();
++	// every setting back to its default (camera reopened)
++	Q_INVOKABLE void resetSettings();
++	// where the viewfinder picture is drawn in this item (grid lines)
++	Q_INVOKABLE QRectF previewArea() const
++	{
++		return previewRect();
++	}
++	// short haptic pulse (prefs.vibration)
++	Q_INVOKABLE void vibrate(int ms = 25);
++
++	QQmlPropertyMap *prefs() const
++	{
++		return m_prefs;
++	}
++	QVariantList histogram() const
++	{
++		return m_histogram;
++	}
+ 
+ 	QVariantMap cam2() const
+ 	{
+@@ -386,6 +412,8 @@ class HybrisCamera : public QQuickItem {
+ 	void busyChanged();
+ 	void cam2LiveChanged();
+ 	void liveStateChanged();
++	void histogramChanged();
++	void volumeKeyPressed();
+ 
+     public Q_SLOTS:
+ 	void sync();
+@@ -450,6 +478,26 @@ class HybrisCamera : public QQuickItem {
+ 	class Cam2Recorder *m_c2Recorder = nullptr;
+ 	QThread *m_c2RecorderThread = nullptr;
+ 	uint m_inhibitCookie = 0;
++	// preferences page
++	void initPrefs();
++	void prefChanged(const QString &key);
++	void applyQrScan();
++	void applyMetering();
++	void applyVolumeKeys();
++	class QSocketNotifier *m_keyNotifier = nullptr;
++	int m_keyFd = -1;
++
++    public:
++	// mirrored EXIF orientation (selfies saved as previewed); false: no EXIF orientation
++	static bool mirrorJpeg(QByteArray &jpeg);
++
++    private:
++	bool mirrorSelfie() const
++	{
++		return m_cameraManager->currentCamera().type != 0 && m_prefs->value("mirror").toBool();
++	}
++	QQmlPropertyMap *m_prefs = nullptr;
++	QVariantList m_histogram;
+ 	QVariantMap m_cam2;
+ 	bool m_proActive = false;
+ 	int m_manualIso = 0;
+diff --git a/src/main.cpp b/src/main.cpp
+index 637c299..6cc42a2 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -19,6 +19,7 @@ int main(int argc, char **argv)
+ 	app.setOrganizationName("Droidian");
+     app.setOrganizationDomain("droidian.org");
+     app.setApplicationName("droidian-camera");
++    app.setApplicationVersion(APP_VERSION);
+     // geoclue identifies the app by its desktop file (geotagging)
+     app.setDesktopFileName("droidian-camera");
+ 
+diff --git a/src/qml/DefaultUI/DefaultUI.qml b/src/qml/DefaultUI/DefaultUI.qml
+index 6652fee..8a5a815 100644
+--- a/src/qml/DefaultUI/DefaultUI.qml
++++ b/src/qml/DefaultUI/DefaultUI.qml
+@@ -117,9 +117,23 @@ Item {
+             }
+         }
+     }
++    // the other side's camera (the lens used last there)
++    function switchSide() {
++        if (camera.isRecording)
++            return
++        root.lastLens[root.frontSide ? "front" : "back"] = camera.camId
++        const other = camera.lenses.filter(l => l.front !== root.frontSide)
++        if (other.length === 0)
++            return
++        const remembered = root.lastLens[root.frontSide ? "back" : "front"]
++        camera.camId = other.some(l => l.id === remembered) ? remembered
++                     : other.reduce((a, b) => a.id < b.id ? a : b).id
++    }
++
+     function shoot() {
+         if (camera.camMode === HybrisCamera.QrMode)
+             return
++        camera.vibrate()
+         if (root.videoLike) {
+             camera.isRecording ? camera.stopRecording() : camera.startRecording()
+             return
+@@ -309,6 +323,13 @@ Item {
+             }
+         }
+ 
++        IconButton {
++            visible: root.proLike
++            icon: ["\ue3ec", "\ue3b5", "\ue3dc"][camera.prefs.metering] || "\ue3ec"
++            color: camera.prefs.metering > 0 ? root.yellow : "white"
++            onClicked: camera.prefs.metering = (camera.prefs.metering + 1) % 3
++        }
++
+         // RAW (DNG next to the JPEG) in PRO
+         Rectangle {
+             visible: root.uiMode === "pro" && root.c2.raw === true
+@@ -384,6 +405,33 @@ Item {
+         }
+     }
+ 
++    Rectangle {
++        id: histogramBox
++        visible: root.proLike && camera.prefs.histogram && camera.histogram.length > 0 && !settingsSheet.visible
++        anchors.top: topBar.bottom
++        anchors.right: parent.right
++        anchors.topMargin: 70
++        anchors.rightMargin: 14
++        width: 150
++        height: 70
++        radius: 8
++        color: Qt.rgba(0, 0, 0, 0.35)
++        Row {
++            anchors.fill: parent
++            anchors.margins: 6
++            Repeater {
++                model: camera.histogram
++                delegate: Rectangle {
++                    required property real modelData
++                    width: (histogramBox.width - 12) / 32
++                    height: Math.max(1, modelData * (histogramBox.height - 12))
++                    anchors.bottom: parent.bottom
++                    color: Qt.rgba(1, 1, 1, 0.85)
++                }
++            }
++        }
++    }
++
+     // pickers opened from the top bar
+     Item {
+         id: topPickers
+@@ -934,15 +982,7 @@ Item {
+                 }
+                 MouseArea {
+                     anchors.fill: parent
+-                    onClicked: {
+-                        root.lastLens[root.frontSide ? "front" : "back"] = camera.camId
+-                        const other = camera.lenses.filter(l => l.front !== root.frontSide)
+-                        if (other.length === 0)
+-                            return
+-                        const remembered = root.lastLens[root.frontSide ? "back" : "front"]
+-                        camera.camId = other.some(l => l.id === remembered) ? remembered
+-                                     : other.reduce((a, b) => a.id < b.id ? a : b).id
+-                    }
++                    onClicked: root.switchSide()
+                 }
+             }
+         }
+@@ -1059,11 +1099,8 @@ Item {
+     ProPanel {
+         id: settingsSheet
+         visible: false
+-        anchors.top: topBar.bottom
+-        anchors.left: parent.left
+-        anchors.right: parent.right
+-        anchors.margins: 12
+-        height: parent.height * 0.62
++        anchors.fill: parent
++        z: 10
+     }
+ 
+     // QR mode: back to photo
+diff --git a/src/qml/DefaultUI/ProPanel.qml b/src/qml/DefaultUI/ProPanel.qml
+index 18107a6..158c49f 100644
+--- a/src/qml/DefaultUI/ProPanel.qml
++++ b/src/qml/DefaultUI/ProPanel.qml
+@@ -1,31 +1,31 @@
+ /* SPDX-License-Identifier: GPL-2.0-only
+  *
+- * Every Camera1 control the HAL of the current camera reports. Sections are
+- * built from the HAL's own capability keys (…-values, …-supported, ranges),
+- * so a camera shows only what it can do.
++ * Camera settings page in the style of One UI: sections of rounded groups,
++ * value rows (current value in blue, options in a dialog) and switches. Rows
++ * appear only for what the current camera (HAL capability keys, Camera2
++ * abilities) really offers.
+  */
+ 
+ import QtQuick
+ import QtQuick.Layouts
+ import QtQuick.Controls
+ import HybrisCamera
+-import ThemeUtils
+ 
+ Rectangle {
+     id: panel
+-    color: Qt.rgba(0, 0, 0, 0.85)
+-    radius: 16
++    color: "black"
+ 
+     readonly property var p: camera.parameters
+-    readonly property color accent: ThemeUtils.getAccentColor()
++    readonly property color blue: "#3e91ff"
++    readonly property color group: "#1c1c1e"
++    readonly property bool photo: camera.camMode === HybrisCamera.PictureMode
++    readonly property bool video: camera.camMode === HybrisCamera.VideoMode
++    readonly property bool pro: camera.proActive || camera.proVideoActive
+ 
+     function values(key) {
+         const v = p[key]
+         return v ? v.split(",").filter(s => s.length > 0) : []
+     }
+-    function supported(key) {
+-        return p[key] === "true"
+-    }
+ 
+     readonly property var labels: ({
+         "auto": qsTr("Auto"), "off": qsTr("Off"), "on": qsTr("On"),
+@@ -43,405 +43,476 @@ Rectangle {
+         return labels[v] !== undefined ? labels[v] : v
+     }
+ 
+-    // one row of mutually exclusive choices bound to a HAL key
+-    component Choice: ColumnLayout {
+-        id: choice
+-        property string title
+-        property string key
+-        property var options: panel.values(key + "-values")
+-        visible: options.length > 1
++    // options dialog: [{ text, value }], current value, apply(value)
++    function choose(title, options, current, apply) {
++        dialog.title = title
++        dialog.options = options
++        dialog.current = current
++        dialog.apply = apply
++        dialog.visible = true
++    }
++
++    MouseArea {
++        anchors.fill: parent // the page takes every touch
++    }
++
++    component SectionLabel: Text {
+         Layout.fillWidth: true
+-        spacing: 6
++        Layout.leftMargin: 30
++        Layout.topMargin: 14
++        color: "#9a9a9e"
++        font.pixelSize: 15
++        font.bold: true
++    }
+ 
+-        Text {
+-            text: choice.title
+-            color: "white"
+-            font.pixelSize: 15
+-            font.bold: true
+-        }
+-        Flow {
+-            Layout.fillWidth: true
+-            spacing: 6
+-            Repeater {
+-                model: choice.options
+-                delegate: Chip {
+-                    required property string modelData
+-                    text: panel.label(modelData)
+-                    selected: panel.p[choice.key] === modelData
+-                    onClicked: camera.setParameter(choice.key, modelData)
+-                }
+-            }
++    component Group: Rectangle {
++        default property alias rows: groupColumn.data
++        Layout.fillWidth: true
++        Layout.leftMargin: 14
++        Layout.rightMargin: 14
++        implicitHeight: groupColumn.implicitHeight
++        radius: 26
++        color: panel.group
++        ColumnLayout {
++            id: groupColumn
++            width: parent.width
++            spacing: 0
+         }
+     }
+ 
+-    component Chip: Rectangle {
+-        id: chip
+-        property string text
+-        property bool selected: false
++    // value row: title, current value in blue, tap opens the options
++    component ValueRow: Item {
++        id: vr
++        property string title
++        property string value
+         signal clicked()
+-        implicitWidth: chipText.implicitWidth + 24
+-        implicitHeight: 34
+-        radius: height / 2
+-        color: selected ? panel.accent : Qt.rgba(1, 1, 1, 0.12)
+-        Text {
+-            id: chipText
+-            anchors.centerIn: parent
+-            text: chip.text
+-            color: chip.selected ? "black" : "white"
+-            font.pixelSize: 14
++        Layout.fillWidth: true
++        implicitHeight: vrColumn.implicitHeight + 34
++        Column {
++            id: vrColumn
++            anchors.left: parent.left
++            anchors.right: parent.right
++            anchors.leftMargin: 24
++            anchors.rightMargin: 24
++            anchors.verticalCenter: parent.verticalCenter
++            spacing: 4
++            Text {
++                width: parent.width
++                text: vr.title
++                color: "white"
++                font.pixelSize: 19
++                wrapMode: Text.WordWrap
++            }
++            Text {
++                visible: vr.value !== ""
++                text: vr.value
++                color: panel.blue
++                font.pixelSize: 15
++            }
+         }
+         MouseArea {
+             anchors.fill: parent
+-            onClicked: chip.clicked()
++            onClicked: vr.clicked()
+         }
+     }
+ 
+-    component Toggle: RowLayout {
+-        id: toggle
++    component ToggleRow: Item {
++        id: tr
+         property string title
+         property bool checked
+         signal toggled(bool on)
+         Layout.fillWidth: true
++        implicitHeight: Math.max(70, trText.implicitHeight + 34)
+         Text {
+-            text: toggle.title
++            id: trText
++            anchors.left: parent.left
++            anchors.right: sw.left
++            anchors.leftMargin: 24
++            anchors.rightMargin: 16
++            anchors.verticalCenter: parent.verticalCenter
++            text: tr.title
+             color: "white"
+-            font.pixelSize: 15
+-            font.bold: true
+-            Layout.fillWidth: true
++            font.pixelSize: 19
++            wrapMode: Text.WordWrap
+         }
+-        // own switch: the platform style draws it dark on this dark panel
+         Rectangle {
++            id: sw
++            anchors.right: parent.right
++            anchors.rightMargin: 22
++            anchors.verticalCenter: parent.verticalCenter
+             width: 52
+             height: 30
+-            radius: height / 2
+-            color: toggle.checked ? panel.accent : Qt.rgba(1, 1, 1, 0.25)
++            radius: 15
++            color: tr.checked ? panel.blue : "#4a4a4e"
+             Rectangle {
+-                width: 24
+-                height: 24
+-                radius: 12
+-                y: 3
+-                x: toggle.checked ? parent.width - width - 3 : 3
++                width: 22
++                height: 22
++                radius: 11
++                y: 4
++                x: tr.checked ? parent.width - width - 4 : 4
+                 color: "white"
+                 Behavior on x { NumberAnimation { duration: 120 } }
+             }
++        }
++        MouseArea {
++            anchors.fill: parent
++            onClicked: tr.toggled(!tr.checked)
++        }
++    }
++
++    // value row bound to a Camera1 HAL key (<key>-values)
++    component HalRow: ValueRow {
++        id: hr
++        property string key
++        readonly property var options: panel.values(key + "-values")
++        visible: options.length > 1
++        value: panel.label(panel.p[key] || "")
++        onClicked: panel.choose(title, options.map(o => ({ text: panel.label(o), value: o })), panel.p[key],
++                                v => camera.setParameter(hr.key, v))
++    }
++
++    // ------------------------------------------------------------ header
++    Item {
++        id: header
++        anchors.top: parent.top
++        anchors.left: parent.left
++        anchors.right: parent.right
++        height: 84
++        Text {
++            id: back
++            anchors.left: parent.left
++            anchors.leftMargin: 22
++            anchors.verticalCenter: parent.verticalCenter
++            text: "" // arrow_back_ios
++            font.family: mdiFont.name
++            font.pixelSize: 28
++            color: "white"
+             MouseArea {
+                 anchors.fill: parent
+-                anchors.margins: -8
+-                onClicked: toggle.toggled(!toggle.checked)
++                anchors.margins: -14
++                onClicked: panel.visible = false
+             }
+         }
++        Text {
++            anchors.left: back.right
++            anchors.leftMargin: 18
++            anchors.verticalCenter: parent.verticalCenter
++            text: qsTr("Camera settings")
++            color: "white"
++            font.pixelSize: 26
++            font.bold: true
++        }
+     }
+ 
+     Flickable {
+         id: flick
+-        anchors.fill: parent
+-        anchors.margins: 14
+-        contentHeight: column.implicitHeight
++        anchors.top: header.bottom
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.bottom: parent.bottom
++        contentHeight: column.implicitHeight + 40
+         clip: true
+ 
+         ColumnLayout {
+             id: column
+             width: flick.width
+-            spacing: 14
++            spacing: 8
+ 
+             Text {
+                 visible: !camera.proAvailable
+                 Layout.fillWidth: true
++                Layout.margins: 24
+                 wrapMode: Text.WordWrap
+                 color: "#ffb74d"
+-                font.pixelSize: 14
++                font.pixelSize: 15
+                 text: qsTr("Advanced controls unavailable: libcamx.so not loaded")
+             }
+ 
+-            // exposure compensation: HAL index between min/max, step in EV
+-            ColumnLayout {
+-                readonly property int evMin: parseInt(panel.p["min-exposure-compensation"] || "0")
+-                readonly property int evMax: parseInt(panel.p["max-exposure-compensation"] || "0")
+-                readonly property real evStep: parseFloat(panel.p["exposure-compensation-step"] || "0")
+-                id: ev
+-                visible: evMax > evMin && evStep > 0
+-                Layout.fillWidth: true
+-                RowLayout {
+-                    Layout.fillWidth: true
+-                    Text {
+-                        text: qsTr("Exposure")
+-                        color: "white"
+-                        font.pixelSize: 15
+-                        font.bold: true
+-                        Layout.fillWidth: true
+-                    }
+-                    Text {
+-                        readonly property real evValue: parseInt(panel.p["exposure-compensation"] || "0") * ev.evStep
+-                        text: (evValue > 0 ? "+" : "") + evValue.toFixed(1) + " EV"
+-                        color: panel.accent
+-                        font.pixelSize: 15
+-                    }
++            SectionLabel { text: qsTr("Smart features") }
++            Group {
++                ToggleRow {
++                    title: qsTr("Scan QR codes")
++                    checked: camera.prefs.qr
++                    onToggled: on => camera.prefs.qr = on
+                 }
+-                Slider {
+-                    Layout.fillWidth: true
+-                    from: ev.evMin
+-                    to: ev.evMax
+-                    stepSize: 1
+-                    value: parseInt(panel.p["exposure-compensation"] || "0")
+-                    onMoved: camera.setParameter("exposure-compensation", Math.round(value).toString())
++                ToggleRow {
++                    visible: parseInt(panel.p["max-num-detected-faces-hw"] || "0") > 0
++                    title: qsTr("Face detection")
++                    checked: camera.faceDetection
++                    onToggled: on => camera.faceDetection = on
+                 }
+             }
+ 
+-            Toggle {
+-                visible: panel.supported("auto-exposure-lock-supported")
+-                title: qsTr("Lock exposure (AE)")
+-                checked: panel.p["auto-exposure-lock"] === "true"
+-                onToggled: on => camera.setParameter("auto-exposure-lock", on ? "true" : "false")
+-            }
+-            Toggle {
+-                visible: panel.supported("auto-whitebalance-lock-supported")
+-                title: qsTr("Lock white balance (AWB)")
+-                checked: panel.p["auto-whitebalance-lock"] === "true"
+-                onToggled: on => camera.setParameter("auto-whitebalance-lock", on ? "true" : "false")
+-            }
+-
+-            Choice { title: qsTr("Scene"); key: "scene-mode" }
+-            Choice { title: qsTr("White balance"); key: "whitebalance" }
+-            Choice { title: qsTr("Focus"); key: "focus-mode" }
+-            Choice { title: qsTr("Color effect"); key: "effect" }
+-            Choice { title: qsTr("Anti-flicker"); key: "antibanding" }
+-
+-            Toggle {
+-                visible: parseInt(panel.p["max-num-detected-faces-hw"] || "0") > 0
+-                title: qsTr("Face detection")
+-                checked: camera.faceDetection
+-                onToggled: on => camera.faceDetection = on
+-            }
+-
+-            // noise reduction and sharpening of the live PRO session
+-            Repeater {
+-                model: camera.cam2Live && (camera.proActive || camera.proVideoActive) ? [
+-                    // names of the android.noiseReduction.mode / android.edge.mode values
+-                    { title: qsTr("Noise reduction"), modes: camera.cam2.noiseModes || [], prop: "noiseMode",
+-                      names: [qsTr("Off"), qsTr("Fast"), qsTr("High quality"), qsTr("Minimal"), qsTr("Zero shutter lag")] },
+-                    { title: qsTr("Sharpening"), modes: camera.cam2.edgeModes || [], prop: "edgeMode",
+-                      names: [qsTr("Off"), qsTr("Fast"), qsTr("High quality"), qsTr("Zero shutter lag")] }
+-                ] : []
+-                delegate: ColumnLayout {
+-                    id: ppRow
+-                    required property var modelData
+-                    readonly property string prop: modelData.prop
+-                    readonly property var names: modelData.names
+-                    Layout.fillWidth: true
+-                    Text {
+-                        text: modelData.title
+-                        color: "white"
+-                        font.pixelSize: 15
+-                        font.bold: true
+-                    }
+-                    Flow {
+-                        Layout.fillWidth: true
+-                        spacing: 6
+-                        Chip {
+-                            text: qsTr("Default")
+-                            selected: camera[ppRow.prop] === -1
+-                            onClicked: camera[ppRow.prop] = -1
+-                        }
+-                        Repeater {
+-                            model: modelData.modes
+-                            delegate: Chip {
+-                                required property int modelData
+-                                text: ppRow.names[modelData] || modelData
+-                                selected: camera[ppRow.prop] === modelData
+-                                onClicked: camera[ppRow.prop] = modelData
+-                            }
+-                        }
++            SectionLabel { text: qsTr("Photos"); visible: panel.photo }
++            Group {
++                visible: panel.photo
++                ValueRow {
++                    id: sizeRow
++                    readonly property var list: panel.values("picture-size-values")
++                        .map(s => { const wh = s.split("x"); return { w: parseInt(wh[0]), h: parseInt(wh[1]) } })
++                        .sort((a, b) => b.w * b.h - a.w * a.h)
++                    function name(w, h) {
++                        const mp = w * h / 1e6
++                        return (mp >= 1 ? mp.toFixed(1) + " MP" : w + "x" + h) + "  " + w + "x" + h
+                     }
++                    visible: list.length > 0
++                    title: qsTr("Photo size")
++                    value: { const wh = camera.pictureSize.split("x"); return name(parseInt(wh[0]), parseInt(wh[1])) }
++                    onClicked: panel.choose(title, list.map(s => ({ text: name(s.w, s.h), value: s.w + "x" + s.h })),
++                                            camera.pictureSize,
++                                            v => { const wh = v.split("x"); camera.setPictureSize(parseInt(wh[0]), parseInt(wh[1])) })
+                 }
+-            }
+-
+-            Toggle {
+-                visible: camera.cam2.ois === true
+-                title: qsTr("Optical stabilization (PRO)")
+-                checked: camera.ois
+-                onToggled: on => camera.ois = on
+-            }
+-
+-            ColumnLayout {
+-                visible: camera.cam2.burst === true && camera.camMode === HybrisCamera.PictureMode
+-                Layout.fillWidth: true
+-                Text {
+-                    text: qsTr("Burst shots (hold the shutter)")
+-                    color: "white"
+-                    font.pixelSize: 15
+-                    font.bold: true
++                ValueRow {
++                    visible: camera.cam2.raw === true
++                    title: qsTr("Photo format (PRO)")
++                    value: camera.rawCapture ? qsTr("JPEG and RAW (DNG)") : "JPEG"
++                    onClicked: panel.choose(title, [{ text: "JPEG", value: false },
++                                                    { text: qsTr("JPEG and RAW (DNG)"), value: true }],
++                                            camera.rawCapture, v => camera.rawCapture = v)
+                 }
+-                Flow {
+-                    Layout.fillWidth: true
+-                    spacing: 6
+-                    Repeater {
+-                        model: [5, 10, 20, 30]
+-                        delegate: Chip {
+-                            required property int modelData
+-                            text: modelData
+-                            selected: camera.burstCount === modelData
+-                            onClicked: camera.burstCount = modelData
+-                        }
+-                    }
+-                }
+-            }
+-
+-            Toggle {
+-                title: qsTr("Geotag photos") + (camera.geotag && !camera.hasLocation ? " " + qsTr("(no fix yet)") : "")
+-                checked: camera.geotag
+-                onToggled: on => camera.geotag = on
+-            }
+-
+-            // photo size: every size the HAL can capture, largest first
+-            ColumnLayout {
+-                id: sizes
+-                visible: camera.camMode === HybrisCamera.PictureMode && list.length > 0
+-                Layout.fillWidth: true
+-                readonly property var list: panel.values("picture-size-values")
+-                    .map(s => { const wh = s.split("x"); return { w: parseInt(wh[0]), h: parseInt(wh[1]) } })
+-                    .sort((a, b) => b.w * b.h - a.w * a.h)
+-                Text {
+-                    text: qsTr("Photo size")
+-                    color: "white"
+-                    font.pixelSize: 15
+-                    font.bold: true
++                ValueRow {
++                    title: qsTr("JPEG quality")
++                    value: camera.jpegQuality
++                    onClicked: panel.choose(title, [100, 98, 95, 90, 85, 80, 70].map(q => ({ text: q, value: q })),
++                                            camera.jpegQuality, v => camera.jpegQuality = v)
+                 }
+-                Flow {
+-                    Layout.fillWidth: true
+-                    spacing: 6
+-                    Repeater {
+-                        model: sizes.list
+-                        delegate: Chip {
+-                            required property var modelData
+-                            readonly property real mp: modelData.w * modelData.h / 1e6
+-                            text: (mp >= 1 ? mp.toFixed(1) + " MP" : modelData.w + "x" + modelData.h)
+-                                  + "  " + modelData.w + "x" + modelData.h
+-                            selected: camera.pictureSize === modelData.w + "x" + modelData.h
+-                            onClicked: camera.setPictureSize(modelData.w, modelData.h)
+-                        }
+-                    }
++                ValueRow {
++                    visible: camera.cam2.burst === true
++                    title: qsTr("Burst shots (hold the shutter)")
++                    value: camera.burstCount
++                    onClicked: panel.choose(title, [5, 10, 20, 30].map(n => ({ text: n, value: n })),
++                                            camera.burstCount, v => camera.burstCount = v)
+                 }
+             }
+ 
+-            ColumnLayout {
+-                visible: camera.camMode === HybrisCamera.PictureMode
+-                Layout.fillWidth: true
+-                RowLayout {
+-                    Layout.fillWidth: true
+-                    Text {
+-                        text: qsTr("JPEG quality")
+-                        color: "white"
+-                        font.pixelSize: 15
+-                        font.bold: true
+-                        Layout.fillWidth: true
+-                    }
+-                    Text {
+-                        text: camera.jpegQuality
+-                        color: panel.accent
+-                        font.pixelSize: 15
+-                    }
++            SectionLabel { text: qsTr("Videos"); visible: panel.video }
++            Group {
++                visible: panel.video
++                ValueRow {
++                    title: qsTr("Video format")
++                    value: camera.hevc ? qsTr("HEVC (high efficiency)") : qsTr("H.264 (high compatibility)")
++                    onClicked: panel.choose(title, [{ text: qsTr("HEVC (high efficiency)"), value: true },
++                                                    { text: qsTr("H.264 (high compatibility)"), value: false }],
++                                            camera.hevc, v => camera.hevc = v)
+                 }
+-                Slider {
+-                    Layout.fillWidth: true
+-                    from: 50
+-                    to: 100
+-                    stepSize: 1
+-                    value: camera.jpegQuality
+-                    onMoved: camera.jpegQuality = Math.round(value)
++                ValueRow {
++                    readonly property var rates: panel.values("preview-frame-rate-values").map(s => parseInt(s))
++                    visible: rates.length > 1
++                    title: qsTr("Video frame rate")
++                    value: camera.videoFps + " " + qsTr("fps")
++                    onClicked: panel.choose(title, rates.map(r => ({ text: r + " " + qsTr("fps"), value: r })),
++                                            camera.videoFps, v => camera.videoFps = v)
+                 }
+-            }
+-
+-            // video: frame rate from the HAL's preview frame rates, codec of the encoder
+-            ColumnLayout {
+-                id: fps
+-                visible: camera.camMode === HybrisCamera.VideoMode
+-                Layout.fillWidth: true
+-                readonly property var rates: panel.values("preview-frame-rate-values").map(s => parseInt(s))
+-                Text {
+-                    text: qsTr("Video frame rate")
+-                    color: "white"
+-                    font.pixelSize: 15
+-                    font.bold: true
++                ValueRow {
++                    title: camera.swEncode ? qsTr("Quality (CRF, lower is better)") : qsTr("Bit rate")
++                    value: camera.swEncode ? camera.encCrf : camera.videoBitRate + " Mb/s"
++                    onClicked: camera.swEncode
++                        ? panel.choose(title, [18, 20, 23, 26, 28, 32].map(c => ({ text: c, value: c })),
++                                       camera.encCrf, v => camera.encCrf = v)
++                        : panel.choose(title, [6, 12, 17, 24, 32, 40, 50, 60].map(b => ({ text: b + " Mb/s", value: b })),
++                                       camera.videoBitRate, v => camera.videoBitRate = v)
+                 }
+-                Flow {
+-                    Layout.fillWidth: true
+-                    spacing: 6
+-                    Repeater {
+-                        model: fps.rates
+-                        delegate: Chip {
+-                            required property int modelData
+-                            text: modelData + " fps"
+-                            selected: camera.videoFps === modelData
+-                            onClicked: camera.videoFps = modelData
+-                        }
+-                    }
++                ValueRow {
++                    title: qsTr("Encoder")
++                    value: camera.swEncode ? qsTr("Software (FFmpeg)") : qsTr("Hardware")
++                    onClicked: panel.choose(title, [{ text: qsTr("Hardware"), value: false },
++                                                    { text: qsTr("Software (FFmpeg)"), value: true }],
++                                            camera.swEncode, v => camera.swEncode = v)
+                 }
+-                Toggle {
++                ToggleRow {
+                     title: qsTr("Record sound")
+                     checked: camera.withMic
+                     onToggled: on => camera.withMic = on
+                 }
+-                Text {
+-                    text: qsTr("Video codec")
+-                    color: "white"
+-                    font.pixelSize: 15
+-                    font.bold: true
++            }
++
++            SectionLabel { text: qsTr("PRO mode"); visible: panel.pro }
++            Group {
++                visible: panel.pro
++                ValueRow {
++                    readonly property var names: [qsTr("Matrix"), qsTr("Centre-weighted"), qsTr("Spot")]
++                    title: qsTr("Metering")
++                    value: names[camera.prefs.metering] || names[0]
++                    onClicked: panel.choose(title, names.map((n, i) => ({ text: n, value: i })),
++                                            camera.prefs.metering, v => camera.prefs.metering = v)
+                 }
+-                Flow {
+-                    Layout.fillWidth: true
+-                    spacing: 6
+-                    Chip {
+-                        text: "H.264"
+-                        selected: !camera.hevc
+-                        onClicked: camera.hevc = false
+-                    }
+-                    Chip {
+-                        text: "HEVC (H.265)"
+-                        selected: camera.hevc
+-                        onClicked: camera.hevc = true
+-                    }
++                ToggleRow {
++                    title: qsTr("Histogram")
++                    checked: camera.prefs.histogram
++                    onToggled: on => camera.prefs.histogram = on
+                 }
+-                Text {
+-                    text: qsTr("Encoder")
+-                    color: "white"
+-                    font.pixelSize: 15
+-                    font.bold: true
++                ToggleRow {
++                    visible: camera.cam2.ois === true
++                    title: qsTr("Optical stabilization")
++                    checked: camera.ois
++                    onToggled: on => camera.ois = on
+                 }
+-                Flow {
+-                    Layout.fillWidth: true
+-                    spacing: 6
+-                    Chip {
+-                        text: qsTr("Hardware")
+-                        selected: !camera.swEncode
+-                        onClicked: camera.swEncode = false
++                Repeater {
++                    // android.noiseReduction.mode / android.edge.mode names
++                    model: camera.cam2Live ? [
++                        { title: qsTr("Noise reduction"), modes: camera.cam2.noiseModes || [], prop: "noiseMode",
++                          names: [qsTr("Off"), qsTr("Fast"), qsTr("High quality"), qsTr("Minimal"), qsTr("Zero shutter lag")] },
++                        { title: qsTr("Sharpening"), modes: camera.cam2.edgeModes || [], prop: "edgeMode",
++                          names: [qsTr("Off"), qsTr("Fast"), qsTr("High quality"), qsTr("Zero shutter lag")] }
++                    ] : []
++                    delegate: ValueRow {
++                        required property var modelData
++                        title: modelData.title
++                        value: camera[modelData.prop] < 0 ? qsTr("Default") : modelData.names[camera[modelData.prop]]
++                        onClicked: panel.choose(title,
++                            [{ text: qsTr("Default"), value: -1 }].concat(
++                                modelData.modes.map(m => ({ text: modelData.names[m] || m, value: m }))),
++                            camera[modelData.prop], v => camera[modelData.prop] = v)
+                     }
+-                    Chip {
+-                        text: qsTr("Software (FFmpeg)")
+-                        selected: camera.swEncode
+-                        onClicked: camera.swEncode = true
++                }
++                HalRow { title: qsTr("Scene"); key: "scene-mode" }
++                HalRow { title: qsTr("Color effect"); key: "effect" }
++                HalRow { title: qsTr("Anti-flicker"); key: "antibanding" }
++            }
++
++            SectionLabel { text: qsTr("General") }
++            Group {
++                ToggleRow {
++                    title: qsTr("Grid lines")
++                    checked: camera.prefs.grid
++                    onToggled: on => camera.prefs.grid = on
++                }
++                ToggleRow {
++                    title: qsTr("Location tags") + (camera.geotag && !camera.hasLocation ? " " + qsTr("(no fix yet)") : "")
++                    checked: camera.geotag
++                    onToggled: on => camera.geotag = on
++                }
++                ToggleRow {
++                    title: qsTr("Save selfies as previewed")
++                    checked: camera.prefs.mirror
++                    onToggled: on => camera.prefs.mirror = on
++                }
++                ToggleRow {
++                    title: qsTr("Swipe up/down to switch cameras")
++                    checked: camera.prefs.swipe
++                    onToggled: on => camera.prefs.swipe = on
++                }
++                ToggleRow {
++                    title: qsTr("Volume keys take pictures")
++                    checked: camera.prefs.volumeKeys
++                    onToggled: on => camera.prefs.volumeKeys = on
++                }
++                ToggleRow {
++                    title: qsTr("Vibration")
++                    checked: camera.prefs.vibration
++                    onToggled: on => {
++                        camera.prefs.vibration = on
++                        camera.vibrate(40)
+                     }
+                 }
+-                Text {
+-                    text: camera.swEncode ? qsTr("Quality (CRF, lower is better)") : qsTr("Bit rate")
+-                    color: "white"
+-                    font.pixelSize: 15
+-                    font.bold: true
++            }
++
++            Group {
++                Layout.topMargin: 14
++                ValueRow {
++                    title: qsTr("Reset settings")
++                    onClicked: panel.choose(qsTr("Reset settings"), [{ text: qsTr("Reset"), value: true }], null,
++                                            v => camera.resetSettings())
+                 }
+-                Flow {
+-                    Layout.fillWidth: true
+-                    spacing: 6
++                ValueRow {
++                    title: qsTr("About Camera")
++                    value: Qt.application.version
++                    onClicked: panel.choose(qsTr("About Camera"), [
++                        { text: "droidian-camera " + Qt.application.version, value: 0 },
++                        { text: "Camera2: " + (camera.cam2.available ? qsTr("yes") : qsTr("no"))
++                                + (camera.cam2.manualSensor ? ", " + qsTr("manual sensor") : "")
++                                + (camera.cam2.raw ? ", RAW" : ""), value: 1 }
++                    ], -1, v => {})
++                }
++            }
++        }
++    }
++
++    // options dialog in the One UI manner
++    Rectangle {
++        id: dialog
++        property string title
++        property var options: []
++        property var current
++        property var apply: v => {}
++        visible: false
++        anchors.fill: parent
++        color: Qt.rgba(0, 0, 0, 0.6)
++        MouseArea {
++            anchors.fill: parent
++            onClicked: dialog.visible = false
++        }
++        Rectangle {
++            anchors.left: parent.left
++            anchors.right: parent.right
++            anchors.bottom: parent.bottom
++            anchors.margins: 14
++            height: Math.min(dialogColumn.implicitHeight + 40, parent.height * 0.75)
++            radius: 26
++            color: panel.group
++            MouseArea {
++                anchors.fill: parent
++            }
++            Flickable {
++                anchors.fill: parent
++                anchors.margins: 20
++                contentHeight: dialogColumn.implicitHeight
++                clip: true
++                Column {
++                    id: dialogColumn
++                    width: parent.width
++                    spacing: 4
++                    Text {
++                        text: dialog.title
++                        color: "white"
++                        font.pixelSize: 20
++                        font.bold: true
++                        bottomPadding: 10
++                        width: parent.width
++                        wrapMode: Text.WordWrap
++                    }
+                     Repeater {
+-                        model: camera.swEncode ? [18, 20, 23, 26, 28, 32] : [6, 12, 17, 24, 32, 40, 50, 60]
+-                        delegate: Chip {
+-                            required property int modelData
+-                            text: camera.swEncode ? modelData.toString() : modelData + " Mb/s"
+-                            selected: camera.swEncode ? camera.encCrf === modelData
+-                                                      : camera.videoBitRate === modelData
+-                            onClicked: {
+-                                if (camera.swEncode)
+-                                    camera.encCrf = modelData
+-                                else
+-                                    camera.videoBitRate = modelData
++                        model: dialog.options
++                        delegate: Item {
++                            required property var modelData
++                            width: dialogColumn.width
++                            height: 54
++                            Rectangle {
++                                id: radio
++                                anchors.left: parent.left
++                                anchors.verticalCenter: parent.verticalCenter
++                                width: 24
++                                height: 24
++                                radius: 12
++                                color: "transparent"
++                                border.width: 2
++                                border.color: selected ? panel.blue : "#7a7a7e"
++                                readonly property bool selected: modelData.value === dialog.current
++                                Rectangle {
++                                    anchors.centerIn: parent
++                                    width: 12
++                                    height: 12
++                                    radius: 6
++                                    color: panel.blue
++                                    visible: radio.selected
++                                }
++                            }
++                            Text {
++                                anchors.left: radio.right
++                                anchors.leftMargin: 18
++                                anchors.right: parent.right
++                                anchors.verticalCenter: parent.verticalCenter
++                                text: modelData.text
++                                color: "white"
++                                font.pixelSize: 18
++                                elide: Text.ElideRight
++                            }
++                            MouseArea {
++                                anchors.fill: parent
++                                onClicked: {
++                                    dialog.apply(modelData.value)
++                                    dialog.visible = false
++                                }
+                             }
+                         }
+                     }
+diff --git a/src/qml/main.qml b/src/qml/main.qml
+index ce3e45a..ad937d6 100644
+--- a/src/qml/main.qml
++++ b/src/qml/main.qml
+@@ -17,6 +17,15 @@ import "DefaultUI"
+ 
+ Item {
+     id: root
++    // volume keys take pictures (prefs.volumeKeys, read from the key device:
++    // the compositor keeps them from the window)
++    Connections {
++        target: camera
++        function onVolumeKeyPressed() {
++            if (!mediaWall.visible)
++                ui.shoot()
++        }
++    }
+ 
+     property bool landscape: width > height
+     property bool startupQrMode: false
+@@ -99,12 +108,30 @@ Item {
+             camera.lastZoom = camera.zoom;
+         }
+ 
+-        // tap: focus and metering on the point; hold: back to automatic areas
++        // tap: focus and metering on the point; hold: back to automatic areas;
++        // vertical swipe: the other side's camera (prefs.swipe)
+         MouseArea {
+             anchors.fill: parent
+             enabled: camera.camMode !== HybrisCamera.QrMode
+             pressAndHoldInterval: 600
++            property real startX
++            property real startY
++            property bool swiped
++            onPressed: mouse => {
++                startX = mouse.x
++                startY = mouse.y
++                swiped = false
++            }
++            onPositionChanged: mouse => {
++                if (!swiped && camera.prefs.swipe && Math.abs(mouse.y - startY) > 120
++                        && Math.abs(mouse.x - startX) < 80) {
++                    swiped = true
++                    ui.switchSide()
++                }
++            }
+             onClicked: mouse => {
++                if (swiped)
++                    return
+                 if (camera.focusAt(mouse.x / width, mouse.y / height)) {
+                     focusRing.x = mouse.x - focusRing.width / 2
+                     focusRing.y = mouse.y - focusRing.height / 2
+@@ -141,6 +168,38 @@ Item {
+         }
+     }
+ 
++    // composition grid (thirds) over the picture
++    Item {
++        id: grid
++        visible: camera.prefs.grid && camera.camMode !== HybrisCamera.QrMode
++        readonly property rect area: camera.width > 0 && camera.pictureSize !== "" && camera.cam2Live !== undefined
++                                     ? camera.previewArea() : Qt.rect(0, 0, 0, 0)
++        x: area.x
++        y: area.y
++        width: area.width
++        height: area.height
++        Repeater {
++            model: 2
++            delegate: Rectangle {
++                required property int index
++                x: grid.width * (index + 1) / 3
++                width: 1
++                height: grid.height
++                color: Qt.rgba(1, 1, 1, 0.45)
++            }
++        }
++        Repeater {
++            model: 2
++            delegate: Rectangle {
++                required property int index
++                y: grid.height * (index + 1) / 3
++                height: 1
++                width: grid.width
++                color: Qt.rgba(1, 1, 1, 0.45)
++            }
++        }
++    }
++
+     // faces from the HAL's face detection, already mapped to this item
+     Repeater {
+         model: camera.faces
+@@ -158,6 +217,7 @@ Item {
+     }
+ 
+     DefaultUI {
++        id: ui
+         anchors.fill: parent
+     }
+ 
+diff --git a/src/translations/droidian-camera_pl.ts b/src/translations/droidian-camera_pl.ts
+index 3339004..aa4b45f 100644
+--- a/src/translations/droidian-camera_pl.ts
++++ b/src/translations/droidian-camera_pl.ts
+@@ -77,6 +77,10 @@
+         <source>60 Hz</source>
+         <translation>60 Hz</translation>
+     </message>
++    <message>
++        <source>About Camera</source>
++        <translation>Informacje o aparacie</translation>
++    </message>
+     <message>
+         <source>Advanced controls unavailable: libcamx.so not loaded</source>
+         <translation>Zaawansowane sterowanie niedostępne: nie załadowano libcamx.so</translation>
+@@ -105,6 +109,14 @@
+         <source>Burst shots (hold the shutter)</source>
+         <translation>Zdjęcia seryjne (przytrzymaj spust)</translation>
+     </message>
++    <message>
++        <source>Camera settings</source>
++        <translation>Ustawienia aparatu</translation>
++    </message>
++    <message>
++        <source>Centre-weighted</source>
++        <translation>Centralnie ważony</translation>
++    </message>
+     <message>
+         <source>Cloudy</source>
+         <translation>Pochmurno</translation>
+@@ -161,14 +173,30 @@
+         <source>Focus</source>
+         <translation>Ostrość</translation>
+     </message>
++    <message>
++        <source>General</source>
++        <translation>Ogólne</translation>
++    </message>
+     <message>
+         <source>Geotag photos</source>
+         <translation>Lokalizacja w zdjęciach</translation>
+     </message>
++    <message>
++        <source>Grid lines</source>
++        <translation>Linie pomocnicze układu</translation>
++    </message>
++    <message>
++        <source>H.264 (high compatibility)</source>
++        <translation>H.264 (wysoka zgodność)</translation>
++    </message>
+     <message>
+         <source>HDR</source>
+         <translation>HDR</translation>
+     </message>
++    <message>
++        <source>HEVC (high efficiency)</source>
++        <translation>HEVC (wysoka wydajność)</translation>
++    </message>
+     <message>
+         <source>Hardware</source>
+         <translation>Sprzętowy</translation>
+@@ -177,6 +205,10 @@
+         <source>High quality</source>
+         <translation>Wysoka jakość</translation>
+     </message>
++    <message>
++        <source>Histogram</source>
++        <translation>Histogram</translation>
++    </message>
+     <message>
+         <source>Incandescent</source>
+         <translation>Żarówka</translation>
+@@ -185,10 +217,18 @@
+         <source>Infinity</source>
+         <translation>Nieskończoność</translation>
+     </message>
++    <message>
++        <source>JPEG and RAW (DNG)</source>
++        <translation>JPEG i RAW (DNG)</translation>
++    </message>
+     <message>
+         <source>JPEG quality</source>
+         <translation>Jakość JPEG</translation>
+     </message>
++    <message>
++        <source>Location tags</source>
++        <translation>Etykiety lokalizacji</translation>
++    </message>
+     <message>
+         <source>Lock exposure (AE)</source>
+         <translation>Blokada ekspozycji (AE)</translation>
+@@ -201,6 +241,14 @@
+         <source>Macro</source>
+         <translation>Makro</translation>
+     </message>
++    <message>
++        <source>Matrix</source>
++        <translation>Matrycowy</translation>
++    </message>
++    <message>
++        <source>Metering</source>
++        <translation>Pomiar światła</translation>
++    </message>
+     <message>
+         <source>Minimal</source>
+         <translation>Minimalna</translation>
+@@ -229,14 +277,30 @@
+         <source>On</source>
+         <translation>Wł.</translation>
+     </message>
++    <message>
++        <source>Optical stabilization</source>
++        <translation>Stabilizacja optyczna</translation>
++    </message>
+     <message>
+         <source>Optical stabilization (PRO)</source>
+         <translation>Stabilizacja optyczna (PRO)</translation>
+     </message>
++    <message>
++        <source>PRO mode</source>
++        <translation>Tryb PRO</translation>
++    </message>
++    <message>
++        <source>Photo format (PRO)</source>
++        <translation>Format zdjęcia (PRO)</translation>
++    </message>
+     <message>
+         <source>Photo size</source>
+         <translation>Rozmiar zdjęcia</translation>
+     </message>
++    <message>
++        <source>Photos</source>
++        <translation>Zdjęcia</translation>
++    </message>
+     <message>
+         <source>Posterize</source>
+         <translation>Posteryzacja</translation>
+@@ -249,6 +313,22 @@
+         <source>Record sound</source>
+         <translation>Nagrywaj dźwięk</translation>
+     </message>
++    <message>
++        <source>Reset</source>
++        <translation>Zeruj</translation>
++    </message>
++    <message>
++        <source>Reset settings</source>
++        <translation>Zeruj ustawienia</translation>
++    </message>
++    <message>
++        <source>Save selfies as previewed</source>
++        <translation>Zapisuj autoportrety jak podgląd</translation>
++    </message>
++    <message>
++        <source>Scan QR codes</source>
++        <translation>Skanowanie kodów QR</translation>
++    </message>
+     <message>
+         <source>Scene</source>
+         <translation>Scena</translation>
+@@ -265,6 +345,10 @@
+         <source>Sharpening</source>
+         <translation>Wyostrzanie</translation>
+     </message>
++    <message>
++        <source>Smart features</source>
++        <translation>Funkcje inteligentne</translation>
++    </message>
+     <message>
+         <source>Software (FFmpeg)</source>
+         <translation>Programowy (FFmpeg)</translation>
+@@ -273,18 +357,42 @@
+         <source>Solarize</source>
+         <translation>Solaryzacja</translation>
+     </message>
++    <message>
++        <source>Spot</source>
++        <translation>Punktowy</translation>
++    </message>
++    <message>
++        <source>Swipe up/down to switch cameras</source>
++        <translation>Przeciągnij podgląd w górę/w dół, aby przełączyć kamery</translation>
++    </message>
+     <message>
+         <source>Twilight</source>
+         <translation>Zmierzch</translation>
+     </message>
++    <message>
++        <source>Vibration</source>
++        <translation>Wibracja</translation>
++    </message>
+     <message>
+         <source>Video codec</source>
+         <translation>Kodek wideo</translation>
+     </message>
++    <message>
++        <source>Video format</source>
++        <translation>Format wideo</translation>
++    </message>
+     <message>
+         <source>Video frame rate</source>
+         <translation>Liczba klatek wideo</translation>
+     </message>
++    <message>
++        <source>Videos</source>
++        <translation>Filmy</translation>
++    </message>
++    <message>
++        <source>Volume keys take pictures</source>
++        <translation>Klawisze głośności robią zdjęcie</translation>
++    </message>
+     <message>
+         <source>Warm fluorescent</source>
+         <translation>Ciepła świetlówka</translation>
+@@ -301,5 +409,21 @@
+         <source>Zero shutter lag</source>
+         <translation>Bez opóźnienia</translation>
+     </message>
++    <message>
++        <source>fps</source>
++        <translation>kl./s</translation>
++    </message>
++    <message>
++        <source>manual sensor</source>
++        <translation>ręczna matryca</translation>
++    </message>
++    <message>
++        <source>no</source>
++        <translation>nie</translation>
++    </message>
++    <message>
++        <source>yes</source>
++        <translation>tak</translation>
++    </message>
+ </context>
+ </TS>
+-- 
+2.55.0
+

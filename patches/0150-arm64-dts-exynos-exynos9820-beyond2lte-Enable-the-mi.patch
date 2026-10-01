@@ -167,6 +167,3 @@ index 70cf91c2f12..85f122561fe 100644
  &pinctrl_peric0 {
  	ssp_gps_pwr_en_pins: ssp-gps-pwr-en-pins {
  		samsung,pins = "gpg0-2";
--- 
-2.53.0.windows.1
-

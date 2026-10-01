@@ -116,6 +116,3 @@ index 1d20f8fb03a..9c28c742cc3 100644
  / {
  	reg_usb_dummy: regulator-usb-dummy {
  		compatible = "regulator-fixed";
--- 
-2.53.0.windows.1
-

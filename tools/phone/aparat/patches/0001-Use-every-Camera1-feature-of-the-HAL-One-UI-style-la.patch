@@ -1,0 +1,4656 @@
+From a0552cf32e8ab74f78956415f9c09c8fecef4faf Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 22:59:54 +0000
+Subject: [PATCH] Use every Camera1 feature of the HAL, One UI style layout
+
+The libhybris camera compatibility layer covers only part of the Camera1
+parameters. libcamx.so (src/camx/camx.cpp) is a small bionic-side library,
+built with clang for the Android target and loaded with android_dlopen, that
+works on the compatibility layer's own CameraControl after checking its
+layout at runtime (the listener field must hold the pointer the app passed).
+It sets any Camera1 key (exposure compensation, AE/AWB lock, anti-flicker),
+dumps the full parameter set and installs a proxy CameraListener that keeps
+the face detection metadata the compatibility layer drops.
+
+On top of it:
+- every camera the HAL exposes, with a One UI zoom pill whose lens factors
+  come from the field of view (.5x ultra wide on the Galaxy S10+) and a
+  logarithmic zoom slider
+- pro and pro video modes (EV, white balance, focus mode, AE/AWB lock),
+  hyperlapse, QR in a "more" grid; settings sheet with scene/HDR, effects,
+  anti-flicker, face detection, geotagging, every photo size, JPEG quality,
+  video frame rate, H.264/HEVC, encoder and bit rate
+- tap to focus and meter, face boxes mapped with the renderer's geometry
+- the HAL's JPEG is saved as-is (EXIF orientation, GPS, quality kept) with
+  the rotation passed to the camera instead of re-encoding a QImage
+- user choices are stored per camera and applied again after reconnecting
+- Polish translation
+
+Fixes found on the way:
+- viewfinder shader used abs() on an int, which GLSL ES 1.00 lacks and the
+  Mali driver rejects: black viewfinder
+- the camera was opened twice at startup, the second connection lost the
+  continuous focus mode; mode defaults are now applied after every switch
+- the zoom index started at 1 (1.07x) while the HAL starts at 0
+- 4032x1908 video is refused (encoder capped at 3840 wide, CameraSource
+  rejects 3840x1908), so sizes above 3840x2160 are not offered
+- the window was mapped at 500x500 and resized later
+- the renderer drew with its default 1920x1080 until the first size change
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ CMakeLists.txt                         |   32 +-
+ debian/changelog                       |   16 +
+ debian/control                         |    8 +-
+ src/CMakeLists.txt                     |    7 +-
+ src/camera-extras.cpp                  |  187 +++++
+ src/camera-extras.h                    |   79 ++
+ src/camera-manager.cpp                 |  218 ++++-
+ src/camera-manager.h                   |   49 +-
+ src/camera-recorder.cpp                |    6 +-
+ src/camera-recorder.h                  |   10 +
+ src/camera-renderer.h                  |    5 +
+ src/camx/camx.cpp                      |  355 ++++++++
+ src/hybris-camera-pro.cpp              |  250 ++++++
+ src/hybris-camera.cpp                  |   60 ++
+ src/hybris-camera.h                    |  111 +++
+ src/main.cpp                           |   12 +-
+ src/qml/DefaultUI/ControlLandscape.qml |  197 -----
+ src/qml/DefaultUI/ControlPortrait.qml  |  158 ----
+ src/qml/DefaultUI/DefaultUI.qml        | 1033 ++++++++++++++++++------
+ src/qml/DefaultUI/ProPanel.qml         |  374 +++++++++
+ src/qml/DefaultUI/ZoomControl.qml      |  220 +++++
+ src/qml/main.qml                       |  331 ++------
+ src/shaders/viewfinder.frag            |    2 +-
+ src/translations/droidian-camera_pl.ts |  246 ++++++
+ 24 files changed, 3062 insertions(+), 904 deletions(-)
+ create mode 100644 debian/changelog
+ create mode 100644 src/camera-extras.cpp
+ create mode 100644 src/camera-extras.h
+ create mode 100644 src/camx/camx.cpp
+ create mode 100644 src/hybris-camera-pro.cpp
+ delete mode 100644 src/qml/DefaultUI/ControlLandscape.qml
+ delete mode 100644 src/qml/DefaultUI/ControlPortrait.qml
+ create mode 100644 src/qml/DefaultUI/ProPanel.qml
+ create mode 100644 src/qml/DefaultUI/ZoomControl.qml
+ create mode 100644 src/translations/droidian-camera_pl.ts
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b7ae168..2f24604 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,7 +10,7 @@ set(CMAKE_INSTALL_RPATH "")
+ set(CMAKE_SKIP_RPATH TRUE)
+ 
+ find_package(PkgConfig REQUIRED)
+-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia Sensors Concurrent)
++find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia Sensors Concurrent Positioning LinguistTools)
+ 
+ pkg_check_modules(android_headers REQUIRED android-headers)
+ pkg_check_modules(hybris_camera REQUIRED libcamera)
+@@ -51,6 +51,8 @@ target_link_libraries(droidian-camera PRIVATE
+     Qt6::Multimedia
+     Qt6::Sensors
+     Qt6::Concurrent
++    Qt6::Positioning
++    hybris-common
+     ${AVCODEC_LIBRARY}
+     ${AVFORMAT_LIBRARY}
+     ${AVUTIL_LIBRARY}
+@@ -63,6 +65,34 @@ target_link_libraries(droidian-camera PRIVATE
+     MediaScanner
+ )
+ 
++qt_add_translations(TARGETS ${PROJECT_NAME}
++	TS_FILES ${CMAKE_SOURCE_DIR}/src/translations/droidian-camera_pl.ts
++	RESOURCE_PREFIX "/i18n")
++
++# libcamx.so: bionic-side helper for the Camera1 parameters the libhybris
++# compatibility layer lacks (see src/camx/camx.cpp). Built with clang for the
++# Android target against the device's own system libraries.
++set(ANDROID_SYSTEM_LIBS "/android/system/lib64" CACHE PATH "Android system libraries to link libcamx against")
++set(ANDROID_LIBC "/apex/com.android.runtime/lib64/bionic/libc.so" CACHE FILEPATH "Android libc to link libcamx against")
++find_program(CAMX_CXX NAMES clang++ clang++-21)
++find_program(CAMX_LLD NAMES ld.lld ld.lld-21)
++if (CAMX_CXX AND CAMX_LLD AND EXISTS ${ANDROID_SYSTEM_LIBS}/libcamera_client.so)
++	set(CAMX_SO ${CMAKE_BINARY_DIR}/libcamx.so)
++	add_custom_command(OUTPUT ${CAMX_SO}
++		COMMAND ${CAMX_CXX} --target=aarch64-linux-android30 -O2 -fPIC -shared -nostdlib
++			-fno-exceptions -fno-rtti -fno-stack-protector -fuse-ld=${CAMX_LLD}
++			-Wl,-soname,libcamx.so -Wl,--hash-style=both -Wl,-z,defs
++			-o ${CAMX_SO} ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp
++			${ANDROID_SYSTEM_LIBS}/libcamera_client.so ${ANDROID_SYSTEM_LIBS}/libutils.so
++			${ANDROID_SYSTEM_LIBS}/libc++.so ${ANDROID_LIBC}
++		DEPENDS ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp
++		COMMENT "Building libcamx.so for the Android side")
++	add_custom_target(camx ALL DEPENDS ${CAMX_SO})
++	install(FILES ${CAMX_SO} DESTINATION /usr/lib/droidian-camera)
++else()
++	message(WARNING "libcamx.so not built (needs clang, lld and ${ANDROID_SYSTEM_LIBS}); advanced camera controls will be unavailable")
++endif()
++
+ install(TARGETS ${PROJECT_NAME} DESTINATION /usr/bin)
+ install(FILES ${CMAKE_SOURCE_DIR}/droidian-camera.desktop DESTINATION /usr/share/applications)
+ install(FILES ${CMAKE_SOURCE_DIR}/droidian-camera.svg DESTINATION /usr/share/icons)
+diff --git a/debian/changelog b/debian/changelog
+new file mode 100644
+index 0000000..c6937fc
+--- /dev/null
++++ b/debian/changelog
+@@ -0,0 +1,16 @@
++droidian-camera (26.1+s10plus1) unstable; urgency=medium
++
++  * Build on droidian/droidian-camera feature/next/hybris-compat 7071899.
++  * libcamx: every Camera1 parameter of the HAL (exposure compensation,
++    AE/AWB lock, anti-flicker, face detection with a proxy listener).
++  * One UI style layout: zoom pill with lens factors from the field of view,
++    all cameras reachable, pro strip, "more" modes, settings sheet.
++  * Tap to focus and meter, face boxes, geotagging, JPEG saved as the HAL's
++    own file (EXIF kept), JPEG quality, all photo and video sizes the encoder
++    accepts, video frame rate, HEVC.
++  * Fixes: viewfinder shader rejected by Mali (abs on int), camera opened
++    twice at startup (continuous focus lost), zoom index shown as 1.07x,
++    4032x1908 video refused by the encoder, 500x500 window before maximizing.
++  * Polish translation.
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 00:00:00 +0200
+diff --git a/debian/control b/debian/control
+index 5cc8886..47b2d9e 100644
+--- a/debian/control
++++ b/debian/control
+@@ -19,7 +19,10 @@ Build-Depends:
+   libavformat-dev,
+   libavutil-dev,
+   libswscale-dev,
+-  libquirc-dev
++  libquirc-dev,
++  qt6-positioning-dev,
++  clang,
++  lld
+ Standards-Version: 4.6.0
+ Homepage: https://github.com/droidian/droidian-camera
+ 
+@@ -47,6 +50,7 @@ Depends:
+   qml6-module-qtquick-templates,
+   qml6-module-qt-labs-platform,
+   fonts-material-design-icons-iconfont,
+-  libquirc1
++  libquirc1,
++  libqt6positioning6
+ Description: Qt6 camera app using libhybris to access Android camera HAL
+   Provides camera support through libhybris and Qt6.
+\ No newline at end of file
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index c0a281f..98296fa 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -25,7 +25,9 @@ set(APP_SOURCES
+ 		videoquality.cpp
+ 		camera-manager.cpp
+ 		camera-recorder.cpp
+-		ffmpeg-recorder.cpp)
++		ffmpeg-recorder.cpp
++		camera-extras.cpp
++		hybris-camera-pro.cpp)
+ 
+ set(APP_HEADERS
+ 		hybris-camera.h
+@@ -34,7 +36,8 @@ set(APP_HEADERS
+ 		videoquality.h
+ 		camera-manager.h
+ 		camera-recorder.h
+-		ffmpeg-recorder.h)
++		ffmpeg-recorder.h
++		camera-extras.h)
+ 
+ qt_add_executable(${PROJECT_NAME} ${APP_SOURCES} ${APP_HEADERS})
+ 
+diff --git a/src/camera-extras.cpp b/src/camera-extras.cpp
+new file mode 100644
+index 0000000..4728a1c
+--- /dev/null
++++ b/src/camera-extras.cpp
+@@ -0,0 +1,187 @@
++/* SPDX-License-Identifier: GPL-2.0-only */
++
++#include <QCoreApplication>
++#include <QDebug>
++#include <QFile>
++
++#include <dlfcn.h>
++
++#include <camera-extras.h>
++
++extern "C" {
++void *android_dlopen(const char *filename, int flag);
++void *android_dlsym(void *handle, const char *symbol);
++}
++
++namespace {
++const int CAMERA_CMD_START_FACE_DETECTION = 6;
++const int CAMERA_CMD_STOP_FACE_DETECTION = 7;
++const int CAMERA_FACE_DETECTION_HW = 0;
++const int MAX_FACES = 16;
++const int DUMP_SIZE = 64 * 1024;
++} // namespace
++
++CameraExtras::CameraExtras()
++{
++}
++
++bool CameraExtras::load()
++{
++	if (m_loadTried)
++		return m_lib != nullptr;
++	m_loadTried = true;
++
++	QStringList candidates;
++	const QString env = qEnvironmentVariable("DROIDIAN_CAMERA_CAMX");
++	if (!env.isEmpty())
++		candidates << env;
++	candidates << QCoreApplication::applicationDirPath() +
++			      "/../lib/droidian-camera/libcamx.so"
++		   << "/usr/lib/droidian-camera/libcamx.so";
++
++	for (const QString &path : candidates) {
++		if (!QFile::exists(path))
++			continue;
++		m_lib = android_dlopen(path.toUtf8().constData(), RTLD_NOW);
++		if (m_lib) {
++			qDebug() << "camx loaded from" << path;
++			break;
++		}
++		qWarning() << "camx: android_dlopen failed for" << path;
++	}
++	if (!m_lib) {
++		qWarning() << "camx not found, advanced camera controls disabled";
++		return false;
++	}
++
++	m_check = reinterpret_cast<check_t>(android_dlsym(m_lib, "camx_check"));
++	m_set = reinterpret_cast<set_t>(android_dlsym(m_lib, "camx_set"));
++	m_get = reinterpret_cast<get_t>(android_dlsym(m_lib, "camx_get"));
++	m_dump = reinterpret_cast<dump_t>(android_dlsym(m_lib, "camx_dump"));
++	m_command = reinterpret_cast<command_t>(android_dlsym(m_lib, "camx_command"));
++	m_listen = reinterpret_cast<listen_t>(android_dlsym(m_lib, "camx_listen"));
++	m_faces = reinterpret_cast<faces_t>(android_dlsym(m_lib, "camx_faces"));
++
++	if (!m_check || !m_set || !m_get || !m_dump || !m_command || !m_listen || !m_faces) {
++		qWarning() << "camx: missing symbols, advanced camera controls disabled";
++		m_lib = nullptr;
++		return false;
++	}
++	return true;
++}
++
++bool CameraExtras::attach(CameraControl *cc, CameraControlListener *listener)
++{
++	detach();
++	if (!cc || !load())
++		return false;
++	if (m_check(cc, listener) != 1) {
++		qWarning() << "camx: CameraControl layout mismatch, advanced camera controls disabled";
++		return false;
++	}
++	m_cc = cc;
++	return true;
++}
++
++void CameraExtras::detach()
++{
++	m_cc = nullptr;
++	m_listening = false;
++}
++
++QMap<QString, QString> CameraExtras::parameters()
++{
++	QMap<QString, QString> map;
++	if (!m_cc)
++		return map;
++	QByteArray buf(DUMP_SIZE, '\0');
++	if (m_dump(m_cc, buf.data(), buf.size()) != 0)
++		return map;
++	const QString flat = QString::fromUtf8(buf.constData());
++	for (const QString &pair : flat.split(';', Qt::SkipEmptyParts)) {
++		const int eq = pair.indexOf('=');
++		if (eq > 0)
++			map.insert(pair.left(eq), pair.mid(eq + 1));
++	}
++	return map;
++}
++
++int CameraExtras::set(const QString &key, const QString &value)
++{
++	if (!m_cc)
++		return -1000;
++	const int err = m_set(m_cc, key.toUtf8().constData(), value.toUtf8().constData());
++	if (err != 0)
++		qWarning() << "camx: HAL rejected" << key << "=" << value << "error" << err;
++	return err;
++}
++
++QString CameraExtras::get(const QString &key)
++{
++	if (!m_cc)
++		return QString();
++	char buf[1024];
++	if (m_get(m_cc, key.toUtf8().constData(), buf, sizeof(buf)) != 0)
++		return QString();
++	return QString::fromUtf8(buf);
++}
++
++int CameraExtras::command(int cmd, int arg1, int arg2)
++{
++	if (!m_cc)
++		return -1000;
++	return m_command(m_cc, cmd, arg1, arg2);
++}
++
++bool CameraExtras::startFaceDetection()
++{
++	if (!m_cc)
++		return false;
++	// the proxy listener is installed once per connection; Camera1 delivers
++	// faces only through postData, which the compatibility layer drops
++	if (!m_listening) {
++		if (m_listen(m_cc) != 0)
++			return false;
++		m_listening = true;
++	}
++	const int err = command(CAMERA_CMD_START_FACE_DETECTION, CAMERA_FACE_DETECTION_HW, 0);
++	if (err != 0)
++		qWarning() << "camx: face detection not started, error" << err;
++	return err == 0;
++}
++
++void CameraExtras::stopFaceDetection()
++{
++	if (m_cc)
++		command(CAMERA_CMD_STOP_FACE_DETECTION, 0, 0);
++}
++
++QList<CameraFace> CameraExtras::faces(unsigned *generation)
++{
++	QList<CameraFace> list;
++	if (!m_lib || !m_cc)
++		return list;
++	int raw[MAX_FACES * 6];
++	const int n = m_faces(raw, MAX_FACES, generation);
++	for (int i = 0; i < n; ++i) {
++		const int *f = raw + i * 6;
++		list.append({ QRect(QPoint(f[0], f[1]), QPoint(f[2], f[3])), f[4], f[5] });
++	}
++	return list;
++}
++
++QStringList CameraExtras::splitValues(const QString &values)
++{
++	return values.split(',', Qt::SkipEmptyParts);
++}
++
++QList<QSize> CameraExtras::splitSizes(const QString &values)
++{
++	QList<QSize> sizes;
++	for (const QString &s : splitValues(values)) {
++		const QStringList wh = s.split('x');
++		if (wh.size() == 2)
++			sizes.append(QSize(wh[0].toInt(), wh[1].toInt()));
++	}
++	return sizes;
++}
+diff --git a/src/camera-extras.h b/src/camera-extras.h
+new file mode 100644
+index 0000000..88f49b2
+--- /dev/null
++++ b/src/camera-extras.h
+@@ -0,0 +1,79 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Camera1 parameters that the libhybris camera compatibility layer does not
++ * expose (exposure compensation, AE/AWB lock, antibanding, face detection and
++ * the full capability list). They go through libcamx.so, a small bionic-side
++ * library loaded with android_dlopen, which works on the compatibility layer's
++ * own CameraControl object after verifying its layout at runtime.
++ */
++
++#pragma once
++
++#include <QMap>
++#include <QRect>
++#include <QSize>
++#include <QString>
++#include <QStringList>
++#include <QList>
++
++struct CameraControl;
++struct CameraControlListener;
++
++struct CameraFace {
++	QRect rect; // sensor coordinates, -1000..1000
++	int score;
++	int id;
++};
++
++class CameraExtras {
++    public:
++	CameraExtras();
++
++	// false when libcamx is missing or the CameraControl layout does not match;
++	// every other call is then a no-op returning an error
++	bool attach(CameraControl *cc, CameraControlListener *listener);
++	void detach();
++	bool available() const
++	{
++		return m_cc != nullptr;
++	}
++
++	// full HAL parameter set of the attached camera, re-read from the camera
++	QMap<QString, QString> parameters();
++
++	// 0 when the HAL accepted the value
++	int set(const QString &key, const QString &value);
++	QString get(const QString &key);
++	int command(int cmd, int arg1, int arg2);
++
++	bool startFaceDetection();
++	void stopFaceDetection();
++	QList<CameraFace> faces(unsigned *generation = nullptr);
++
++	static QStringList splitValues(const QString &values);
++	static QList<QSize> splitSizes(const QString &values);
++
++    private:
++	typedef int (*check_t)(void *, void *);
++	typedef int (*set_t)(void *, const char *, const char *);
++	typedef int (*get_t)(void *, const char *, char *, int);
++	typedef int (*dump_t)(void *, char *, int);
++	typedef int (*command_t)(void *, int, int, int);
++	typedef int (*listen_t)(void *);
++	typedef int (*faces_t)(int *, int, unsigned *);
++
++	bool load();
++
++	void *m_lib = nullptr;
++	bool m_loadTried = false;
++	check_t m_check = nullptr;
++	set_t m_set = nullptr;
++	get_t m_get = nullptr;
++	dump_t m_dump = nullptr;
++	command_t m_command = nullptr;
++	listen_t m_listen = nullptr;
++	faces_t m_faces = nullptr;
++
++	CameraControl *m_cc = nullptr;
++	bool m_listening = false;
++};
+diff --git a/src/camera-manager.cpp b/src/camera-manager.cpp
+index e133f95..4960d80 100644
+--- a/src/camera-manager.cpp
++++ b/src/camera-manager.cpp
+@@ -7,6 +7,7 @@
+  */
+ 
+ #include <QDebug>
++#include <QDateTime>
+ #include <QOrientationSensor>
+ #include <QOrientationReading>
+ 
+@@ -22,6 +23,7 @@ CameraManager::CameraManager(QObject *parent)
+ 	m_settings.beginGroup("AppSettings");
+ 	if(!m_settings.contains("last-camera"))
+ 		m_settings.setValue("last-camera", 0);
++	m_jpegQuality = m_settings.value("jpeg-quality", 95).toInt();
+ 	m_settings.endGroup();
+ 
+ 	int lastCam = m_settings.value("AppSettings/last-camera", 0).toInt();
+@@ -60,6 +62,8 @@ CameraManager::CameraManager(QObject *parent)
+ 
+ CameraManager::~CameraManager()
+ {
++	m_extras.stopFaceDetection();
++	m_extras.detach();
+ 	if (m_cameraControl) {
+ 		android_camera_unlock(m_cameraControl);
+ 		android_camera_disconnect(m_cameraControl);
+@@ -81,6 +85,40 @@ void CameraManager::loadCameraDevices()
+ 			 << "ID:" << dev.camId
+ 			 << "Orientation:" << dev.orientation;
+ 	}
++	probeUncachedCameras();
++}
++
++// Sensor size and field of view of every camera label the lens picker and set
++// the zoom factors (.5x for the ultra wide). They are cached after a camera is
++// opened once; cameras never opened are probed here, one time only.
++void CameraManager::probeUncachedCameras()
++{
++	for (const CameraDevice &dev : m_cameras) {
++		const QString group = QString("Camera%1/").arg(dev.camId);
++		if (m_settings.contains(group + "megapixels") && m_settings.contains(group + "fov"))
++			continue;
++		CameraControl *cc = android_camera_connect_by_id(dev.camId, m_listener);
++		if (!cc)
++			continue;
++		CameraDevice probe{ dev.camId };
++		android_camera_enumerate_supported_picture_sizes(cc, setPicSize_cb, &probe);
++		qint64 maxArea = 0;
++		for (const QSize &s : probe.pictureSizes)
++			maxArea = qMax(maxArea, qint64(s.width()) * s.height());
++		if (maxArea > 0)
++			m_settings.setValue(group + "megapixels", maxArea / 1e6);
++		CameraExtras extras;
++		if (extras.attach(cc, m_listener)) {
++			const double fov = extras.parameters().value("horizontal-view-angle").toDouble();
++			if (fov > 0)
++				m_settings.setValue(group + "fov", fov);
++			extras.detach();
++		}
++		android_camera_unlock(cc);
++		android_camera_disconnect(cc);
++		android_camera_delete(cc);
++		qDebug() << "Probed camera" << dev.camId << "MP" << maxArea / 1e6;
++	}
+ }
+ 
+ QList<CameraDevice> CameraManager::availableCameras() const
+@@ -95,6 +133,8 @@ CameraDevice &CameraManager::currentCamera()
+ 
+ void CameraManager::setCurrentCamera(int cameraId)
+ {
++	m_extras.stopFaceDetection();
++	m_extras.detach();
+ 	if (m_cameraControl) {
+ 		android_camera_unlock(m_cameraControl);
+ 		android_camera_disconnect(m_cameraControl);
+@@ -129,6 +169,18 @@ void CameraManager::setCurrentCamera(int cameraId)
+ 
+ 			m_currentCamera = dev;
+ 			m_currentCameraId = cameraId;
++			m_zoom = 0;
++			Q_EMIT zoomChanged();
++			attachExtras();
++
++			// sensor size for the lens picker, cached so that cameras
++			// need not be opened just to label them
++			qint64 maxArea = 0;
++			for (const QSize &s : dev.pictureSizes)
++				maxArea = qMax(maxArea, qint64(s.width()) * s.height());
++			if (maxArea > 0)
++				m_settings.setValue(QString("Camera%1/megapixels").arg(cameraId),
++						    maxArea / 1e6);
+ 
+ 			m_settings.setValue("AppSettings/last-camera", cameraId);
+ 
+@@ -136,8 +188,9 @@ void CameraManager::setCurrentCamera(int cameraId)
+ 			camSet.append(QString::number(cameraId));
+ 			camSet.append("/lastVideoSize");
+ 
+-			if(!m_settings.contains(camSet))
+-				m_settings.setValue(camSet, m_currentCamera.videoSizes.first());
++			if(!m_settings.contains(camSet)
++			   || !m_currentCamera.videoSizes.contains(m_settings.value(camSet).toSize()))
++				m_settings.setValue(camSet, defaultVideoSize());
+ 
+ 			setVideoSize(m_settings.value(camSet).toSize());
+ 
+@@ -147,6 +200,10 @@ void CameraManager::setCurrentCamera(int cameraId)
+ 
+ 			QSize picSize = getMaxSizeForAspect(
+ 				m_currentCamera.pictureSizes, targetAspect);
++			const QSize userSize =
++				m_settings.value(camSet.section('/', 0, 0) + "/userPictureSize").toSize();
++			if (m_currentCamera.pictureSizes.contains(userSize))
++				picSize = userSize;
+ 			setPictureSize(picSize);
+ 
+ 			Q_EMIT cameraChanged(m_currentCamera);
+@@ -157,12 +214,105 @@ void CameraManager::setCurrentCamera(int cameraId)
+ 			break;
+ 		}
+ 	}
++	m_camId = cameraId; // setCamId() with the same id must not reconnect
+ 	if (m_camMode == CamMode::Undefined)
+ 		setCamMode(CamMode::PictureMode);
++	else
++		applyModeDefaults();
+ 
++	reapplySavedParameters();
+ 	setEffectiveRotation(m_screenOrientation);
+ }
+ 
++// FHD when the camera has it: the HAL lists its odd sizes (4032x1908) first
++QSize CameraManager::defaultVideoSize() const
++{
++	if (m_currentCamera.videoSizes.contains(QSize(1920, 1080)))
++		return QSize(1920, 1080);
++	return m_currentCamera.videoSizes.isEmpty() ? QSize() : m_currentCamera.videoSizes.first();
++}
++
++void CameraManager::attachExtras()
++{
++	m_params.clear();
++	if (m_extras.attach(m_cameraControl, m_listener))
++		m_params = m_extras.parameters();
++	// field of view for the zoom pill (lens factor = tan(main/2) / tan(this/2))
++	const double fov = m_params.value("horizontal-view-angle").toDouble();
++	if (fov > 0)
++		m_settings.setValue(QString("Camera%1/fov").arg(m_currentCameraId), fov);
++	Q_EMIT parametersChanged();
++}
++
++QString CameraManager::savedParameterGroup() const
++{
++	return QString("Camera%1/params").arg(m_currentCameraId);
++}
++
++// User choices (white balance, HDR, focus mode, EV, locks, ...) are stored per
++// camera and applied again after reconnecting and after mode switches, which
++// reset focus and flash.
++void CameraManager::reapplySavedParameters()
++{
++	if (!m_extras.available())
++		return;
++	m_settings.beginGroup(savedParameterGroup());
++	const QStringList keys = m_settings.childKeys();
++	QMap<QString, QString> saved;
++	for (const QString &k : keys)
++		saved.insert(k, m_settings.value(k).toString());
++	m_settings.endGroup();
++
++	for (auto it = saved.cbegin(); it != saved.cend(); ++it)
++		m_extras.set(it.key(), it.value());
++	if (!saved.isEmpty()) {
++		m_params = m_extras.parameters();
++		Q_EMIT parametersChanged();
++	}
++}
++
++// the compatibility layer changes parameters too (mode, sizes, flash, focus);
++// re-read them so the UI shows what the camera really uses
++void CameraManager::refreshParameters()
++{
++	if (!m_extras.available())
++		return;
++	m_params = m_extras.parameters();
++	Q_EMIT parametersChanged();
++}
++
++bool CameraManager::setParameter(const QString &key, const QString &value)
++{
++	if (!m_extras.available())
++		return false;
++	const bool ok = m_extras.set(key, value) == 0;
++	if (ok)
++		m_settings.setValue(savedParameterGroup() + "/" + key, value);
++	m_params = m_extras.parameters();
++	Q_EMIT parametersChanged();
++	return ok;
++}
++
++void CameraManager::setJpegQuality(int quality)
++{
++	quality = qBound(1, quality, 100);
++	if (quality == m_jpegQuality)
++		return;
++	m_jpegQuality = quality;
++	m_settings.setValue("AppSettings/jpeg-quality", quality);
++	if (m_cameraControl)
++		android_camera_set_jpeg_quality(m_cameraControl, quality);
++	Q_EMIT jpegQualityChanged();
++}
++
++void CameraManager::setPictureSizeByUser(const QSize &size)
++{
++	if (!m_currentCamera.pictureSizes.contains(size))
++		return;
++	m_settings.setValue(QString("Camera%1/userPictureSize").arg(m_currentCameraId), size);
++	setPictureSize(size);
++}
++
+ void CameraManager::setVideoSize(const QSize &size)
+ {
+ 	if (!m_cameraControl)
+@@ -215,6 +365,7 @@ void CameraManager::setVideoSize(const QSize &size)
+ 
+ 		Q_EMIT previewSizeChanged(size);
+ 	}
++	refreshParameters();
+ }
+ 
+ void CameraManager::setPictureSize(const QSize &size)
+@@ -237,11 +388,13 @@ void CameraManager::setPictureSize(const QSize &size)
+ 		android_camera_stop_preview(m_cameraControl);
+ 		android_camera_set_preview_size(
+ 			m_cameraControl, prevSize.width(), prevSize.height());
+-		android_camera_set_jpeg_quality(m_cameraControl, 85);
++		android_camera_set_jpeg_quality(m_cameraControl, m_jpegQuality);
+ 		android_camera_start_preview(m_cameraControl);
+ 
+ 		Q_EMIT previewSizeChanged(size);
+ 	}
++	refreshParameters();
++	Q_EMIT pictureSizeChanged();
+ }
+ 
+ void CameraManager::onReadyForPreview()
+@@ -260,8 +413,12 @@ void CameraManager::restartPreview()
+ 
+ void CameraManager::takePicture()
+ {
+-	if (m_cameraControl)
++	if (m_cameraControl) {
++		// Camera1 JPEG rotation (EXIF orientation), same angle the app used
++		// to rotate the decoded image before
++		android_camera_set_rotation(m_cameraControl, m_effectiveRotation);
+ 		android_camera_take_snapshot(m_cameraControl);
++	}
+ }
+ 
+ CameraManager::CamMode CameraManager::camMode() const
+@@ -279,15 +436,12 @@ void CameraManager::setCamMode(CameraManager::CamMode mode)
+ 		camSet.append(QString::number(currentCamera().camId));
+ 		camSet.append("/lastVideoSize");
+ 
+-		if(!m_settings.contains(camSet))
+-			m_settings.setValue(camSet, m_currentCamera.videoSizes.first());
++		if(!m_settings.contains(camSet)
++		   || !m_currentCamera.videoSizes.contains(m_settings.value(camSet).toSize()))
++			m_settings.setValue(camSet, defaultVideoSize());
+ 
+ 		if (m_camMode == CamMode::VideoMode || mode == CamMode::QrMode) {
+ 			setVideoSize(m_settings.value(camSet).toSize());
+-			android_camera_set_auto_focus_mode(
+-				m_cameraControl,
+-				AUTO_FOCUS_MODE_CONTINUOUS_VIDEO);
+-			setFlash(CameraManager::FLASH_OFF);
+ 		} else {
+ 			double targetAspect = 16.0 / 9.0;
+ 			if (!m_picAspectWide)
+@@ -295,12 +449,30 @@ void CameraManager::setCamMode(CameraManager::CamMode mode)
+ 
+ 			QSize picSize = getMaxSizeForAspect(
+ 				m_currentCamera.pictureSizes, targetAspect);
++			const QSize userSize = m_settings.value(
++				QString("Camera%1/userPictureSize").arg(m_currentCameraId)).toSize();
++			if (m_currentCamera.pictureSizes.contains(userSize))
++				picSize = userSize;
+ 			setPictureSize(picSize);
+-			android_camera_set_auto_focus_mode(
+-				m_cameraControl,
+-				AUTO_FOCUS_MODE_CONTINUOUS_PICTURE);
+-			setFlash(CameraManager::FLASH_AUTO);
+ 		}
++		applyModeDefaults();
++		reapplySavedParameters();
++		refreshParameters();
++	}
++}
++
++// Continuous focus and flash of the mode. A fresh connection starts with the
++// HAL defaults (focus "auto"), so this runs after every camera switch too.
++void CameraManager::applyModeDefaults()
++{
++	if (!m_cameraControl || m_camMode == CamMode::Undefined)
++		return;
++	if (m_camMode == CamMode::VideoMode || m_camMode == CamMode::QrMode) {
++		android_camera_set_auto_focus_mode(m_cameraControl, AUTO_FOCUS_MODE_CONTINUOUS_VIDEO);
++		setFlash(CameraManager::FLASH_OFF);
++	} else {
++		android_camera_set_auto_focus_mode(m_cameraControl, AUTO_FOCUS_MODE_CONTINUOUS_PICTURE);
++		setFlash(CameraManager::FLASH_AUTO);
+ 	}
+ }
+ 
+@@ -313,6 +485,7 @@ void CameraManager::setFlash(Flash mode)
+ {
+ 	android_camera_set_flash_mode(m_cameraControl, convertFlashMode(mode));
+ 	m_flashMode = mode;
++	refreshParameters();
+ 	Q_EMIT flashChanged();
+ }
+ 
+@@ -361,6 +534,7 @@ void CameraManager::setPicAspectWide(bool wide)
+ {
+ 	if (m_picAspectWide != wide) {
+ 		m_picAspectWide = wide;
++		m_settings.remove(QString("Camera%1/userPictureSize").arg(m_currentCameraId));
+ 		double targetAspect = 16.0 / 9.0;
+ 
+ 		if (!m_picAspectWide)
+@@ -422,7 +596,10 @@ void CameraManager::setPicSize_cb(void *ctx, int width, int height)
+ void CameraManager::setVidSize_cb(void *ctx, int width, int height)
+ {
+ 	auto *dev = static_cast<CameraDevice *>(ctx);
+-	if (dev)
++	// the camera lists 4032x1908, but the encoder is capped at 3840 wide and
++	// MediaRecorder then asks the camera for 3840x1908, which it refuses
++	// ("Video dimension (3840x1908) is unsupported", start failed -19)
++	if (dev && width <= 3840 && height <= 2160)
+ 		dev->videoSizes.append(QSize(width, height));
+ }
+ 
+@@ -440,16 +617,11 @@ void CameraManager::data_compressed_image_cb(void *data, uint32_t size,
+ 		return;
+ 
+ 	auto *self = static_cast<CameraManager *>(context);
++	// the HAL's JPEG as-is: keeps EXIF (orientation, GPS, lens data) and the
++	// chosen JPEG quality instead of decoding and re-encoding it
+ 	QByteArray imageData(reinterpret_cast<const char *>(data),
+ 			     static_cast<int>(size));
+-	QImage image;
+-
+-	if (!image.loadFromData(imageData, "JPG")) {
+-		qWarning() << "Failed to load image from data";
+-		return;
+-	}
+-
+-	Q_EMIT self->compressedImageCaptured(image);
++	Q_EMIT self->compressedJpegCaptured(imageData);
+ }
+ 
+ void CameraManager::data_raw_image_cb(void *data, uint32_t size, void *context)
+diff --git a/src/camera-manager.h b/src/camera-manager.h
+index 656a56b..bbca5c8 100644
+--- a/src/camera-manager.h
++++ b/src/camera-manager.h
+@@ -17,6 +17,8 @@
+ #include <hybris/camera/camera_compatibility_layer.h>
+ #include <hybris/camera/camera_compatibility_layer_capabilities.h>
+ 
++#include <camera-extras.h>
++
+ struct CameraDevice {
+ 	int camId;
+ 	int type;
+@@ -112,6 +114,36 @@ class CameraManager : public QObject {
+ 	QSize getMaxSizeForAspect(const QList<QSize> &sizes,
+ 				  double targetAspect);
+ 
++	// Camera1 parameters beyond the compatibility layer (libcamx)
++	CameraExtras &extras()
++	{
++		return m_extras;
++	}
++	bool extrasAvailable() const
++	{
++		return m_extras.available();
++	}
++	// full HAL parameter set of the current camera
++	QMap<QString, QString> parameters() const
++	{
++		return m_params;
++	}
++	// sets a HAL key and remembers it for this camera; true when accepted
++	bool setParameter(const QString &key, const QString &value);
++	void refreshParameters();
++
++	int jpegQuality() const
++	{
++		return m_jpegQuality;
++	}
++	void setJpegQuality(int quality);
++
++	QSize currentPictureSize() const
++	{
++		return m_currentCamera.curPicSize;
++	}
++	void setPictureSizeByUser(const QSize &size);
++
+     public Q_SLOTS:
+ 	void onReadyForPreview();
+ 
+@@ -121,6 +153,7 @@ class CameraManager : public QObject {
+ 	void previewSizeChanged(const QSize &size);
+ 	void previewNeedsUpdate();
+ 	void compressedImageCaptured(QImage);
++	void compressedJpegCaptured(const QByteArray &jpeg);
+ 	void rawImageCaptured();
+ 	void camModeChanged(CameraManager::CamMode mode);
+ 	void camIdChanged();
+@@ -132,6 +165,9 @@ class CameraManager : public QObject {
+ 	void flashChanged();
+ 	void effectiveRotationChanged(int angle);
+ 	void needFlipChanged(bool flip);
++	void parametersChanged();
++	void jpegQualityChanged();
++	void pictureSizeChanged();
+ 
+     private:
+ 	QList<CameraDevice> m_cameras;
+@@ -139,7 +175,7 @@ class CameraManager : public QObject {
+ 	int m_currentCameraId = -1;
+ 	CamMode m_camMode = Undefined;
+ 	int m_camId = -1;
+-	int m_zoom = 1;
++	int m_zoom = 0; // index into zoom-ratios; the HAL starts every connection at 0
+ 	int m_maxZoom = 1;
+ 	bool m_withMic = false;
+ 	int m_videoBitRate = 3;
+@@ -167,5 +203,16 @@ class CameraManager : public QObject {
+ 	CameraManager::Flash convertFromFlashMode(FlashMode mode);
+ 
+ 	void setEffectiveRotation(int screenOrientation);
++	void attachExtras();
++	void probeUncachedCameras();
++	QSize defaultVideoSize() const;
++	void applyModeDefaults();
++	void reapplySavedParameters();
++	QString savedParameterGroup() const;
++
++	CameraExtras m_extras;
++	QMap<QString, QString> m_params;
++	int m_jpegQuality = 95;
++	QSize m_userPicSize;
+ 	QSettings m_settings;
+ };
+\ No newline at end of file
+diff --git a/src/camera-recorder.cpp b/src/camera-recorder.cpp
+index a93cff1..b03e9d9 100644
+--- a/src/camera-recorder.cpp
++++ b/src/camera-recorder.cpp
+@@ -126,8 +126,10 @@ bool CameraRecorder::start()
+ 	       trySet(android_recorder_setAudioEncoder(
+ 			      m_recorder, ANDROID_AUDIO_ENCODER_AAC),
+ 		      "setAudioEncoder failed")) &&
++	      // Android video_encoder: HEVC = 5 (libhybris' enum stops at MPEG_4_SP)
+ 	      trySet(android_recorder_setVideoEncoder(
+-			     m_recorder, ANDROID_VIDEO_ENCODER_H264),
++			     m_recorder, m_hevc ? static_cast<VideoEncoder>(5)
++					       : ANDROID_VIDEO_ENCODER_H264),
+ 		     "setVideoEncoder failed") &&
+ 	      trySet(android_recorder_setOutputFile(m_recorder, fd),
+ 		     "setOutputFile failed") &&
+@@ -135,7 +137,7 @@ bool CameraRecorder::start()
+ 						   m_videoSize.width(),
+ 						   m_videoSize.height()),
+ 		     "setVideoSize failed") &&
+-	      trySet(android_recorder_setVideoFrameRate(m_recorder, 30),
++	      trySet(android_recorder_setVideoFrameRate(m_recorder, m_frameRate),
+ 		     "setVideoFrameRate failed")))
+ 		return false;
+ 
+diff --git a/src/camera-recorder.h b/src/camera-recorder.h
+index a5617ce..41dc3ed 100644
+--- a/src/camera-recorder.h
++++ b/src/camera-recorder.h
+@@ -35,6 +35,14 @@ class CameraRecorder : public QObject {
+ 	void setTimeLapseFps(float fps);
+ 
+ 	float timeLapseFps(){return m_timeLapseFps;};
++	void setFrameRate(int fps)
++	{
++		m_frameRate = fps;
++	}
++	void setHevc(bool hevc)
++	{
++		m_hevc = hevc;
++	}
+ 
+ 	bool start();
+ 	void stop();
+@@ -66,5 +74,7 @@ class CameraRecorder : public QObject {
+ 	int m_orientation = 0;
+ 	int m_videoBitRate = 3;
+ 	float m_timeLapseFps = 0.0;
++	int m_frameRate = 30;
++	bool m_hevc = false;
+ 	QSettings m_settings;
+ };
+\ No newline at end of file
+diff --git a/src/camera-renderer.h b/src/camera-renderer.h
+index d6b314d..7c2ea3e 100644
+--- a/src/camera-renderer.h
++++ b/src/camera-renderer.h
+@@ -61,6 +61,11 @@ class CameraRenderer : public QObject, protected QOpenGLFunctions {
+ 	{
+ 		return m_textureSize;
+ 	}
++	// the size the viewfinder is drawn with (aspect of the stream)
++	QSize drawnTextureSize() const
++	{
++		return QSize(m_textureWidth, m_textureHeight);
++	}
+ 
+ 	bool isLandscape()
+ 	{
+diff --git a/src/camx/camx.cpp b/src/camx/camx.cpp
+new file mode 100644
+index 0000000..d3484a0
+--- /dev/null
++++ b/src/camx/camx.cpp
+@@ -0,0 +1,355 @@
++// camx: parametry aparatu, ktorych nie ma w warstwie zgodnosci libhybris
++// (android_camera_*): korekta ekspozycji, blokady AE/AWB, przeciwmigotanie,
++// wykrywanie twarzy i dowolny klucz Camera1.
++//
++// Biblioteka po stronie ANDROIDA (bionic), ladowana z aplikacji przez hybris
++// (android_dlopen). Dziala na obiekcie CameraControl warstwy zgodnosci
++// (libhybris hybris/include/hybris/internal/camera_control.h):
++//   struct CameraControl : CameraListener, GLConsumer::FrameAvailableListener {
++//       android::Mutex guard;                    // +16 (po dwoch vptr), bionic 40 B
++//       CameraControlListener* listener;         // +56
++//       android::sp<android::Camera> camera;     // +64
++//       android::CameraParameters camera_parameters; // +72
++//   ...
++// Przesuniecia sa sprawdzane w dzialajacym procesie (camx_check): pole listener
++// musi byc wskaznikiem przekazanym przez aplikacje, a parametry musza zwracac
++// picture-size. Bez zgodnosci zadna inna funkcja nic nie robi.
++//
++// Twarze: Camera1 oddaje je w postData(CAMERA_MSG_PREVIEW_METADATA), a warstwa
++// zgodnosci je gubi. camx wstawia posrednika CameraListener, ktory przekazuje
++// wszystko oryginalnemu CameraControl, a twarze kopiuje pod blokada do bufora;
++// aplikacja odczytuje je sama (camx_faces), bez wywolan zwrotnych do glibc
++// z watkow Bindera.
++//
++// Budowa (na telefonie): sh buduj.sh
++
++extern "C" {
++typedef long ssize_t;
++typedef unsigned long size_t;
++int pthread_mutex_lock(void *);
++int pthread_mutex_unlock(void *);
++void *memcpy(void *, const void *, size_t);
++size_t strlen(const char *);
++void *malloc(size_t);
++void free(void *);
++}
++
++typedef long nsecs_t;
++typedef int int32_t;
++typedef unsigned int uint32_t;
++
++// system/camera.h
++struct camera_face_t {
++	int32_t rect[4];
++	int32_t score;
++	int32_t id;
++	int32_t left_eye[2];
++	int32_t right_eye[2];
++	int32_t mouth[2];
++};
++struct camera_frame_metadata_t {
++	int32_t number_of_faces;
++	camera_face_t *faces;
++};
++struct native_handle_t;
++
++namespace android {
++// libutils RefBase.h (Android 11): uklad i kolejnosc wirtualnych musza sie zgadzac
++class RefBase {
++    public:
++	void incStrong(const void *id) const;
++	void decStrong(const void *id) const;
++
++    protected:
++	RefBase();
++	virtual ~RefBase();
++	virtual void onFirstRef();
++	virtual void onLastStrongRef(const void *id);
++	virtual bool onIncStrongAttempted(uint32_t flags, const void *id);
++	virtual void onLastWeakRef(const void *id);
++
++    private:
++	void *const mRefs;
++};
++
++template <typename T> class sp {
++    public:
++	sp(T *p)
++		: m_ptr(p)
++	{
++		if (p)
++			p->incStrong(this);
++	}
++	~sp()
++	{
++		if (m_ptr)
++			m_ptr->decStrong(this);
++	}
++	T *m_ptr;
++};
++
++class IMemory;
++struct NsecsVector; // std::vector<nsecs_t>, tylko przekazywany dalej przez referencje
++struct HandleVector; // std::vector<native_handle_t*>
++
++// frameworks/av/camera/include/camera/Camera.h (Android 11)
++class CameraListener : virtual public RefBase {
++    public:
++	virtual void notify(int32_t msgType, int32_t ext1, int32_t ext2) = 0;
++	virtual void postData(int32_t msgType, const sp<IMemory> &dataPtr,
++			      camera_frame_metadata_t *metadata) = 0;
++	virtual void postDataTimestamp(nsecs_t timestamp, int32_t msgType,
++				       const sp<IMemory> &dataPtr) = 0;
++	virtual void postRecordingFrameHandleTimestamp(nsecs_t timestamp,
++						       native_handle_t *handle) = 0;
++	virtual void postRecordingFrameHandleTimestampBatch(const NsecsVector &timestamps,
++							    const HandleVector &handles) = 0;
++};
++
++class String8 {
++    public:
++	String8(const char *s);
++	~String8();
++	const char *mString;
++};
++
++class CameraParameters {
++    public:
++	void set(const char *key, const char *value);
++	const char *get(const char *key) const;
++	String8 flatten() const;
++	void unflatten(const String8 &params);
++};
++
++class Camera {
++    public:
++	int setParameters(const String8 &params);
++	String8 getParameters() const;
++	int sendCommand(int cmd, int arg1, int arg2);
++	void setListener(const sp<CameraListener> &listener);
++};
++} // namespace android
++
++namespace {
++const int32_t CAMERA_MSG_PREVIEW_METADATA = 0x0400;
++const int MAX_TWARZY = 16;
++
++// bufor twarzy: pisze watek Bindera, czyta aplikacja przez camx_faces
++struct {
++	int mutex[10]; // bionic pthread_mutex_t (LP64: 40 B), zera = PTHREAD_MUTEX_INITIALIZER
++	int liczba;
++	unsigned pokolenie;
++	camera_face_t twarze[MAX_TWARZY];
++} bufor;
++
++// Posrednik: wszystko idzie do oryginalnego CameraControl (jego baza CameraListener
++// lezy na poczatku obiektu), twarze dodatkowo do bufora.
++class Posrednik : public android::CameraListener {
++    public:
++	explicit Posrednik(android::CameraListener *oryginal)
++		: m_oryginal(oryginal)
++	{
++		// Camera trzymala silna referencje do CameraControl; po podmianie trzymamy ja my
++		m_oryginal->incStrong(this);
++	}
++	~Posrednik() override
++	{
++		m_oryginal->decStrong(this);
++	}
++	void notify(int32_t t, int32_t a, int32_t b) override
++	{
++		m_oryginal->notify(t, a, b);
++	}
++	void postData(int32_t t, const android::sp<android::IMemory> &d,
++		      camera_frame_metadata_t *m) override
++	{
++		if ((t & CAMERA_MSG_PREVIEW_METADATA) && m) {
++			pthread_mutex_lock(bufor.mutex);
++			int n = m->number_of_faces;
++			if (n < 0)
++				n = 0;
++			if (n > MAX_TWARZY)
++				n = MAX_TWARZY;
++			if (n && m->faces)
++				memcpy(bufor.twarze, m->faces, n * sizeof(camera_face_t));
++			bufor.liczba = n;
++			bufor.pokolenie++;
++			pthread_mutex_unlock(bufor.mutex);
++			if (t == CAMERA_MSG_PREVIEW_METADATA)
++				return; // warstwa zgodnosci i tak tego nie obsluguje
++		}
++		m_oryginal->postData(t, d, m);
++	}
++	void postDataTimestamp(nsecs_t ts, int32_t t, const android::sp<android::IMemory> &d) override
++	{
++		m_oryginal->postDataTimestamp(ts, t, d);
++	}
++	void postRecordingFrameHandleTimestamp(nsecs_t ts, native_handle_t *h) override
++	{
++		m_oryginal->postRecordingFrameHandleTimestamp(ts, h);
++	}
++	void postRecordingFrameHandleTimestampBatch(const android::NsecsVector &ts,
++						    const android::HandleVector &h) override
++	{
++		m_oryginal->postRecordingFrameHandleTimestampBatch(ts, h);
++	}
++
++    private:
++	android::CameraListener *m_oryginal;
++};
++} // namespace
++
++namespace {
++const long OFF_GUARD = 16;
++const long OFF_LISTENER = 56;
++const long OFF_CAMERA = 64;
++const long OFF_PARAMS = 72;
++
++void *pole(void *cc, long off)
++{
++	return static_cast<char *>(cc) + off;
++}
++android::Camera *kamera(void *cc)
++{
++	return *static_cast<android::Camera **>(pole(cc, OFF_CAMERA));
++}
++android::CameraParameters *parametry(void *cc)
++{
++	return static_cast<android::CameraParameters *>(pole(cc, OFF_PARAMS));
++}
++
++// ostatnio sprawdzony CameraControl (0 = nie sprawdzono albo niezgodny)
++void *zgodny = nullptr;
++
++void kopiuj(char *dst, int len, const char *src)
++{
++	if (!dst || len <= 0)
++		return;
++	int n = src ? (int)strlen(src) : 0;
++	if (n > len - 1)
++		n = len - 1;
++	if (n > 0)
++		memcpy(dst, src, n);
++	dst[n] = 0;
++}
++
++// Zapisuje parametry kamery i przy odrzuceniu przez HAL wraca do stanu kamery
++// (tak samo jak setParameters_resilient w warstwie zgodnosci).
++int zapisz(void *cc)
++{
++	android::String8 plaski = parametry(cc)->flatten();
++	int err = kamera(cc)->setParameters(plaski);
++	if (err != 0) {
++		android::String8 biezace = kamera(cc)->getParameters();
++		parametry(cc)->unflatten(biezace);
++	}
++	return err;
++}
++} // namespace
++
++extern "C" {
++
++// 1 = uklad zgodny i mozna uzywac pozostalych funkcji
++int camx_check(void *cc, void *listener)
++{
++	zgodny = nullptr;
++	if (!cc || !listener)
++		return 0;
++	if (*static_cast<void **>(pole(cc, OFF_LISTENER)) != listener)
++		return 0;
++	if (!kamera(cc))
++		return 0;
++	pthread_mutex_lock(pole(cc, OFF_GUARD));
++	const char *ps = parametry(cc)->get("picture-size");
++	bool ok = ps && ps[0] >= '1' && ps[0] <= '9';
++	pthread_mutex_unlock(pole(cc, OFF_GUARD));
++	if (ok)
++		zgodny = cc;
++	return ok ? 1 : 0;
++}
++
++// Ustawia klucz Camera1. 0 = HAL przyjal, <0 = blad (stan wrocil do kamery),
++// -1000 = CameraControl nie przeszedl camx_check.
++int camx_set(void *cc, const char *key, const char *value)
++{
++	if (!cc || cc != zgodny || !key || !value)
++		return -1000;
++	pthread_mutex_lock(pole(cc, OFF_GUARD));
++	parametry(cc)->set(key, value);
++	int err = zapisz(cc);
++	pthread_mutex_unlock(pole(cc, OFF_GUARD));
++	return err;
++}
++
++// Biezaca wartosc klucza z kamery (nie z kopii): pusta, gdy brak klucza.
++int camx_get(void *cc, const char *key, char *out, int len)
++{
++	if (!cc || cc != zgodny || !key)
++		return -1000;
++	pthread_mutex_lock(pole(cc, OFF_GUARD));
++	android::String8 biezace = kamera(cc)->getParameters();
++	parametry(cc)->unflatten(biezace);
++	kopiuj(out, len, parametry(cc)->get(key));
++	pthread_mutex_unlock(pole(cc, OFF_GUARD));
++	return 0;
++}
++
++// Pelny zrzut parametrow kamery ("k=v;k=v;...").
++int camx_dump(void *cc, char *out, int len)
++{
++	if (!cc || cc != zgodny)
++		return -1000;
++	pthread_mutex_lock(pole(cc, OFF_GUARD));
++	android::String8 biezace = kamera(cc)->getParameters();
++	kopiuj(out, len, biezace.mString);
++	pthread_mutex_unlock(pole(cc, OFF_GUARD));
++	return 0;
++}
++
++// Camera::sendCommand (np. CAMERA_CMD_START_FACE_DETECTION = 6, STOP = 7)
++int camx_command(void *cc, int cmd, int arg1, int arg2)
++{
++	if (!cc || cc != zgodny)
++		return -1000;
++	return kamera(cc)->sendCommand(cmd, arg1, arg2);
++}
++
++// Wstawia posrednika zdarzen (raz na polaczenie z kamera), zeby dostawac twarze.
++// CameraControl jest glowna baza CameraListener, wiec lezy pod adresem cc.
++int camx_listen(void *cc)
++{
++	if (!cc || cc != zgodny)
++		return -1000;
++	pthread_mutex_lock(bufor.mutex);
++	bufor.liczba = 0;
++	pthread_mutex_unlock(bufor.mutex);
++	android::sp<android::CameraListener> p(
++		new Posrednik(static_cast<android::CameraListener *>(cc)));
++	kamera(cc)->setListener(p);
++	return 0;
++}
++
++// Twarze z ostatniej klatki metadanych: do max wpisow po 6 intow
++// (left, top, right, bottom w ukladzie -1000..1000, score 1..100, id).
++// Zwraca liczbe twarzy; *pokolenie rosnie z kazda paczka metadanych.
++int camx_faces(int *out, int max, unsigned *pokolenie)
++{
++	pthread_mutex_lock(bufor.mutex);
++	int n = bufor.liczba < max ? bufor.liczba : max;
++	for (int i = 0; i < n; i++) {
++		int *o = out + i * 6;
++		const camera_face_t &f = bufor.twarze[i];
++		o[0] = f.rect[0];
++		o[1] = f.rect[1];
++		o[2] = f.rect[2];
++		o[3] = f.rect[3];
++		o[4] = f.score;
++		o[5] = f.id;
++	}
++	if (pokolenie)
++		*pokolenie = bufor.pokolenie;
++	pthread_mutex_unlock(bufor.mutex);
++	return n;
++}
++
++} // extern "C"
+diff --git a/src/hybris-camera-pro.cpp b/src/hybris-camera-pro.cpp
+new file mode 100644
+index 0000000..0e159d3
+--- /dev/null
++++ b/src/hybris-camera-pro.cpp
+@@ -0,0 +1,250 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Full Camera1 feature set of the HAL: lens picker, HAL parameters (through
++ * libcamx), face detection, tap to focus/meter, JPEG quality, geotagging and
++ * video frame rate/codec.
++ */
++
++#include <QDateTime>
++#include <QDebug>
++#include <QSettings>
++
++#include <hybris-camera.h>
++
++namespace {
++const int FOCUS_AREA_HALF = 100; // tap area: 10% of the field of view each way
++}
++
++QVariantList HybrisCamera::lenses() const
++{
++	QVariantList list;
++	QSettings settings;
++	for (const CameraDevice &dev : m_cameraManager->availableCameras()) {
++		QVariantMap lens;
++		lens["id"] = dev.camId;
++		lens["front"] = dev.type != 0;
++		lens["megapixels"] =
++			settings.value(QString("Camera%1/megapixels").arg(dev.camId), 0.0).toDouble();
++		lens["fov"] = settings.value(QString("Camera%1/fov").arg(dev.camId), 0.0).toDouble();
++		list.append(lens);
++	}
++	return list;
++}
++
++QVariantMap HybrisCamera::parameters() const
++{
++	QVariantMap map;
++	const QMap<QString, QString> params = m_cameraManager->parameters();
++	for (auto it = params.cbegin(); it != params.cend(); ++it)
++		map.insert(it.key(), it.value());
++	return map;
++}
++
++void HybrisCamera::setVideoFps(int fps)
++{
++	if (fps == m_videoFps)
++		return;
++	m_videoFps = fps;
++	QSettings().setValue("AppSettings/video-fps", fps);
++	Q_EMIT videoFpsChanged();
++}
++
++void HybrisCamera::setHevc(bool hevc)
++{
++	if (hevc == m_hevc)
++		return;
++	m_hevc = hevc;
++	QSettings().setValue("AppSettings/hevc", hevc);
++	Q_EMIT hevcChanged();
++}
++
++void HybrisCamera::setFaceDetection(bool enable)
++{
++	if (enable == m_faceDetection)
++		return;
++	m_faceDetection = enable;
++	QSettings().setValue("AppSettings/face-detection", enable);
++	if (enable) {
++		m_cameraManager->extras().startFaceDetection();
++		m_faceTimer->start();
++	} else {
++		m_faceTimer->stop();
++		m_cameraManager->extras().stopFaceDetection();
++		m_faces.clear();
++		Q_EMIT facesChanged();
++	}
++	Q_EMIT faceDetectionChanged();
++}
++
++void HybrisCamera::pollFaces()
++{
++	// Camera2Client drops face detection whenever the preview restarts
++	// (camera, mode or size change); starting it again is a no-op while it runs
++	static int tick = 0;
++	if (++tick % 10 == 0)
++		m_cameraManager->extras().startFaceDetection();
++
++	unsigned generation = 0;
++	const QList<CameraFace> faces = m_cameraManager->extras().faces(&generation);
++	if (generation == m_faceGeneration && !m_faces.isEmpty() == !faces.isEmpty())
++		return;
++	m_faceGeneration = generation;
++
++	QVariantList list;
++	for (const CameraFace &f : faces) {
++		const QPointF a = sensorToItem(QPointF(f.rect.left(), f.rect.top()));
++		const QPointF b = sensorToItem(QPointF(f.rect.right(), f.rect.bottom()));
++		QVariantMap face;
++		face["x"] = qMin(a.x(), b.x());
++		face["y"] = qMin(a.y(), b.y());
++		face["width"] = qAbs(b.x() - a.x());
++		face["height"] = qAbs(b.y() - a.y());
++		face["score"] = f.score;
++		list.append(face);
++	}
++	m_faces = list;
++	Q_EMIT facesChanged();
++}
++
++// Where the preview is drawn inside the item, with the same math as
++// CameraRenderer::paint(): scaled to fit, top aligned when letterboxed.
++QRectF HybrisCamera::previewRect() const
++{
++	const qreal w = width(), h = height();
++	const QSize tex = m_renderer ? m_renderer->drawnTextureSize() : m_previewSize;
++	if (w <= 0 || h <= 0 || tex.isEmpty())
++		return QRectF();
++	const int r = m_cameraManager->effectiveRotation();
++	const bool rotated = r == 90 || r == 270;
++	const qreal texW = rotated ? tex.height() : tex.width();
++	const qreal texH = rotated ? tex.width() : tex.height();
++	const qreal ta = texW / texH, va = w / h;
++	if (ta > va)
++		return QRectF(0, 0, w, h * va / ta);
++	const qreal f = ta / va;
++	return QRectF(w * (1 - f) / 2, 0, w * f, h);
++}
++
++// Texture coordinates of the renderer: base (X, 1 - Y), mirrored for front
++// cameras, rotated k times by (u, v) -> (1 - v, u), sampled at (u, 1 - v).
++// Camera1 areas and faces use the sensor frame -1000..1000, top-left origin.
++QPointF HybrisCamera::itemToSensor(const QPointF &itemNorm, bool *inside) const
++{
++	const QRectF rect = previewRect();
++	const qreal px = itemNorm.x() * width(), py = itemNorm.y() * height();
++	if (inside)
++		*inside = rect.contains(px, py);
++	if (rect.isEmpty())
++		return QPointF();
++	qreal u = (px - rect.x()) / rect.width();
++	qreal v = 1.0 - (py - rect.y()) / rect.height();
++	if (m_cameraManager->currentCamera().type)
++		u = 1.0 - u;
++	const int k = (m_cameraManager->effectiveRotation() / 90) % 4;
++	for (int i = 0; i < k; ++i) {
++		const qreal t = u;
++		u = 1.0 - v;
++		v = t;
++	}
++	return QPointF(u * 2000.0 - 1000.0, (1.0 - v) * 2000.0 - 1000.0);
++}
++
++QPointF HybrisCamera::sensorToItem(const QPointF &sensor) const
++{
++	const QRectF rect = previewRect();
++	if (rect.isEmpty() || width() <= 0 || height() <= 0)
++		return QPointF();
++	qreal u = (sensor.x() + 1000.0) / 2000.0;
++	qreal v = 1.0 - (sensor.y() + 1000.0) / 2000.0;
++	const int k = (m_cameraManager->effectiveRotation() / 90) % 4;
++	for (int i = 0; i < k; ++i) {
++		const qreal t = u;
++		u = v;
++		v = 1.0 - t;
++	}
++	if (m_cameraManager->currentCamera().type)
++		u = 1.0 - u;
++	const qreal px = rect.x() + u * rect.width();
++	const qreal py = rect.y() + (1.0 - v) * rect.height();
++	return QPointF(px / width(), py / height());
++}
++
++bool HybrisCamera::focusAt(qreal x, qreal y)
++{
++	CameraControl *cc = m_cameraManager->cameraControl();
++	if (!cc)
++		return false;
++	bool inside = false;
++	const QPointF s = itemToSensor(QPointF(x, y), &inside);
++	if (!inside)
++		return false;
++
++	const int cx = qBound(-1000 + FOCUS_AREA_HALF, int(s.x()), 1000 - FOCUS_AREA_HALF);
++	const int cy = qBound(-1000 + FOCUS_AREA_HALF, int(s.y()), 1000 - FOCUS_AREA_HALF);
++	FocusRegion region{ cy - FOCUS_AREA_HALF, cx - FOCUS_AREA_HALF, cy + FOCUS_AREA_HALF,
++			    cx + FOCUS_AREA_HALF, 1000 };
++	qDebug() << "Focus/metering area (sensor)" << region.left << region.top << region.right
++		 << region.bottom << "from item point" << x << y << "preview" << previewRect()
++		 << (m_renderer ? m_renderer->drawnTextureSize() : m_previewSize) << "rotation"
++		 << m_cameraManager->effectiveRotation();
++	android_camera_set_focus_region(cc, &region);
++	android_camera_set_metering_region(cc, &region);
++	// single AF only in "auto"; continuous modes follow the area by themselves
++	if (m_cameraManager->parameters().value("focus-mode") == "auto")
++		android_camera_start_autofocus(cc);
++	return true;
++}
++
++void HybrisCamera::resetFocus()
++{
++	CameraControl *cc = m_cameraManager->cameraControl();
++	if (!cc)
++		return;
++	android_camera_reset_focus_region(cc);
++	android_camera_reset_metering_region(cc);
++}
++
++void HybrisCamera::setGeotag(bool enable)
++{
++	if (enable == m_geotag)
++		return;
++	m_geotag = enable;
++	QSettings().setValue("AppSettings/geotag", enable);
++	if (!m_positionSource) {
++		m_positionSource = QGeoPositionInfoSource::createDefaultSource(this);
++		if (m_positionSource) {
++			connect(m_positionSource, &QGeoPositionInfoSource::positionUpdated, this,
++				[this](const QGeoPositionInfo &info) {
++					const bool had = m_position.isValid();
++					m_position = info;
++					if (had != m_position.isValid())
++						Q_EMIT hasLocationChanged();
++				});
++			connect(m_positionSource, &QGeoPositionInfoSource::errorOccurred, this,
++				[](QGeoPositionInfoSource::Error e) {
++					qWarning() << "Position source error" << e;
++				});
++		} else {
++			qWarning() << "No position source, photos will not be geotagged";
++		}
++	}
++	if (m_positionSource) {
++		if (enable)
++			m_positionSource->startUpdates();
++		else
++			m_positionSource->stopUpdates();
++	}
++	Q_EMIT geotagChanged();
++}
++
++void HybrisCamera::applyLocation()
++{
++	CameraControl *cc = m_cameraManager->cameraControl();
++	if (!cc || !m_geotag || !m_position.isValid())
++		return;
++	const QGeoCoordinate c = m_position.coordinate();
++	const float lat = c.latitude(), lon = c.longitude();
++	const float alt = c.type() == QGeoCoordinate::Coordinate3D ? c.altitude() : 0.0f;
++	android_camera_set_location(cc, &lat, &lon, &alt,
++				    int(m_position.timestamp().toSecsSinceEpoch()), "GPS");
++}
+diff --git a/src/hybris-camera.cpp b/src/hybris-camera.cpp
+index a6c22e2..fd7beda 100644
+--- a/src/hybris-camera.cpp
++++ b/src/hybris-camera.cpp
+@@ -56,10 +56,15 @@ HybrisCamera::HybrisCamera()
+ 	if (!m_cameraManager->availableCameras().isEmpty()) {
+ 		int lastCam = m_settings.value("AppSettings/last-camera", 0).toInt();
+ 		setCamId(lastCam);
++		// CameraManager already opened this camera in its constructor, before
++		// cameraChanged was connected: build the video sizes for it now
++		if (m_videoModel.rowCount() == 0)
++			handleCameraChanged(m_cameraManager->currentCamera());
+ 	}
+ 
+ 	connect(m_cameraManager, &CameraManager::previewSizeChanged, this,
+ 		[this](const QSize &size) {
++			m_previewSize = size;
+ 			if (m_renderer)
+ 				m_renderer->setTextureSize(size);
+ 		});
+@@ -70,6 +75,30 @@ HybrisCamera::HybrisCamera()
+ 			m_cameraManager->restartPreview();
+ 		});
+ 
++	connect(m_cameraManager, &CameraManager::compressedJpegCaptured, this,
++		[this](const QByteArray &jpeg) {
++			saveJpegData(jpeg);
++			m_cameraManager->restartPreview();
++		});
++
++	connect(m_cameraManager, &CameraManager::parametersChanged, this,
++		&HybrisCamera::parametersChanged);
++	connect(m_cameraManager, &CameraManager::jpegQualityChanged, this,
++		&HybrisCamera::jpegQualityChanged);
++	connect(m_cameraManager, &CameraManager::pictureSizeChanged, this,
++		&HybrisCamera::pictureSizeChanged);
++	connect(m_cameraManager, &CameraManager::cameraChanged, this,
++		&HybrisCamera::lensesChanged);
++
++	QSettings settings;
++	m_videoFps = settings.value("AppSettings/video-fps", 30).toInt();
++	m_hevc = settings.value("AppSettings/hevc", false).toBool();
++	m_faceTimer = new QTimer(this);
++	m_faceTimer->setInterval(100);
++	connect(m_faceTimer, &QTimer::timeout, this, &HybrisCamera::pollFaces);
++	setFaceDetection(settings.value("AppSettings/face-detection", false).toBool());
++	setGeotag(settings.value("AppSettings/geotag", false).toBool());
++
+ 	connect(m_cameraManager, &CameraManager::rawImageCaptured, this,
+ 		[this]() {
+ 			qDebug() << "RAW IMAGE CALLBACK";
+@@ -120,9 +149,26 @@ void HybrisCamera::restartPreview()
+ 
+ void HybrisCamera::takePicture()
+ {
++	applyLocation();
+ 	m_cameraManager->takePicture();
+ }
+ 
++void HybrisCamera::saveJpegData(const QByteArray &jpeg)
++{
++	QString filename =
++		m_picturePath + "/IMG" +
++		QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz") +
++		".jpg";
++	QFile file(filename);
++	if (!file.open(QIODevice::WriteOnly) || file.write(jpeg) != jpeg.size()) {
++		qWarning() << "Failed to save image to disk";
++		return;
++	}
++	file.close();
++	Q_EMIT newMediaSaved(filename);
++	qDebug() << "Image saved to" << filename;
++}
++
+ void HybrisCamera::saveJpeg(QImage img)
+ {
+ 	QString filename =
+@@ -186,6 +232,8 @@ void HybrisCamera::startRecording()
+ 		m_cameraRecorder->setOrientation(m_cameraManager->effectiveRotation());
+ 		m_cameraRecorder->setOutputPath(m_recordingFile);
+ 		m_cameraRecorder->setVideoBitRate(videoBitRate());
++		m_cameraRecorder->setFrameRate(m_videoFps);
++		m_cameraRecorder->setHevc(m_hevc);
+ 
+ 		if (!m_cameraRecorder->start()) {
+ 			qWarning() << "Failed to start recording";
+@@ -226,6 +274,14 @@ void HybrisCamera::sync()
+ {
+ 	if (!m_renderer) {
+ 		m_renderer = new CameraRenderer();
++		// the size signal of the first camera fired before the renderer existed
++		const QSize size = m_cameraManager->camMode() == CameraManager::PictureMode
++					   ? m_cameraManager->currentPictureSize()
++					   : m_cameraManager->currentVideoSize();
++		if (!size.isEmpty()) {
++			m_previewSize = size;
++			m_renderer->setTextureSize(size);
++		}
+ 		connect(window(), &QQuickWindow::beforeRendering, m_renderer,
+ 			&CameraRenderer::init, Qt::DirectConnection);
+ 		connect(window(), &QQuickWindow::beforeRenderPassRecording,
+@@ -349,6 +405,10 @@ void HybrisCamera::handleCameraChanged(const CameraDevice &device)
+ 		else if (size == QSize(3840, 2160))
+ 			m_videoModel.addVideo("2160p", size.width(),
+ 					      size.height());
++		else if (size.width() >= 640)
++			// every other size the HAL records (4032x1908, 2288x1080, 1920x1440, ...)
++			m_videoModel.addVideo(QString("%1x%2").arg(size.width()).arg(size.height()),
++					      size.width(), size.height());
+ 	}
+ 
+ 	if (m_renderer) {
+diff --git a/src/hybris-camera.h b/src/hybris-camera.h
+index 3fd07e7..92111cd 100644
+--- a/src/hybris-camera.h
++++ b/src/hybris-camera.h
+@@ -12,6 +12,11 @@
+ #include <QtQuick/QQuickWindow>
+ #include <QSettings>
+ #include <QClipboard>
++#include <QTimer>
++#include <QVariantList>
++#include <QVariantMap>
++#include <QGeoPositionInfo>
++#include <QGeoPositionInfoSource>
+ 
+ #include <camera-renderer.h>
+ #include <videoquality.h>
+@@ -48,6 +53,22 @@ class HybrisCamera : public QQuickItem {
+ 			   NOTIFY encCrfChanged)
+ 	Q_PROPERTY(QString qrCode READ qrCode NOTIFY qrCodeChanged)
+ 
++	// every camera the HAL exposes: [{id, front, megapixels}]
++	Q_PROPERTY(QVariantList lenses READ lenses NOTIFY lensesChanged)
++	// libcamx loaded and the HAL parameter set is available
++	Q_PROPERTY(bool proAvailable READ proAvailable NOTIFY parametersChanged)
++	// full Camera1 parameter set of the current camera (key -> value string)
++	Q_PROPERTY(QVariantMap parameters READ parameters NOTIFY parametersChanged)
++	Q_PROPERTY(int jpegQuality READ jpegQuality WRITE setJpegQuality NOTIFY jpegQualityChanged)
++	Q_PROPERTY(QString pictureSize READ pictureSize NOTIFY pictureSizeChanged)
++	Q_PROPERTY(int videoFps READ videoFps WRITE setVideoFps NOTIFY videoFpsChanged)
++	Q_PROPERTY(bool hevc READ hevc WRITE setHevc NOTIFY hevcChanged)
++	Q_PROPERTY(bool faceDetection READ faceDetection WRITE setFaceDetection NOTIFY faceDetectionChanged)
++	// detected faces in item coordinates, normalized 0..1: [{x, y, width, height, score}]
++	Q_PROPERTY(QVariantList faces READ faces NOTIFY facesChanged)
++	Q_PROPERTY(bool geotag READ geotag WRITE setGeotag NOTIFY geotagChanged)
++	Q_PROPERTY(bool hasLocation READ hasLocation NOTIFY hasLocationChanged)
++
+     public:
+ 	HybrisCamera();
+ 
+@@ -60,6 +81,67 @@ class HybrisCamera : public QQuickItem {
+ 	{
+ 	    QGuiApplication::clipboard()->setText(text);
+ 	}
++	// sets a Camera1 key through libcamx; false when the HAL rejected it
++	Q_INVOKABLE bool setParameter(const QString &key, const QString &value)
++	{
++		return m_cameraManager->setParameter(key, value);
++	}
++	Q_INVOKABLE void setPictureSize(int width, int height)
++	{
++		m_cameraManager->setPictureSizeByUser(QSize(width, height));
++	}
++	// focus and metering on a point of the preview (item coordinates 0..1);
++	// false when the point is outside the picture
++	Q_INVOKABLE bool focusAt(qreal x, qreal y);
++	Q_INVOKABLE void resetFocus();
++
++	QVariantList lenses() const;
++	bool proAvailable() const
++	{
++		return m_cameraManager->extrasAvailable();
++	}
++	QVariantMap parameters() const;
++	int jpegQuality() const
++	{
++		return m_cameraManager->jpegQuality();
++	}
++	void setJpegQuality(int quality)
++	{
++		m_cameraManager->setJpegQuality(quality);
++	}
++	QString pictureSize() const
++	{
++		const QSize s = m_cameraManager->currentPictureSize();
++		return QString("%1x%2").arg(s.width()).arg(s.height());
++	}
++	int videoFps() const
++	{
++		return m_videoFps;
++	}
++	void setVideoFps(int fps);
++	bool hevc() const
++	{
++		return m_hevc;
++	}
++	void setHevc(bool hevc);
++	bool faceDetection() const
++	{
++		return m_faceDetection;
++	}
++	void setFaceDetection(bool enable);
++	QVariantList faces() const
++	{
++		return m_faces;
++	}
++	bool geotag() const
++	{
++		return m_geotag;
++	}
++	void setGeotag(bool enable);
++	bool hasLocation() const
++	{
++		return m_position.isValid();
++	}
+ 
+ 	bool isRecording()
+ 	{
+@@ -176,6 +258,16 @@ class HybrisCamera : public QQuickItem {
+ 	void isLandscapeChanged();
+ 	void newMediaSaved(QString filePath);
+ 	void qrCodeChanged();
++	void lensesChanged();
++	void parametersChanged();
++	void jpegQualityChanged();
++	void pictureSizeChanged();
++	void videoFpsChanged();
++	void hevcChanged();
++	void faceDetectionChanged();
++	void facesChanged();
++	void geotagChanged();
++	void hasLocationChanged();
+ 
+     public Q_SLOTS:
+ 	void sync();
+@@ -191,11 +283,30 @@ class HybrisCamera : public QQuickItem {
+ 
+ 	void restartPreview();
+ 	void saveJpeg(QImage img);
++	void saveJpegData(const QByteArray &jpeg);
+ 
+ 	void cleanupFFmpegRecorder();
+ 
+ 	void setQrScan(bool scan);
+ 
++	// preview geometry shared by faces (sensor -> item) and tap focus (item -> sensor)
++	QRectF previewRect() const;
++	QPointF itemToSensor(const QPointF &itemNorm, bool *inside) const;
++	QPointF sensorToItem(const QPointF &sensor) const;
++	void pollFaces();
++	void applyLocation();
++
++	int m_videoFps = 30;
++	bool m_hevc = false;
++	bool m_faceDetection = false;
++	QVariantList m_faces;
++	unsigned m_faceGeneration = 0;
++	QTimer *m_faceTimer = nullptr;
++	QSize m_previewSize{ 4, 3 };
++	bool m_geotag = false;
++	QGeoPositionInfoSource *m_positionSource = nullptr;
++	QGeoPositionInfo m_position;
++
+ 	QString m_videoPath;
+ 	QString m_picturePath;
+ 	QString m_recordingFile;
+diff --git a/src/main.cpp b/src/main.cpp
+index 2ffa1b1..637c299 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -7,6 +7,8 @@
+  */
+ 
+ #include <QGuiApplication>
++#include <QLocale>
++#include <QTranslator>
+ #include <QtQuick/QQuickView>
+ #include <hybris-camera.h>
+ 
+@@ -17,6 +19,12 @@ int main(int argc, char **argv)
+ 	app.setOrganizationName("Droidian");
+     app.setOrganizationDomain("droidian.org");
+     app.setApplicationName("droidian-camera");
++    // geoclue identifies the app by its desktop file (geotagging)
++    app.setDesktopFileName("droidian-camera");
++
++    QTranslator translator;
++    if (translator.load(QLocale(), "droidian-camera", "_", ":/i18n"))
++        app.installTranslator(&translator);
+ 
+     bool qrMode = false;
+ 
+@@ -37,7 +45,9 @@ int main(int argc, char **argv)
+         root->setProperty("startupQrMode", qrMode);
+     }
+ 
+-	view.show();
++	// maximized from the start: a plain show() maps a 500x500 window that the
++	// compositor resizes later, laying the UI out twice
++	view.showMaximized();
+ 
+ 	return QGuiApplication::exec();
+ }
+diff --git a/src/qml/DefaultUI/ControlLandscape.qml b/src/qml/DefaultUI/ControlLandscape.qml
+deleted file mode 100644
+index 3f723fd..0000000
+--- a/src/qml/DefaultUI/ControlLandscape.qml
++++ /dev/null
+@@ -1,197 +0,0 @@
+-/* SPDX-License-Identifier: GPL-2.0-only
+- *
+- * Copyright (C) 2025 Droidian Project
+- *
+- * Authors:
+- * Alexander Rutz <alex@familyrutz.com>
+- */
+-
+-import QtQuick
+-import QtQuick.Layouts
+-import QtQuick.Controls
+-import HybrisCamera
+-import ThemeUtils
+-
+-Item {
+-	id: root
+-
+-	ColumnLayout {
+-        spacing: 10
+-        anchors.fill: parent
+-        uniformCellSizes: true
+-
+-        DefaultButton {
+-	        id: btnPicAspect
+-	        visible: camera.camMode == HybrisCamera.PictureMode
+-	        Layout.fillWidth: true
+-	        Layout.fillHeight: true
+-	        ffamily: ""
+-	        Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+-	        color: "darkgrey"
+-	        code: camera.picAspectWide ? "\u301016:9\u3011" : "\u30104:3\u3011"
+-
+-	        onClicked: camera.picAspectWide = !camera.picAspectWide
+-	    }
+-
+-	    DefaultButton {
+-	        id: btnVidResolution
+-	        property int currentIndex: 0
+-
+-	        visible: camera.camMode == HybrisCamera.VideoMode && !camera.isRecording
+-	        Layout.fillWidth: true
+-	        Layout.fillHeight: true
+-	        ffamily: ""
+-	        Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+-	        color: "darkgrey"
+-
+-	        onClicked: {
+-	            if (camera.isRecording)
+-	                return
+-
+-	            if (camera.videoModel.rowCount() > 0) {
+-	                if((camera.videoModel.currentIndex() + 1) === camera.videoModel.rowCount())
+-	                    camera.videoModel.setCurrentIndex(0)
+-	                else
+-	                    camera.videoModel.setCurrentIndex(camera.videoModel.currentIndex() + 1)
+-	                const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-	                code = "\u3010" + video.name + "\u3011";
+-	                camera.setVideoSize(video.resolution.width, video.resolution.height)
+-	            }
+-	        }
+-
+-	        Component.onCompleted: {
+-	            if (camera.videoModel.rowCount() > 0) {
+-	                const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-	                code = "\u3010" + video.name + "\u3011";
+-	            }
+-	        }
+-
+-	        Connections {
+-	            target: camera
+-	            onCamIdChanged: {
+-	                if (camera.videoModel.rowCount() > 0) {
+-	                    const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-	                    btnVidResolution.code = "\u3010" + video.name + "\u3011";
+-	                }
+-	            }
+-	            onCamModeChanged: {
+-	                if (camera.videoModel.rowCount() > 0) {
+-	                    const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-	                    btnVidResolution.code = "\u3010" + video.name + "\u3011";
+-	                }
+-	            }
+-	        }
+-	    }
+-
+-	    DefaultButton {
+-	        id: btnSnapshot
+-
+-	        visible: camera.camMode == HybrisCamera.VideoMode && camera.isRecording
+-	        Layout.fillWidth: true
+-	        Layout.fillHeight: true
+-	        ffamily: ""
+-	        Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+-	        color: ThemeUtils.getAccentColor()
+-	        code: "\ue3af"
+-	        rotate: true
+-	        onClicked: camera.takeSnapshot()
+-	    }
+-
+-        DefaultButton {
+-	        id: btnPicMode
+-	        Layout.fillWidth: true
+-	        Layout.fillHeight: true
+-	        Layout.margins: parent.width * 0.1
+-	        Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-	        color: camera.camMode == HybrisCamera.PictureMode ? ThemeUtils.getAccentColor() : "darkgrey"
+-	        code: "\ue412"
+-
+-	        onClicked: camera.camMode = HybrisCamera.PictureMode
+-	    }
+-
+-	    DefaultButton {
+-	        id: btnShatter
+-	        rotate: true
+-	        Layout.fillWidth: true
+-	        Layout.fillHeight: true
+-	        Layout.margins: parent.width * 0.08
+-	        Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-	        color: camera.camMode == HybrisCamera.VideoMode ? "red" : "white"
+-	        code: camera.camMode == HybrisCamera.PictureMode ? "\ue3af" : camera.isRecording ? "\uef71" : "\ue837"
+-	        opacity: timeLapseFps.opacity == 0.0
+-                    && encoderSettings.opacity == 0.0
+-                    && camera.camMode != HybrisCamera.QrMode ? 1.0 : 0.0
+-
+-	        onClicked: {
+-	        	if(camera.camMode == HybrisCamera.QrMode)
+-	        		return
+-	            if(encoderSettings.opacity > 0.0 || timeLapseFps.opacity > 0.0)
+-	                return
+-	            if(camera.camMode == HybrisCamera.PictureMode)
+-	                camera.takePicture()
+-	            else
+-	                camera.isRecording ? camera.stopRecording() : camera.startRecording()
+-	        }
+-
+-	        onPressAndHold: {
+-	        	if(camera.camMode == HybrisCamera.QrMode)
+-	        		return
+-	            if(encoderSettings.opacity > 0.0 || timeLapseFps.opacity > 0.0)
+-	                return
+-	            if(camera.camMode == HybrisCamera.VideoMode && !camera.isRecording)
+-	                timeLapseFps.opacity = timeLapseFps.opacity == 0.0 ? 1.0 : 0.0
+-	        }
+-	    }
+-
+-	    DefaultButton {
+-	        id: btnVidMode
+-	        Layout.fillWidth: true
+-	        Layout.fillHeight: true
+-	        Layout.margins: parent.width * 0.1
+-	        Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-	        color: camera.camMode == HybrisCamera.VideoMode ? ThemeUtils.getAccentColor() : "darkgrey"
+-	        code: "\ue04b"
+-
+-	        onClicked: camera.camMode = HybrisCamera.VideoMode
+-	    }
+-
+-        Rectangle {
+-            id: encBtn
+-            visible: camera.camMode === HybrisCamera.VideoMode && !camera.isRecording
+-            Layout.fillWidth: true
+-            height: 24
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-            color: Qt.rgba(0, 0, 0, 0.7)
+-            border.color: ThemeUtils.getAccentColor()
+-            border.width: 1
+-            radius: 15
+-            Text {
+-                anchors.fill: parent
+-                anchors.leftMargin: 5
+-                anchors.rightMargin: 5
+-                color: encoderSettings.opacity > 0.0 ? ThemeUtils.getAccentColor() : ThemeUtils.getTextColor()
+-                text: camera.swEncode ? "SW Encoder" : "HW Encoder"
+-                fontSizeMode: Text.Fit
+-				minimumPixelSize: 10
+-				font.pixelSize: 20
+-                font.bold: true
+-                horizontalAlignment: Text.AlignHCenter
+-                verticalAlignment: Text.AlignVCenter
+-
+-                MouseArea {
+-                    anchors.fill: parent
+-                    onClicked: {
+-                        if (!camera.isRecording)
+-                            encoderSettings.opacity = encoderSettings.opacity > 0 ? 0.0 : 1.0
+-                    }
+-                }
+-            }
+-        }
+-
+-        Item {
+-        	Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            visible: !encBtn.visible
+-        }
+-    }
+-}
+diff --git a/src/qml/DefaultUI/ControlPortrait.qml b/src/qml/DefaultUI/ControlPortrait.qml
+deleted file mode 100644
+index f836048..0000000
+--- a/src/qml/DefaultUI/ControlPortrait.qml
++++ /dev/null
+@@ -1,158 +0,0 @@
+-/* SPDX-License-Identifier: GPL-2.0-only
+- *
+- * Copyright (C) 2025 Droidian Project
+- *
+- * Authors:
+- * Alexander Rutz <alex@familyrutz.com>
+- */
+-
+-import QtQuick
+-import QtQuick.Layouts
+-import QtQuick.Controls
+-import HybrisCamera
+-import ThemeUtils
+-
+-GridLayout {
+-    id: centerGridControl
+-    columns: 3
+-    anchors.fill: parent
+-    rowSpacing: 2
+-    columnSpacing: 2
+-
+-    DefaultButton {
+-        id: btnPicMode
+-        Layout.fillWidth: true
+-        Layout.fillHeight: true
+-        Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-        maxPixelSize: parent.width * 0.12
+-        color: camera.camMode == HybrisCamera.PictureMode ? ThemeUtils.getAccentColor() : "darkgrey"
+-        code: "\ue412"
+-
+-        onClicked: camera.camMode = HybrisCamera.PictureMode
+-    }
+-
+-    DefaultButton {
+-        id: btnPicAspect
+-        visible: camera.camMode == HybrisCamera.PictureMode
+-        Layout.fillWidth: true
+-        Layout.fillHeight: true
+-        ffamily: ""
+-        Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+-        color: "darkgrey"
+-        code: camera.picAspectWide ? "\u301016:9\u3011" : "\u30104:3\u3011"
+-
+-        onClicked: camera.picAspectWide = !camera.picAspectWide
+-    }
+-
+-    DefaultButton {
+-        id: btnVidResolution
+-
+-        visible: camera.camMode == HybrisCamera.VideoMode && !camera.isRecording
+-        Layout.fillWidth: true
+-        Layout.fillHeight: true
+-        ffamily: ""
+-        Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+-        color: "darkgrey"
+-
+-        onClicked: {
+-            if (camera.isRecording)
+-                return
+-
+-            if (camera.videoModel.rowCount() > 0) {
+-                if((camera.videoModel.currentIndex() + 1) === camera.videoModel.rowCount())
+-                    camera.videoModel.setCurrentIndex(0)
+-                else
+-                    camera.videoModel.setCurrentIndex(camera.videoModel.currentIndex() + 1)
+-                const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-                code = "\u3010" + video.name + "\u3011";
+-                camera.setVideoSize(video.resolution.width, video.resolution.height)
+-            }
+-        }
+-
+-        Component.onCompleted: {
+-            if (camera.videoModel.rowCount() > 0) {
+-                const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-                code = "\u3010" + video.name + "\u3011";
+-            }
+-        }
+-
+-        Connections {
+-            target: camera
+-            function onCamIdChanged() {
+-                if (camera.videoModel.rowCount() > 0) {
+-                    const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-                    btnVidResolution.code = "\u3010" + video.name + "\u3011";
+-                }
+-            }
+-            function onCamModeChanged() {
+-                if (camera.videoModel.rowCount() > 0) {
+-                    const video = camera.videoModel.get(camera.videoModel.currentIndex());
+-                    btnVidResolution.code = "\u3010" + video.name + "\u3011";
+-                }
+-            }
+-        }
+-    }
+-
+-    DefaultButton {
+-        id: btnSnapshot
+-
+-        visible: (camera.camMode == HybrisCamera.VideoMode && camera.isRecording)
+-                    || camera.camMode == HybrisCamera.QrMode
+-        Layout.fillWidth: true
+-        Layout.fillHeight: true
+-        ffamily: ""
+-        Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+-        color: ThemeUtils.getAccentColor()
+-        code: "\ue3af"
+-        rotate: true
+-        onClicked: camera.takeSnapshot()
+-    }
+-
+-    DefaultButton {
+-        id: btnVidMode
+-        Layout.fillWidth: true
+-        Layout.fillHeight: true
+-        Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-        maxPixelSize: 48
+-        color: camera.camMode == HybrisCamera.VideoMode ? ThemeUtils.getAccentColor() : "darkgrey"
+-        code: "\ue04b"
+-
+-        onClicked: camera.camMode = HybrisCamera.VideoMode
+-    }
+-
+-    DefaultButton {
+-        id: btnShatter
+-        rotate: true
+-        Layout.fillWidth: true
+-        Layout.fillHeight: false
+-        Layout.minimumHeight: parent.height * 0.54
+-        Layout.row: 1
+-        Layout.column: 1
+-        Layout.alignment: Qt.AlignHCenter | Qt.AlignBottom
+-        color: camera.camMode == HybrisCamera.VideoMode ? "red" : "white"
+-        code: camera.camMode == HybrisCamera.PictureMode ? "\ue3af" : camera.isRecording ? "\uef71" : "\ue837"
+-        opacity: timeLapseFps.opacity == 0.0
+-                    && encoderSettings.opacity == 0.0
+-                    && camera.camMode != HybrisCamera.QrMode ? 1.0 : 0.0
+-
+-        onClicked: {
+-            if(camera.camMode == HybrisCamera.QrMode)
+-                    return
+-            if(encoderSettings.opacity > 0.0 || timeLapseFps.opacity > 0.0)
+-                return
+-            if(camera.camMode == HybrisCamera.PictureMode)
+-                camera.takePicture()
+-            else
+-                camera.isRecording ? camera.stopRecording() : camera.startRecording()
+-        }
+-
+-        onPressAndHold: {
+-            if(camera.camMode == HybrisCamera.QrMode)
+-                    return
+-            if(encoderSettings.opacity > 0.0 || timeLapseFps.opacity > 0.0)
+-                return
+-            if(camera.camMode == HybrisCamera.VideoMode && !camera.isRecording)
+-                timeLapseFps.opacity = timeLapseFps.opacity == 0.0 ? 1.0 : 0.0
+-        }
+-    }
+-}
+\ No newline at end of file
+diff --git a/src/qml/DefaultUI/DefaultUI.qml b/src/qml/DefaultUI/DefaultUI.qml
+index 77e8870..e1afa62 100644
+--- a/src/qml/DefaultUI/DefaultUI.qml
++++ b/src/qml/DefaultUI/DefaultUI.qml
+@@ -4,6 +4,10 @@
+  *
+  * Authors:
+  * Alexander Rutz <alex@familyrutz.com>
++ *
++ * One UI style layout: quick icons at the top, zoom pill, shutter row, mode
++ * tabs and a "More" grid. Only modes the Camera1 HAL really supports are
++ * offered (photo, video, pro, pro video, hyperlapse, QR).
+  */
+ 
+ import QtQuick
+@@ -19,308 +23,849 @@ Item {
+     anchors.fill: parent
+ 
+     property bool landscape: width > height
++    readonly property color yellow: "#ffcc33"
++    readonly property var p: camera.parameters
+ 
+-    Rectangle {
+-        id: ctrlBottom
+-        visible: !root.landscape
+-        width: parent.width
+-        height: parent.height * 0.14
+-        anchors.horizontalCenter: parent.horizontalCenter
+-        anchors.bottom: parent.bottom
+-        color: "#B4000000"
+-        gradient: Gradient {
+-            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.5) }
+-            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 1.0) }
+-        }
++    // ui mode on top of camera.camMode
++    property string uiMode: "photo"
++    readonly property bool videoLike: uiMode === "video" || uiMode === "provideo" || uiMode === "hyperlapse"
++    readonly property bool proLike: uiMode === "pro" || uiMode === "provideo"
++
++    function setMode(m) {
++        uiMode = m
++        moreGrid.visible = false
++        openPicker = ""
++        if (m === "qr")
++            camera.camMode = HybrisCamera.QrMode
++        else if (m === "video" || m === "provideo" || m === "hyperlapse")
++            camera.camMode = HybrisCamera.VideoMode
++        else
++            camera.camMode = HybrisCamera.PictureMode
++        camera.timeLapseFps = m === "hyperlapse" ? hyperlapseFps : 0
+     }
+ 
+-    Rectangle {
+-        id: ctrlLeft
+-        visible: root.landscape
+-        width: parent.height * 0.14
+-        height: parent.height
+-        anchors.verticalCenter: parent.verticalCenter
+-        anchors.left: parent.left
+-        color: "#B4000000"
++    // VideoModel::currentIndex() has no notify signal; bump this to re-read it
++    property int videoRev: 0
++    // One UI names for video sizes
++    function videoName(w, h) {
++        if (h >= 2160) return "UHD"
++        if (w === 1920 && h === 1080) return "FHD"
++        if (w === 1280 && h === 720) return "HD"
++        if (w / h > 2.0) return qsTr("Full")
++        return w + "x" + h
++    }
+ 
+-        gradient: Gradient {
+-            orientation: Gradient.Horizontal
+-            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.5) }
+-            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 1.0) }
+-        }
++    // hyperlapse speed: the recorder captures at 30 / speed fps and plays at 30
++    property int hyperlapseSpeed: 8
++    readonly property real hyperlapseFps: 30 / hyperlapseSpeed
++
++    // one picker open at a time: "size", "timer", "effect", "videores", "hyperlapse",
++    // and in pro modes "ev", "wb", "focus"
++    property string openPicker: ""
++    function togglePicker(name) {
++        openPicker = openPicker === name ? "" : name
+     }
+ 
+-    Rectangle {
+-        id: ctrlRight
+-        visible: root.landscape
+-        width: parent.height * 0.14
+-        height: parent.height
+-        anchors.verticalCenter: parent.verticalCenter
+-        anchors.right: parent.right
+-        color: "#B4000000"
+-        gradient: Gradient {
+-            orientation: Gradient.Horizontal
+-            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 1.0) }
+-            GradientStop { position: 0.0; color: Qt.rgba(0, 0, 0, 0.5) }
++    // current lens side
++    readonly property var currentLens: camera.lenses.find(l => l.id === camera.camId)
++    readonly property bool frontSide: currentLens ? currentLens.front : false
++    readonly property var sideLenses: camera.lenses.filter(l => l.front === root.frontSide)
++    property var lastLens: ({ "front": -1, "back": -1 })
++
++    function values(key) {
++        const v = p[key]
++        return v ? v.split(",").filter(s => s.length > 0) : []
++    }
++
++    // self-timer (software delay before the capture)
++    property int timerSeconds: 0
++    property int countdown: 0
++    Timer {
++        id: countdownTimer
++        interval: 1000
++        repeat: true
++        onTriggered: {
++            root.countdown--
++            if (root.countdown <= 0) {
++                stop()
++                camera.takePicture()
++            }
++        }
++    }
++    function shoot() {
++        if (camera.camMode === HybrisCamera.QrMode)
++            return
++        if (root.videoLike) {
++            camera.isRecording ? camera.stopRecording() : camera.startRecording()
++            return
++        }
++        if (countdownTimer.running) {
++            countdownTimer.stop()
++            countdown = 0
++            return
++        }
++        if (timerSeconds > 0) {
++            countdown = timerSeconds
++            countdownTimer.start()
++        } else {
++            camera.takePicture()
+         }
+     }
+ 
+-    Loader {
+-        id: ctrLoader
+-        width: root.landscape ? root.height * 0.22 : parent.width * 0.6
+-        height: root.landscape ? root.height * 0.75 : parent.height * 0.11
++    // recording time
++    property int recSeconds: 0
++    Timer {
++        interval: 1000
++        repeat: true
++        running: camera.isRecording
++        onRunningChanged: if (running) root.recSeconds = 0
++        onTriggered: root.recSeconds++
+     }
+ 
+-    DefaultButton {
+-        id: qrReader
+-        visible: !camera.isRecording
+-        x: !landscape ? parent.width * 0.7 : parent.width * 0.5
+-        anchors.bottom: root.bottom
+-        anchors.margins: width / 2
+-        rotate: true
+-        width: root.landscape ? root.height * 0.06 : parent.width * 0.06
+-        height: width
+-        color: camera.camMode === HybrisCamera.QrMode ? ThemeUtils.getAccentColor() : "white"
+-        code: "\ue00a"
+-        onClicked: camera.camMode = HybrisCamera.QrMode
++    component IconButton: Item {
++        id: ib
++        property string icon
++        property string text
++        property color color: "white"
++        property real size: 26
++        signal clicked()
++        implicitWidth: Math.max(40, label.implicitWidth + 8)
++        implicitHeight: 40
++        Text {
++            id: label
++            anchors.centerIn: parent
++            text: ib.icon !== "" ? ib.icon : ib.text
++            font.family: ib.icon !== "" ? mdiFont.name : Qt.application.font.family
++            font.pixelSize: ib.icon !== "" ? ib.size : 16
++            font.bold: ib.icon === ""
++            color: ib.color
++        }
++        MouseArea {
++            anchors.fill: parent
++            anchors.margins: -6
++            onClicked: ib.clicked()
++        }
+     }
+ 
+-    DefaultButton {
+-        id: camSwitch
+-        visible: !camera.isRecording
+-        anchors.right: root.right
+-        anchors.bottom: root.bottom
+-        anchors.margins: width
+-        rotate: true
+-        width: root.landscape ? root.height * 0.06 : parent.width * 0.06
+-        height: width
+-        color: "white"
+-        code: "\uefeb"
+-        onClicked: camera.camId = (camera.camId === 0 ? 1 : 0)
++    component Chip: Rectangle {
++        id: chip
++        property string text
++        property bool selected: false
++        signal clicked()
++        implicitWidth: chipText.implicitWidth + 26
++        implicitHeight: 38
++        radius: height / 2
++        color: selected ? Qt.rgba(1, 1, 1, 0.22) : "transparent"
++        Text {
++            id: chipText
++            anchors.centerIn: parent
++            text: chip.text
++            color: chip.selected ? root.yellow : "white"
++            font.pixelSize: 16
++            font.bold: true
++        }
++        MouseArea {
++            anchors.fill: parent
++            onClicked: chip.clicked()
++        }
+     }
+ 
+-    Rectangle {
+-        anchors.left: root.left
+-        anchors.bottom: root.bottom
+-        anchors.margins: root.landscape ? root.height * 0.05 : parent.width * 0.05
+-        width: root.landscape ? root.height * 0.08 : parent.width * 0.08
+-        height: width
+-        radius: width / 2
+-        color: ThemeUtils.getAccentColor()
+-
+-            Image {
+-                id: lastMedia
+-                source: {
+-                    const groups = MediaScanner.groups
+-                    if (groups.length > 0) {
+-                        const lastGroup = groups[0]
+-                        const items = lastGroup.items
+-                        if (items.length > 0) {
+-                            return items[0].thumbnailPath
+-                        }
+-                    }
+-                    return ""
+-                }
+-                anchors.centerIn: parent
+-                height: parent.height - 4
+-                width: height
+-                visible: false
++    // pill of options under the top bar or above the pro strip
++    component OptionPill: Rectangle {
++        default property alias content: optRow.data
++        height: 52
++        width: Math.min(optRow.implicitWidth + 24, root.width - 24)
++        radius: height / 2
++        color: Qt.rgba(0.25, 0.25, 0.25, 0.8)
++        Flickable {
++            anchors.fill: parent
++            anchors.leftMargin: 12
++            anchors.rightMargin: 12
++            contentWidth: optRow.implicitWidth
++            clip: true
++            Row {
++                id: optRow
++                height: parent.height
++                spacing: 4
+             }
++        }
++    }
++
++    // ---------------------------------------------------------------- top bar
++    Row {
++        id: topBar
++        visible: !camera.isRecording && !moreGrid.visible && camera.camMode !== HybrisCamera.QrMode
++        anchors.top: parent.top
++        anchors.right: parent.right
++        anchors.topMargin: 14
++        anchors.rightMargin: 12
++        spacing: 14
+ 
+-            MultiEffect {
+-                source: lastMedia
+-                anchors.fill: lastMedia
+-                maskEnabled: true
+-                maskSource: mask
++        // flash (photo) / torch (video); hidden on lenses without a flash
++        IconButton {
++            visible: root.values("flash-mode-values").length > 0
++            icon: root.videoLike ? (camera.flash === HybrisCamera.FLASH_TORCH ? "" : "")
++                  : camera.flash === HybrisCamera.FLASH_OFF ? ""
++                  : camera.flash === HybrisCamera.FLASH_ON ? "" : ""
++            color: camera.flash === HybrisCamera.FLASH_OFF ? "white" : root.yellow
++            onClicked: {
++                if (root.videoLike)
++                    camera.flash = camera.flash === HybrisCamera.FLASH_TORCH ? HybrisCamera.FLASH_OFF
++                                                                              : HybrisCamera.FLASH_TORCH
++                else if (camera.flash === HybrisCamera.FLASH_AUTO)
++                    camera.flash = HybrisCamera.FLASH_OFF
++                else if (camera.flash === HybrisCamera.FLASH_OFF)
++                    camera.flash = HybrisCamera.FLASH_ON
++                else
++                    camera.flash = HybrisCamera.FLASH_AUTO
+             }
++        }
+ 
+-            Item {
+-                id: mask
+-                anchors.fill: lastMedia
+-                layer.enabled: true
+-                opacity: 0
++        IconButton {
++            visible: !root.videoLike
++            icon: root.timerSeconds === 0 ? "" : ""
++            text: root.timerSeconds > 0 ? root.timerSeconds + "s" : ""
++            color: root.timerSeconds > 0 ? root.yellow : "white"
++            onClicked: root.togglePicker("timer")
++        }
+ 
+-                Rectangle {
+-                    anchors.fill: parent
+-                    radius: width / 2
+-                    color: "black"
+-                }
++        // photo size: megapixels of the chosen size
++        IconButton {
++            visible: !root.videoLike
++            text: {
++                const wh = camera.pictureSize.split("x")
++                const mp = parseInt(wh[0]) * parseInt(wh[1]) / 1e6
++                return (mp >= 1 ? Math.round(mp) : mp.toFixed(1)) + "M"
++            }
++            color: root.openPicker === "size" ? root.yellow : "white"
++            onClicked: root.togglePicker("size")
++        }
++
++        // video resolution and frame rate, e.g. FHD 30
++        IconButton {
++            visible: root.videoLike && root.uiMode !== "hyperlapse"
++            text: {
++                const v = root.videoRev >= 0 && camera.videoModel.rowCount() > 0 ? camera.videoModel.get(camera.videoModel.currentIndex()) : null
++                return (v ? root.videoName(v.resolution.width, v.resolution.height) : "") + " " + camera.videoFps
+             }
++            color: root.openPicker === "videores" ? root.yellow : "white"
++            onClicked: root.togglePicker("videores")
++        }
+ 
++        IconButton {
++            visible: root.uiMode === "hyperlapse"
++            text: "×" + root.hyperlapseSpeed
++            color: root.yellow
++            onClicked: root.togglePicker("hyperlapse")
++        }
++
++        // HDR when the HAL offers it as a scene mode
++        Rectangle {
++            visible: !root.videoLike && root.values("scene-mode-values").indexOf("hdr") >= 0
++            readonly property bool on: root.p["scene-mode"] === "hdr"
++            width: 52
++            height: 30
++            y: 5
++            radius: 15
++            color: "transparent"
++            border.color: on ? root.yellow : "white"
++            border.width: 2
++            Text {
++                anchors.centerIn: parent
++                text: "HDR"
++                color: parent.on ? root.yellow : "white"
++                font.pixelSize: 14
++                font.bold: true
++            }
+             MouseArea {
+                 anchors.fill: parent
+-                onClicked: openMediaWall()
++                anchors.margins: -6
++                onClicked: camera.setParameter("scene-mode", parent.on ? "auto" : "hdr")
++            }
++        }
++
++        // color effects (HAL filters)
++        IconButton {
++            visible: root.values("effect-values").length > 1
++            icon: ""
++            color: root.p["effect"] && root.p["effect"] !== "none" ? root.yellow : "white"
++            onClicked: root.togglePicker("effect")
++        }
++
++        IconButton {
++            icon: ""
++            color: settingsSheet.visible ? root.yellow : "white"
++            onClicked: {
++                root.openPicker = ""
++                settingsSheet.visible = !settingsSheet.visible
+             }
++        }
+     }
+ 
+-    ColumnLayout {
+-        id: sideControl_B
+-        spacing: 2
+-        width: root.landscape ? root.height * 0.2 : root.width * 0.2
+-        height: root.landscape ? parent.width * 0.12 : parent.height * 0.12
+-        uniformCellSizes: true
+-
+-        DefaultButton {
+-            id: flashBtn
+-            visible: camera.camMode === HybrisCamera.PictureMode
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            Layout.margins: sideControl_B.height * 0.05
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
++    // recording time
++    Rectangle {
++        visible: camera.isRecording
++        anchors.top: parent.top
++        anchors.topMargin: 16
++        anchors.horizontalCenter: parent.horizontalCenter
++        width: recText.implicitWidth + 36
++        height: 34
++        radius: 17
++        color: Qt.rgba(0, 0, 0, 0.45)
++        Rectangle {
++            x: 12
++            anchors.verticalCenter: parent.verticalCenter
++            width: 10
++            height: 10
++            radius: 5
++            color: "#ff453a"
++        }
++        Text {
++            id: recText
++            x: 28
++            anchors.verticalCenter: parent.verticalCenter
+             color: "white"
+-            code: "\ue3e7"
+-            onClicked: {
+-                if (camera.flash === HybrisCamera.FLASH_AUTO) {
+-                    code = "\ue3e6"
+-                    camera.flash = HybrisCamera.FLASH_OFF
+-                } else if (camera.flash === HybrisCamera.FLASH_OFF) {
+-                    code = "\ue3e7"
+-                    camera.flash = HybrisCamera.FLASH_ON
+-                } else if (camera.flash === HybrisCamera.FLASH_ON) {
+-                    code = "\ue3e5"
+-                    camera.flash = HybrisCamera.FLASH_AUTO
++            font.pixelSize: 16
++            font.bold: true
++            text: {
++                const s = root.recSeconds
++                return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0")
++            }
++        }
++    }
++
++    // pickers opened from the top bar
++    Item {
++        id: topPickers
++        anchors.top: topBar.bottom
++        anchors.topMargin: 14
++        anchors.horizontalCenter: parent.horizontalCenter
++        width: parent.width
++        height: 52
++
++        OptionPill {
++            anchors.horizontalCenter: parent.horizontalCenter
++            visible: root.openPicker === "timer"
++            Repeater {
++                model: [0, 2, 5, 10]
++                delegate: Chip {
++                    required property int modelData
++                    text: modelData === 0 ? qsTr("Off") : modelData + " s"
++                    selected: root.timerSeconds === modelData
++                    onClicked: { root.timerSeconds = modelData; root.openPicker = "" }
+                 }
+             }
+         }
+ 
+-        DefaultButton {
+-            id: torchBtn
+-            visible: camera.camMode === HybrisCamera.VideoMode || camera.camMode === HybrisCamera.QrMode
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            Layout.margins: sideControl_B.height * 0.05
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-            color: "white"
+-            code: "\uf00a"
+-            onClicked: {
+-                if (camera.flash !== HybrisCamera.FLASH_TORCH) {
+-                    code = "\uf00b"
+-                    camera.flash = HybrisCamera.FLASH_TORCH
+-                } else {
+-                    code = "\uf00a"
+-                    camera.flash = HybrisCamera.FLASH_OFF
++        // largest size per aspect ratio, like One UI's 3:4 / 9:16 / 1:1 / Full
++        OptionPill {
++            anchors.horizontalCenter: parent.horizontalCenter
++            visible: root.openPicker === "size"
++            Repeater {
++                model: {
++                    const best = {}
++                    for (const s of root.values("picture-size-values")) {
++                        const wh = s.split("x").map(n => parseInt(n))
++                        const a = wh[0] / wh[1]
++                        const name = Math.abs(a - 4 / 3) < 0.02 ? "3:4" : Math.abs(a - 16 / 9) < 0.02 ? "9:16"
++                                   : Math.abs(a - 1) < 0.02 ? "1:1" : a > 1.9 ? "Full" : ""
++                        if (name && (!best[name] || wh[0] * wh[1] > best[name].w * best[name].h))
++                            best[name] = { name: name, w: wh[0], h: wh[1] }
++                    }
++                    return ["3:4", "9:16", "1:1", "Full"].filter(n => best[n]).map(n => best[n])
++                }
++                delegate: Chip {
++                    required property var modelData
++                    text: modelData.name + "  " + Math.round(modelData.w * modelData.h / 1e6) + "M"
++                    selected: camera.pictureSize === modelData.w + "x" + modelData.h
++                    onClicked: { camera.setPictureSize(modelData.w, modelData.h); root.openPicker = "" }
++                }
++            }
++        }
++
++        OptionPill {
++            anchors.horizontalCenter: parent.horizontalCenter
++            visible: root.openPicker === "effect"
++            Repeater {
++                model: root.values("effect-values")
++                delegate: Chip {
++                    required property string modelData
++                    text: settingsSheet.label(modelData)
++                    selected: root.p["effect"] === modelData
++                    onClicked: camera.setParameter("effect", modelData)
+                 }
+             }
+         }
+ 
+-        Item { Layout.fillWidth: true; Layout.fillHeight: true }
+-        Item { Layout.fillWidth: true; Layout.fillHeight: true }
++        Column {
++            anchors.horizontalCenter: parent.horizontalCenter
++            visible: root.openPicker === "videores"
++            spacing: 8
++            OptionPill {
++                anchors.horizontalCenter: parent.horizontalCenter
++                Repeater {
++                    model: camera.videoModel
++                    delegate: Chip {
++                        required property int index
++                        required property var model
++                        text: root.videoName(model.resolution.width, model.resolution.height)
++                        selected: root.videoRev >= 0 && camera.videoModel.currentIndex() === index
++                        onClicked: {
++                            camera.videoModel.setCurrentIndex(index)
++                            camera.setVideoSize(model.resolution.width, model.resolution.height)
++                            root.videoRev++
++                        }
++                    }
++                }
++            }
++            OptionPill {
++                anchors.horizontalCenter: parent.horizontalCenter
++                Repeater {
++                    model: root.values("preview-frame-rate-values").map(s => parseInt(s))
++                    delegate: Chip {
++                        required property int modelData
++                        text: modelData + " fps"
++                        selected: camera.videoFps === modelData
++                        onClicked: camera.videoFps = modelData
++                    }
++                }
++            }
++        }
++
++        OptionPill {
++            anchors.horizontalCenter: parent.horizontalCenter
++            visible: root.openPicker === "hyperlapse"
++            Repeater {
++                model: [4, 8, 16, 32]
++                delegate: Chip {
++                    required property int modelData
++                    text: "×" + modelData
++                    selected: root.hyperlapseSpeed === modelData
++                    onClicked: {
++                        root.hyperlapseSpeed = modelData
++                        camera.timeLapseFps = root.hyperlapseFps
++                        root.openPicker = ""
++                    }
++                }
++            }
++        }
+     }
+ 
+-    ColumnLayout {
+-        id: sideControl_A
+-        spacing: 2
+-        width: root.landscape ? root.height * 0.2 : root.width * 0.2
+-        height: root.landscape ? parent.width * 0.12 : parent.height * 0.12
+-        uniformCellSizes: true
++    // self-timer countdown
++    Text {
++        visible: root.countdown > 0
++        anchors.centerIn: parent
++        text: root.countdown
++        color: "white"
++        font.pixelSize: 140
++        font.bold: true
++        style: Text.Outline
++        styleColor: Qt.rgba(0, 0, 0, 0.4)
++    }
+ 
+-        Item {
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            visible: root.landscape
++    // ------------------------------------------------------------ bottom area
++    Rectangle {
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.bottom: parent.bottom
++        height: bottomColumn.height + 60
++        gradient: Gradient {
++            GradientStop { position: 0.0; color: "transparent" }
++            GradientStop { position: 0.35; color: Qt.rgba(0, 0, 0, 0.35) }
++            GradientStop { position: 1.0; color: Qt.rgba(0, 0, 0, 0.75) }
+         }
++    }
+ 
+-        Rectangle {
+-            id: vidBitRateText
+-            visible: !root.landscape && camera.camMode === HybrisCamera.VideoMode && !camera.isRecording
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-            color: Qt.rgba(0, 0, 0, 0.7)
+-            border.color: ThemeUtils.getAccentColor()
+-            border.width: 1
+-            radius: 20
+-            Text {
+-                anchors.fill: parent
+-                anchors.leftMargin: 5
+-                anchors.rightMargin: 5
+-                color: encoderSettings.opacity > 0.0 ? ThemeUtils.getAccentColor() : ThemeUtils.getTextColor()
+-                text: camera.swEncode ? "SW Encoder" : "HW Encoder"
+-                fontSizeMode: Text.Fit
+-                minimumPixelSize: 10
+-                font.pixelSize: 20
+-                font.bold: true
+-                horizontalAlignment: Text.AlignHCenter
+-                verticalAlignment: Text.AlignVCenter
++    Column {
++        id: bottomColumn
++        anchors.bottom: parent.bottom
++        anchors.bottomMargin: 18
++        anchors.horizontalCenter: parent.horizontalCenter
++        width: parent.width
++        spacing: 18
+ 
+-                MouseArea {
++        // pro pickers
++        Item {
++            width: parent.width
++            height: 52
++            visible: root.proLike && ["ev", "wb", "focus"].indexOf(root.openPicker) >= 0
++
++            // exposure compensation in EV
++            Rectangle {
++                id: evPicker
++                visible: root.openPicker === "ev"
++                readonly property int evMin: parseInt(root.p["min-exposure-compensation"] || "0")
++                readonly property int evMax: parseInt(root.p["max-exposure-compensation"] || "0")
++                readonly property real evStep: parseFloat(root.p["exposure-compensation-step"] || "0")
++                anchors.horizontalCenter: parent.horizontalCenter
++                width: parent.width - 24
++                height: 52
++                radius: 26
++                color: Qt.rgba(0.25, 0.25, 0.25, 0.8)
++                Slider {
+                     anchors.fill: parent
+-                    onClicked: {
+-                        if (!camera.isRecording)
+-                            encoderSettings.opacity = encoderSettings.opacity > 0 ? 0.0 : 1.0
++                    anchors.leftMargin: 16
++                    anchors.rightMargin: 16
++                    from: evPicker.evMin
++                    to: evPicker.evMax
++                    stepSize: 1
++                    value: parseInt(root.p["exposure-compensation"] || "0")
++                    onMoved: camera.setParameter("exposure-compensation", Math.round(value).toString())
++                }
++            }
++            OptionPill {
++                anchors.horizontalCenter: parent.horizontalCenter
++                visible: root.openPicker === "wb"
++                Repeater {
++                    model: root.values("whitebalance-values")
++                    delegate: Chip {
++                        required property string modelData
++                        text: settingsSheet.label(modelData)
++                        selected: root.p["whitebalance"] === modelData
++                        onClicked: camera.setParameter("whitebalance", modelData)
++                    }
++                }
++            }
++            OptionPill {
++                anchors.horizontalCenter: parent.horizontalCenter
++                visible: root.openPicker === "focus"
++                Repeater {
++                    model: root.values("focus-mode-values")
++                    delegate: Chip {
++                        required property string modelData
++                        text: settingsSheet.label(modelData)
++                        selected: root.p["focus-mode"] === modelData
++                        onClicked: camera.setParameter("focus-mode", modelData)
+                     }
+                 }
+             }
+         }
+ 
+-        Item {
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            Layout.margins: sideControl_A.height * 0.05
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignBottom
+-
+-            DefaultButton {
+-                id: btnMic
+-                visible: camera.camMode === HybrisCamera.VideoMode && !camera.isRecording
+-                anchors.fill: parent
+-                color: "white"
+-                code: camera.withMic ? "\ue029" : "\ue02b"
+-                onClicked: camera.withMic = !camera.withMic
++        // pro strip: every manual control the HAL has (no ISO / shutter keys on this HAL)
++        OptionPill {
++            anchors.horizontalCenter: parent.horizontalCenter
++            visible: root.proLike && !camera.isRecording
++            Chip {
++                readonly property real ev: parseInt(root.p["exposure-compensation"] || "0")
++                                           * parseFloat(root.p["exposure-compensation-step"] || "0")
++                visible: parseInt(root.p["max-exposure-compensation"] || "0") > 0
++                text: "EV " + (ev > 0 ? "+" : "") + ev.toFixed(1)
++                selected: root.openPicker === "ev"
++                onClicked: root.togglePicker("ev")
++            }
++            Chip {
++                visible: root.values("whitebalance-values").length > 1
++                text: "WB " + settingsSheet.label(root.p["whitebalance"] || "auto")
++                selected: root.openPicker === "wb"
++                onClicked: root.togglePicker("wb")
++            }
++            Chip {
++                visible: root.values("focus-mode-values").length > 1
++                text: qsTr("Focus") + " " + settingsSheet.label(root.p["focus-mode"] || "")
++                selected: root.openPicker === "focus"
++                onClicked: root.togglePicker("focus")
++            }
++            Chip {
++                visible: root.p["auto-exposure-lock-supported"] === "true"
++                text: "AE " + (root.p["auto-exposure-lock"] === "true" ? "●" : "○")
++                selected: root.p["auto-exposure-lock"] === "true"
++                onClicked: camera.setParameter("auto-exposure-lock",
++                                               root.p["auto-exposure-lock"] === "true" ? "false" : "true")
++            }
++            Chip {
++                visible: root.p["auto-whitebalance-lock-supported"] === "true"
++                text: "AWB " + (root.p["auto-whitebalance-lock"] === "true" ? "●" : "○")
++                selected: root.p["auto-whitebalance-lock"] === "true"
++                onClicked: camera.setParameter("auto-whitebalance-lock",
++                                               root.p["auto-whitebalance-lock"] === "true" ? "false" : "true")
+             }
+         }
+ 
+-        Item {
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
++        ZoomControl {
++            id: zoomControl
++            visible: camera.camMode !== HybrisCamera.QrMode && !moreGrid.visible
++            width: parent.width - 60
++            anchors.horizontalCenter: parent.horizontalCenter
++            lenses: root.sideLenses
+         }
+-    }
+ 
+-    states: [
+-        State {
+-            name: "portrait"
+-            when: !root.landscape
+-            PropertyChanges { target: ctrLoader; source: "ControlPortrait.qml" }
+-            AnchorChanges {
+-                target: ctrLoader
+-                anchors.bottom: root.bottom
+-                anchors.horizontalCenter: root.horizontalCenter
+-                anchors.right: undefined
+-                anchors.verticalCenter: undefined
+-            }
+-            AnchorChanges {
+-                target: sideControl_A
+-                anchors.bottom: camSwitch.top
+-                anchors.right: root.right
+-                anchors.left: undefined
++        // gallery, shutter, camera switch (the "more" grid takes this place)
++        Item {
++            width: parent.width
++            height: 96
++            opacity: moreGrid.visible ? 0 : 1
++            enabled: !moreGrid.visible
++
++            Rectangle {
++                id: thumb
++                visible: !camera.isRecording
++                anchors.verticalCenter: parent.verticalCenter
++                x: parent.width * 0.2 - width / 2
++                width: 60
++                height: 60
++                radius: 30
++                color: Qt.rgba(1, 1, 1, 0.15)
++                Image {
++                    id: lastMedia
++                    source: {
++                        const groups = MediaScanner.groups
++                        if (groups.length > 0 && groups[0].items.length > 0)
++                            return groups[0].items[0].thumbnailPath
++                        return ""
++                    }
++                    anchors.fill: parent
++                    anchors.margins: 2
++                    visible: false
++                }
++                MultiEffect {
++                    source: lastMedia
++                    anchors.fill: lastMedia
++                    maskEnabled: true
++                    maskSource: thumbMask
++                }
++                Item {
++                    id: thumbMask
++                    anchors.fill: lastMedia
++                    layer.enabled: true
++                    opacity: 0
++                    Rectangle {
++                        anchors.fill: parent
++                        radius: width / 2
++                        color: "black"
++                    }
++                }
++                MouseArea {
++                    anchors.fill: parent
++                    onClicked: openMediaWall()
++                }
+             }
+-            AnchorChanges {
+-                target: sideControl_B
+-                anchors.left: root.left
+-                anchors.bottom: root.bottom
++
++            // shutter: white disc for photos, red dot for video, red square while recording
++            Rectangle {
++                id: shutter
++                visible: camera.camMode !== HybrisCamera.QrMode
++                anchors.centerIn: parent
++                width: 84
++                height: 84
++                radius: 42
++                color: "white"
++                scale: shutterArea.pressed ? 0.92 : 1.0
++                Behavior on scale { NumberAnimation { duration: 80 } }
++                Rectangle {
++                    visible: root.videoLike
++                    anchors.centerIn: parent
++                    width: camera.isRecording ? 30 : 34
++                    height: width
++                    radius: camera.isRecording ? 6 : width / 2
++                    color: "#ff453a"
++                }
++                MouseArea {
++                    id: shutterArea
++                    anchors.fill: parent
++                    onClicked: root.shoot()
++                }
+             }
+-        },
+-        State {
+-            name: "landscape"
+-            when: root.landscape
+-            PropertyChanges { target: ctrLoader; source: "ControlLandscape.qml" }
+-            AnchorChanges {
+-                target: ctrLoader
+-                anchors.right: root.right
+-                anchors.verticalCenter: root.verticalCenter
+-                anchors.bottom: undefined
+-                anchors.horizontalCenter: undefined
++
++            // snapshot while recording or scanning
++            Rectangle {
++                visible: camera.isRecording
++                anchors.verticalCenter: parent.verticalCenter
++                x: parent.width * 0.2 - width / 2
++                width: 60
++                height: 60
++                radius: 30
++                color: Qt.rgba(1, 1, 1, 0.2)
++                Text {
++                    anchors.centerIn: parent
++                    text: ""
++                    font.family: mdiFont.name
++                    font.pixelSize: 28
++                    color: "white"
++                }
++                MouseArea {
++                    anchors.fill: parent
++                    onClicked: camera.takeSnapshot()
++                }
+             }
+-            AnchorChanges {
+-                target: sideControl_A
+-                anchors.bottom: sideControl_B.top
+-                anchors.left: root.left
+-                anchors.right: undefined
++
++            Rectangle {
++                visible: !camera.isRecording && root.frontSide !== undefined
++                anchors.verticalCenter: parent.verticalCenter
++                x: parent.width * 0.8 - width / 2
++                width: 60
++                height: 60
++                radius: 30
++                color: Qt.rgba(1, 1, 1, 0.2)
++                Text {
++                    anchors.centerIn: parent
++                    text: ""
++                    font.family: mdiFont.name
++                    font.pixelSize: 30
++                    color: "white"
++                }
++                MouseArea {
++                    anchors.fill: parent
++                    onClicked: {
++                        root.lastLens[root.frontSide ? "front" : "back"] = camera.camId
++                        const other = camera.lenses.filter(l => l.front !== root.frontSide)
++                        if (other.length === 0)
++                            return
++                        const remembered = root.lastLens[root.frontSide ? "back" : "front"]
++                        camera.camId = other.some(l => l.id === remembered) ? remembered
++                                     : other.reduce((a, b) => a.id < b.id ? a : b).id
++                    }
++                }
+             }
+-            AnchorChanges {
+-                target: sideControl_B
+-                anchors.left: root.left
+-                anchors.bottom: root.bottom
++        }
++
++        // mode tabs
++        Row {
++            visible: !camera.isRecording
++            anchors.horizontalCenter: parent.horizontalCenter
++            spacing: 34
++            Repeater {
++                model: {
++                    const tabs = [{ mode: "photo", name: qsTr("PHOTO") }, { mode: "video", name: qsTr("VIDEO") }]
++                    const extra = moreModes.find(m => m.mode === root.uiMode)
++                    if (extra)
++                        tabs.push({ mode: extra.mode, name: extra.name })
++                    tabs.push({ mode: "more", name: qsTr("MORE") })
++                    return tabs
++                }
++                delegate: Text {
++                    required property var modelData
++                    readonly property bool active: modelData.mode === "more" ? moreGrid.visible
++                                                   : !moreGrid.visible && root.uiMode === modelData.mode
++                    text: modelData.name
++                    color: active ? "white" : Qt.rgba(1, 1, 1, 0.6)
++                    font.pixelSize: 17
++                    font.bold: active
++                    MouseArea {
++                        anchors.fill: parent
++                        anchors.margins: -10
++                        onClicked: {
++                            if (modelData.mode === "more")
++                                moreGrid.visible = !moreGrid.visible
++                            else
++                                root.setMode(modelData.mode)
++                        }
++                    }
++                }
+             }
+         }
++    }
++
++    // ---------------------------------------------------------- "more" modes
++    readonly property var moreModes: [
++        { mode: "pro", name: qsTr("PRO"), icon: "" },
++        { mode: "provideo", name: qsTr("PRO VIDEO"), icon: "" },
++        { mode: "hyperlapse", name: qsTr("HYPERLAPSE"), icon: "" },
++        { mode: "qr", name: qsTr("QR CODE"), icon: "" }
+     ]
++
++    Rectangle {
++        id: moreGrid
++        visible: false
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.bottom: bottomColumn.bottom
++        anchors.bottomMargin: 48
++        anchors.margins: 16
++        height: grid.implicitHeight + 48
++        radius: 28
++        color: Qt.rgba(0.3, 0.3, 0.3, 0.85)
++
++        Grid {
++            id: grid
++            anchors.centerIn: parent
++            columns: 4
++            columnSpacing: 12
++            rowSpacing: 24
++            Repeater {
++                model: root.moreModes
++                delegate: Item {
++                    id: tile
++                    required property var modelData
++                    width: (moreGrid.width - 80) / 4
++                    height: tileColumn.implicitHeight
++                    MouseArea {
++                        anchors.fill: parent
++                        onClicked: root.setMode(tile.modelData.mode)
++                    }
++                  Column {
++                    id: tileColumn
++                    width: parent.width
++                    spacing: 8
++                    Rectangle {
++                        anchors.horizontalCenter: parent.horizontalCenter
++                        width: 56
++                        height: 56
++                        radius: 28
++                        color: "transparent"
++                        border.color: "white"
++                        border.width: 2
++                        Text {
++                            anchors.centerIn: parent
++                            text: modelData.icon
++                            font.family: mdiFont.name
++                            font.pixelSize: 28
++                            color: "white"
++                        }
++                    }
++                    Text {
++                        width: parent.width
++                        horizontalAlignment: Text.AlignHCenter
++                        wrapMode: Text.WordWrap
++                        text: modelData.name
++                        color: "white"
++                        font.pixelSize: 14
++                    }
++                  }
++                }
++            }
++        }
++    }
++
++    // ------------------------------------------------------------- settings
++    ProPanel {
++        id: settingsSheet
++        visible: false
++        anchors.top: topBar.bottom
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.margins: 12
++        height: parent.height * 0.62
++    }
++
++    // QR mode: back to photo
++    Rectangle {
++        visible: camera.camMode === HybrisCamera.QrMode
++        anchors.bottom: parent.bottom
++        anchors.bottomMargin: 40
++        anchors.horizontalCenter: parent.horizontalCenter
++        width: 64
++        height: 64
++        radius: 32
++        color: Qt.rgba(0, 0, 0, 0.5)
++        Text {
++            anchors.centerIn: parent
++            text: ""
++            font.family: mdiFont.name
++            font.pixelSize: 30
++            color: "white"
++        }
++        MouseArea {
++            anchors.fill: parent
++            onClicked: root.setMode("photo")
++        }
++    }
++
++    Connections {
++        target: camera
++        // startup QR mode and external mode changes
++        function onCamModeChanged() {
++            if (camera.camMode === HybrisCamera.QrMode && root.uiMode !== "qr")
++                root.uiMode = "qr"
++        }
++    }
+ }
+diff --git a/src/qml/DefaultUI/ProPanel.qml b/src/qml/DefaultUI/ProPanel.qml
+new file mode 100644
+index 0000000..f210c29
+--- /dev/null
++++ b/src/qml/DefaultUI/ProPanel.qml
+@@ -0,0 +1,374 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * Every Camera1 control the HAL of the current camera reports. Sections are
++ * built from the HAL's own capability keys (…-values, …-supported, ranges),
++ * so a camera shows only what it can do.
++ */
++
++import QtQuick
++import QtQuick.Layouts
++import QtQuick.Controls
++import HybrisCamera
++import ThemeUtils
++
++Rectangle {
++    id: panel
++    color: Qt.rgba(0, 0, 0, 0.85)
++    radius: 16
++
++    readonly property var p: camera.parameters
++    readonly property color accent: ThemeUtils.getAccentColor()
++
++    function values(key) {
++        const v = p[key]
++        return v ? v.split(",").filter(s => s.length > 0) : []
++    }
++    function supported(key) {
++        return p[key] === "true"
++    }
++
++    readonly property var labels: ({
++        "auto": qsTr("Auto"), "off": qsTr("Off"), "on": qsTr("On"),
++        "incandescent": qsTr("Incandescent"), "fluorescent": qsTr("Fluorescent"),
++        "warm-fluorescent": qsTr("Warm fluorescent"), "daylight": qsTr("Daylight"),
++        "cloudy-daylight": qsTr("Cloudy"), "twilight": qsTr("Twilight"), "shade": qsTr("Shade"),
++        "none": qsTr("None"), "mono": qsTr("Mono"), "negative": qsTr("Negative"),
++        "solarize": qsTr("Solarize"), "sepia": qsTr("Sepia"), "posterize": qsTr("Posterize"),
++        "whiteboard": qsTr("Whiteboard"), "blackboard": qsTr("Blackboard"), "aqua": qsTr("Aqua"),
++        "infinity": qsTr("Infinity"), "macro": qsTr("Macro"), "fixed": qsTr("Fixed"), "edof": qsTr("EDOF"),
++        "continuous-video": qsTr("Continuous (video)"), "continuous-picture": qsTr("Continuous"),
++        "hdr": qsTr("HDR"), "50hz": qsTr("50 Hz"), "60hz": qsTr("60 Hz")
++    })
++    function label(v) {
++        return labels[v] !== undefined ? labels[v] : v
++    }
++
++    // one row of mutually exclusive choices bound to a HAL key
++    component Choice: ColumnLayout {
++        id: choice
++        property string title
++        property string key
++        property var options: panel.values(key + "-values")
++        visible: options.length > 1
++        Layout.fillWidth: true
++        spacing: 6
++
++        Text {
++            text: choice.title
++            color: "white"
++            font.pixelSize: 15
++            font.bold: true
++        }
++        Flow {
++            Layout.fillWidth: true
++            spacing: 6
++            Repeater {
++                model: choice.options
++                delegate: Chip {
++                    required property string modelData
++                    text: panel.label(modelData)
++                    selected: panel.p[choice.key] === modelData
++                    onClicked: camera.setParameter(choice.key, modelData)
++                }
++            }
++        }
++    }
++
++    component Chip: Rectangle {
++        id: chip
++        property string text
++        property bool selected: false
++        signal clicked()
++        implicitWidth: chipText.implicitWidth + 24
++        implicitHeight: 34
++        radius: height / 2
++        color: selected ? panel.accent : Qt.rgba(1, 1, 1, 0.12)
++        Text {
++            id: chipText
++            anchors.centerIn: parent
++            text: chip.text
++            color: chip.selected ? "black" : "white"
++            font.pixelSize: 14
++        }
++        MouseArea {
++            anchors.fill: parent
++            onClicked: chip.clicked()
++        }
++    }
++
++    component Toggle: RowLayout {
++        id: toggle
++        property string title
++        property bool checked
++        signal toggled(bool on)
++        Layout.fillWidth: true
++        Text {
++            text: toggle.title
++            color: "white"
++            font.pixelSize: 15
++            font.bold: true
++            Layout.fillWidth: true
++        }
++        // own switch: the platform style draws it dark on this dark panel
++        Rectangle {
++            width: 52
++            height: 30
++            radius: height / 2
++            color: toggle.checked ? panel.accent : Qt.rgba(1, 1, 1, 0.25)
++            Rectangle {
++                width: 24
++                height: 24
++                radius: 12
++                y: 3
++                x: toggle.checked ? parent.width - width - 3 : 3
++                color: "white"
++                Behavior on x { NumberAnimation { duration: 120 } }
++            }
++            MouseArea {
++                anchors.fill: parent
++                anchors.margins: -8
++                onClicked: toggle.toggled(!toggle.checked)
++            }
++        }
++    }
++
++    Flickable {
++        id: flick
++        anchors.fill: parent
++        anchors.margins: 14
++        contentHeight: column.implicitHeight
++        clip: true
++
++        ColumnLayout {
++            id: column
++            width: flick.width
++            spacing: 14
++
++            Text {
++                visible: !camera.proAvailable
++                Layout.fillWidth: true
++                wrapMode: Text.WordWrap
++                color: "#ffb74d"
++                font.pixelSize: 14
++                text: qsTr("Advanced controls unavailable: libcamx.so not loaded")
++            }
++
++            // exposure compensation: HAL index between min/max, step in EV
++            ColumnLayout {
++                readonly property int evMin: parseInt(panel.p["min-exposure-compensation"] || "0")
++                readonly property int evMax: parseInt(panel.p["max-exposure-compensation"] || "0")
++                readonly property real evStep: parseFloat(panel.p["exposure-compensation-step"] || "0")
++                id: ev
++                visible: evMax > evMin && evStep > 0
++                Layout.fillWidth: true
++                RowLayout {
++                    Layout.fillWidth: true
++                    Text {
++                        text: qsTr("Exposure")
++                        color: "white"
++                        font.pixelSize: 15
++                        font.bold: true
++                        Layout.fillWidth: true
++                    }
++                    Text {
++                        readonly property real evValue: parseInt(panel.p["exposure-compensation"] || "0") * ev.evStep
++                        text: (evValue > 0 ? "+" : "") + evValue.toFixed(1) + " EV"
++                        color: panel.accent
++                        font.pixelSize: 15
++                    }
++                }
++                Slider {
++                    Layout.fillWidth: true
++                    from: ev.evMin
++                    to: ev.evMax
++                    stepSize: 1
++                    value: parseInt(panel.p["exposure-compensation"] || "0")
++                    onMoved: camera.setParameter("exposure-compensation", Math.round(value).toString())
++                }
++            }
++
++            Toggle {
++                visible: panel.supported("auto-exposure-lock-supported")
++                title: qsTr("Lock exposure (AE)")
++                checked: panel.p["auto-exposure-lock"] === "true"
++                onToggled: on => camera.setParameter("auto-exposure-lock", on ? "true" : "false")
++            }
++            Toggle {
++                visible: panel.supported("auto-whitebalance-lock-supported")
++                title: qsTr("Lock white balance (AWB)")
++                checked: panel.p["auto-whitebalance-lock"] === "true"
++                onToggled: on => camera.setParameter("auto-whitebalance-lock", on ? "true" : "false")
++            }
++
++            Choice { title: qsTr("Scene"); key: "scene-mode" }
++            Choice { title: qsTr("White balance"); key: "whitebalance" }
++            Choice { title: qsTr("Focus"); key: "focus-mode" }
++            Choice { title: qsTr("Color effect"); key: "effect" }
++            Choice { title: qsTr("Anti-flicker"); key: "antibanding" }
++
++            Toggle {
++                visible: parseInt(panel.p["max-num-detected-faces-hw"] || "0") > 0
++                title: qsTr("Face detection")
++                checked: camera.faceDetection
++                onToggled: on => camera.faceDetection = on
++            }
++
++            Toggle {
++                title: qsTr("Geotag photos") + (camera.geotag && !camera.hasLocation ? " " + qsTr("(no fix yet)") : "")
++                checked: camera.geotag
++                onToggled: on => camera.geotag = on
++            }
++
++            // photo size: every size the HAL can capture, largest first
++            ColumnLayout {
++                id: sizes
++                visible: camera.camMode === HybrisCamera.PictureMode && list.length > 0
++                Layout.fillWidth: true
++                readonly property var list: panel.values("picture-size-values")
++                    .map(s => { const wh = s.split("x"); return { w: parseInt(wh[0]), h: parseInt(wh[1]) } })
++                    .sort((a, b) => b.w * b.h - a.w * a.h)
++                Text {
++                    text: qsTr("Photo size")
++                    color: "white"
++                    font.pixelSize: 15
++                    font.bold: true
++                }
++                Flow {
++                    Layout.fillWidth: true
++                    spacing: 6
++                    Repeater {
++                        model: sizes.list
++                        delegate: Chip {
++                            required property var modelData
++                            readonly property real mp: modelData.w * modelData.h / 1e6
++                            text: (mp >= 1 ? mp.toFixed(1) + " MP" : modelData.w + "x" + modelData.h)
++                                  + "  " + modelData.w + "x" + modelData.h
++                            selected: camera.pictureSize === modelData.w + "x" + modelData.h
++                            onClicked: camera.setPictureSize(modelData.w, modelData.h)
++                        }
++                    }
++                }
++            }
++
++            ColumnLayout {
++                visible: camera.camMode === HybrisCamera.PictureMode
++                Layout.fillWidth: true
++                RowLayout {
++                    Layout.fillWidth: true
++                    Text {
++                        text: qsTr("JPEG quality")
++                        color: "white"
++                        font.pixelSize: 15
++                        font.bold: true
++                        Layout.fillWidth: true
++                    }
++                    Text {
++                        text: camera.jpegQuality
++                        color: panel.accent
++                        font.pixelSize: 15
++                    }
++                }
++                Slider {
++                    Layout.fillWidth: true
++                    from: 50
++                    to: 100
++                    stepSize: 1
++                    value: camera.jpegQuality
++                    onMoved: camera.jpegQuality = Math.round(value)
++                }
++            }
++
++            // video: frame rate from the HAL's preview frame rates, codec of the encoder
++            ColumnLayout {
++                id: fps
++                visible: camera.camMode === HybrisCamera.VideoMode
++                Layout.fillWidth: true
++                readonly property var rates: panel.values("preview-frame-rate-values").map(s => parseInt(s))
++                Text {
++                    text: qsTr("Video frame rate")
++                    color: "white"
++                    font.pixelSize: 15
++                    font.bold: true
++                }
++                Flow {
++                    Layout.fillWidth: true
++                    spacing: 6
++                    Repeater {
++                        model: fps.rates
++                        delegate: Chip {
++                            required property int modelData
++                            text: modelData + " fps"
++                            selected: camera.videoFps === modelData
++                            onClicked: camera.videoFps = modelData
++                        }
++                    }
++                }
++                Text {
++                    text: qsTr("Video codec")
++                    color: "white"
++                    font.pixelSize: 15
++                    font.bold: true
++                }
++                Flow {
++                    Layout.fillWidth: true
++                    spacing: 6
++                    Chip {
++                        text: "H.264"
++                        selected: !camera.hevc
++                        onClicked: camera.hevc = false
++                    }
++                    Chip {
++                        text: "HEVC (H.265)"
++                        selected: camera.hevc
++                        onClicked: camera.hevc = true
++                    }
++                }
++                Text {
++                    text: qsTr("Encoder")
++                    color: "white"
++                    font.pixelSize: 15
++                    font.bold: true
++                }
++                Flow {
++                    Layout.fillWidth: true
++                    spacing: 6
++                    Chip {
++                        text: qsTr("Hardware")
++                        selected: !camera.swEncode
++                        onClicked: camera.swEncode = false
++                    }
++                    Chip {
++                        text: qsTr("Software (FFmpeg)")
++                        selected: camera.swEncode
++                        onClicked: camera.swEncode = true
++                    }
++                }
++                Text {
++                    text: camera.swEncode ? qsTr("Quality (CRF, lower is better)") : qsTr("Bit rate")
++                    color: "white"
++                    font.pixelSize: 15
++                    font.bold: true
++                }
++                Flow {
++                    Layout.fillWidth: true
++                    spacing: 6
++                    Repeater {
++                        model: camera.swEncode ? [18, 20, 23, 26, 28, 32] : [6, 12, 17, 24, 32, 40, 50, 60]
++                        delegate: Chip {
++                            required property int modelData
++                            text: camera.swEncode ? modelData.toString() : modelData + " Mb/s"
++                            selected: camera.swEncode ? camera.encCrf === modelData
++                                                      : camera.videoBitRate === modelData
++                            onClicked: {
++                                if (camera.swEncode)
++                                    camera.encCrf = modelData
++                                else
++                                    camera.videoBitRate = modelData
++                            }
++                        }
++                    }
++                }
++            }
++        }
++    }
++}
+diff --git a/src/qml/DefaultUI/ZoomControl.qml b/src/qml/DefaultUI/ZoomControl.qml
+new file mode 100644
+index 0000000..cc6cf13
+--- /dev/null
++++ b/src/qml/DefaultUI/ZoomControl.qml
+@@ -0,0 +1,220 @@
++/* SPDX-License-Identifier: GPL-2.0-only
++ *
++ * One UI style zoom: a pill with the lenses of the current side (factor from
++ * the HAL's field of view, relative to the main lens) and digital stops from
++ * the HAL's zoom-ratios; press and hold or drag for a slider with a scale.
++ */
++
++import QtQuick
++import QtQuick.Layouts
++import HybrisCamera
++import ThemeUtils
++
++Item {
++    id: zoom
++    implicitHeight: 64
++
++    required property var lenses        // lenses of the current side
++    readonly property color accent: "#ffcc33"
++
++    // main lens of the side: Android lists it first (lowest id)
++    readonly property var mainLens: lenses.length ? lenses.reduce((a, b) => a.id < b.id ? a : b) : null
++    function lensFactor(l) {
++        if (!mainLens || !l || !(l.fov > 0) || !(mainLens.fov > 0))
++            return 1
++        const rad = Math.PI / 180
++        return Math.tan(mainLens.fov / 2 * rad) / Math.tan(l.fov / 2 * rad)
++    }
++    // every lens with its factor, widest first (main = 1)
++    readonly property var lensStops: lenses.map(l => ({ lens: l, factor: l === mainLens ? 1 : lensFactor(l) }))
++                                          .sort((a, b) => a.factor - b.factor)
++    readonly property var wideLenses: lensStops.filter(s => s.factor < 0.95).map(s => s.lens)
++
++    // digital zoom of the current camera
++    readonly property var ratios: (camera.parameters["zoom-ratios"] || "100").split(",").map(r => parseInt(r) / 100)
++    readonly property real maxRatio: ratios[ratios.length - 1]
++    function indexForRatio(r) {
++        let best = 0
++        for (let i = 0; i < ratios.length; i++)
++            if (Math.abs(ratios[i] - r) < Math.abs(ratios[best] - r))
++                best = i
++        return best
++    }
++    readonly property var currentStop: lensStops.find(s => s.lens.id === camera.camId)
++    readonly property real currentFactor: (currentStop ? currentStop.factor : 1)
++                                          * (ratios[Math.min(camera.zoom, ratios.length - 1)] || 1)
++    // digital stops past the longest lens
++    readonly property real longestLens: lensStops.length ? lensStops[lensStops.length - 1].factor : 1
++    readonly property var digitalStops: [2, 4].filter(s => s <= maxRatio && s > longestLens * 1.2)
++
++    function setFactor(f) {
++        // the lens with the largest factor not above f, digital zoom for the rest
++        let pick = lensStops.length ? lensStops[0] : null
++        for (const s of lensStops)
++            if (s.factor <= f * 1.02)
++                pick = s
++        if (!pick)
++            return
++        if (camera.camId !== pick.lens.id)
++            camera.camId = pick.lens.id
++        camera.zoom = indexForRatio(Math.max(1, f / pick.factor))
++    }
++    // which stop the current zoom belongs to
++    function stopActive(f, next) {
++        return currentFactor >= f * 0.97 && (next === undefined || currentFactor < next * 0.97)
++    }
++    function label(f) {
++        const t = f < 1 ? f.toFixed(1).replace(/^0/, "") : (Math.round(f * 10) / 10).toString()
++        return t
++    }
++
++    readonly property var allStops: lensStops.map(s => s.factor).concat(digitalStops)
++    property bool sliderOpen: false
++    readonly property real minFactor: lensStops.length ? Math.min(1, lensStops[0].factor) : 1
++    // digital zoom on top of the longest lens
++    readonly property real maxLimit: Math.max(maxRatio, longestLens * maxRatio)
++
++    // pill
++    Rectangle {
++        id: pill
++        visible: !zoom.sliderOpen
++        anchors.centerIn: parent
++        height: 50
++        width: pillRow.implicitWidth + 12
++        radius: height / 2
++        color: Qt.rgba(0, 0, 0, 0.45)
++
++        Row {
++            id: pillRow
++            anchors.centerIn: parent
++            spacing: 4
++            Repeater {
++                model: zoom.allStops
++                delegate: ZoomStop {
++                    required property real modelData
++                    required property int index
++                    factor: modelData
++                    active: index === 0 ? zoom.currentFactor < (zoom.allStops.length > 1 ? zoom.allStops[1] * 0.97 : 1e9)
++                                        : zoom.stopActive(modelData, zoom.allStops[index + 1])
++                }
++            }
++        }
++    }
++
++    component ZoomStop: Rectangle {
++        id: stop
++        property real factor
++        property bool active
++        width: 42
++        height: 42
++        radius: 21
++        color: active ? Qt.rgba(0, 0, 0, 0.55) : "transparent"
++        Text {
++            anchors.centerIn: parent
++            text: stop.active ? zoom.label(zoom.currentFactor) + "×" : zoom.label(stop.factor)
++            color: stop.active ? zoom.accent : "white"
++            font.pixelSize: stop.active ? 14 : 16
++            font.bold: true
++        }
++        MouseArea {
++            anchors.fill: parent
++            onClicked: zoom.setFactor(stop.factor)
++            onPressAndHold: zoom.sliderOpen = true
++        }
++    }
++
++    // slider with a logarithmic scale, like One UI
++    Rectangle {
++        id: slider
++        visible: zoom.sliderOpen
++        anchors.centerIn: parent
++        width: parent.width
++        height: 50
++        radius: height / 2
++        color: Qt.rgba(0, 0, 0, 0.55)
++
++        readonly property real lmin: Math.log(zoom.minFactor)
++        readonly property real lmax: Math.log(zoom.maxLimit)
++        function xFor(f) {
++            return 20 + (Math.log(f) - lmin) / (lmax - lmin) * (width - 80)
++        }
++        function factorAt(x) {
++            const t = Math.max(0, Math.min(1, (x - 20) / (width - 80)))
++            return Math.exp(lmin + t * (lmax - lmin))
++        }
++
++        Repeater {
++            model: 41
++            delegate: Rectangle {
++                required property int index
++                readonly property bool major: index % 10 === 0
++                x: 20 + index / 40 * (slider.width - 80)
++                y: major ? 13 : 17
++                width: 2
++                height: major ? 24 : 16
++                color: Qt.rgba(1, 1, 1, major ? 0.9 : 0.45)
++            }
++        }
++        Rectangle {
++            x: slider.xFor(zoom.currentFactor) - 1
++            y: 8
++            width: 3
++            height: 34
++            radius: 1
++            color: zoom.accent
++        }
++        Text {
++            anchors.bottom: parent.top
++            anchors.bottomMargin: 8
++            x: slider.xFor(zoom.currentFactor) - width / 2
++            text: zoom.label(zoom.currentFactor) + " ×"
++            color: zoom.accent
++            font.pixelSize: 22
++            font.bold: true
++        }
++        Rectangle {
++            anchors.right: parent.right
++            anchors.rightMargin: 8
++            anchors.verticalCenter: parent.verticalCenter
++            width: 34
++            height: 34
++            radius: 17
++            color: Qt.rgba(1, 1, 1, 0.15)
++            Text {
++                anchors.centerIn: parent
++                text: ""
++                font.family: mdiFont.name
++                font.pixelSize: 20
++                color: "white"
++            }
++            MouseArea {
++                anchors.fill: parent
++                onClicked: zoom.sliderOpen = false
++            }
++        }
++        MouseArea {
++            anchors.fill: parent
++            anchors.rightMargin: 50
++            onPressed: mouse => zoom.setFactor(slider.factorAt(mouse.x))
++            onPositionChanged: mouse => zoom.setFactor(slider.factorAt(mouse.x))
++        }
++
++        // labels under the scale
++        Item {
++            anchors.top: parent.bottom
++            anchors.topMargin: 8
++            width: parent.width
++            height: 20
++            Repeater {
++                model: [zoom.minFactor, 1, 2, 4, zoom.maxLimit].filter((f, i, a) => f <= zoom.maxLimit && a.indexOf(f) === i)
++                delegate: Text {
++                    required property real modelData
++                    x: slider.xFor(modelData) - width / 2
++                    text: zoom.label(modelData)
++                    color: "white"
++                    font.pixelSize: 15
++                }
++            }
++        }
++    }
++}
+diff --git a/src/qml/main.qml b/src/qml/main.qml
+index d1598c8..ce3e45a 100644
+--- a/src/qml/main.qml
++++ b/src/qml/main.qml
+@@ -46,15 +46,13 @@ Item {
+ 
+     HybrisCamera {
+         id: camera
+-        blur: encoderSettings.opacity > 0.0 || timeLapseFps.opacity > 0.0 || qrHandler.width === camera.width
++        blur: qrHandler.width === camera.width
+         anchors.fill: parent
+-        property real lastZoom: 1.0
+-
+-        onVideoBitRateChanged: vidBitRateTumbler.currentIndex = camera.videoBitRate - 3
++        property real lastZoom: 0
+ 
+         onCamIdChanged: {
+             if (camera.videoModel.rowCount() > 0) {
+-                const video = camera.videoModel.get(videoModel.currentIndex);
++                const video = camera.videoModel.get(camera.videoModel.currentIndex());
+                 camera.setVideoSize(video.resolution.width, video.resolution.height)
+             }
+         }
+@@ -85,288 +83,77 @@ Item {
+ 
+         property real zoomSensitivity: 2.5
+ 
++        // camera.zoom is an index into the HAL's zoom-ratios (percent values)
+         onPinchUpdated: {
+-            let targetZoom = camera.lastZoom * Math.pow(pinch.scale, zoomSensitivity);
+-
+-            if (targetZoom > camera.maxZoom) {
+-                camera.zoom = camera.maxZoom;
+-            } else if (targetZoom < 1.0) {
+-                camera.zoom = 1.0;
+-            } else {
+-                camera.zoom = targetZoom;
+-            }
++            const ratios = (camera.parameters["zoom-ratios"] || "100").split(",").map(r => parseInt(r))
++            const base = ratios[Math.min(Math.round(camera.lastZoom), ratios.length - 1)]
++            const target = base * Math.pow(pinch.scale, zoomSensitivity)
++            let best = 0
++            for (let i = 0; i < ratios.length && i <= camera.maxZoom; i++)
++                if (Math.abs(ratios[i] - target) < Math.abs(ratios[best] - target))
++                    best = i
++            camera.zoom = best
+         }
+ 
+         onPinchFinished: {
+             camera.lastZoom = camera.zoom;
+         }
+-    }
+-
+-    MouseArea {
+-        id: closeMa
+-        anchors.fill: parent
+-        visible: encoderSettings.opacity > 0.0 || timeLapseFps.opacity > 0.0
+-
+-        onClicked: {
+-            encoderSettings.opacity = 0.0
+-            timeLapseFps.opacity = 0.0
+-            timeLapseFps.currentIndex = 0
+-        }
+-    }
+-
+-    ColumnLayout {
+-        id: encoderSettings
+-        width: parent.width * 0.5
+-        height: parent.landscape ? parent.height * 0.7 : parent.width * 0.7
+-        anchors.centerIn: parent
+-        opacity: 0.0
+-        visible: opacity > 0.0
+-
+-        Behavior on opacity {
+-            NumberAnimation { duration: 400 }
+-        }
+-
+-        Text {
+-            id: bitRateHeader
+-            Layout.fillWidth: true
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-            horizontalAlignment: Text.AlignHCenter
+-            verticalAlignment: Text.AlignVCenter
+-            visible: !camera.swEncode
+-            text: "Video Bit Rate"
+-            font.pixelSize: 24
+-            font.bold: true
+-            color: ThemeUtils.getAccentColor()
+-        }
+-
+-        Tumbler {
+-            id: vidBitRateTumbler
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            visible: !camera.swEncode
+-            model: ListModel {}
+-            property bool initialized: false
+-
+-            delegate: Item {
+-                width: parent.width
+-                height: parent.height / 5
+-
+-                Text {
+-                    text: model.value + " Mbps"
+-                    fontSizeMode: Text.Fit
+-                    minimumPixelSize: 10
+-                    font.pixelSize: 24
+-                    anchors.centerIn: parent
+-                    color: index === vidBitRateTumbler.currentIndex ? ThemeUtils.getAccentColor() : "grey"
+-                }
+-            }
+-
+-            Component.onCompleted: {
+-                for (var i = 3; i <= 60; i++) {
+-                    model.append({ value: i });
+-                }
+-            }
+-
+-            onVisibleChanged: {
+-                if(visible && !initialized){
+-                    vidBitRateTumbler.currentIndex = camera.videoBitRate - 3
+-                    initialized = true
+-                }
+-            }
+-
+-            onCurrentIndexChanged: {
+-                if(initialized)
+-                    camera.videoBitRate = vidBitRateTumbler.currentIndex + 3;
+-            }
+-        }
+-
+-        Text {
+-            id: crfHeader
+-            Layout.fillWidth: true
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-            horizontalAlignment: Text.AlignHCenter
+-            verticalAlignment: Text.AlignVCenter
+-            visible: camera.swEncode
+-            text: "Constant Rate Factor"
+-            font.pixelSize: 24
+-            font.bold: true
+-            color: ThemeUtils.getAccentColor()
+-        }
+-
+-        Tumbler {
+-            id: encCrfTumbler
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            visible: camera.swEncode
+-            model: ListModel {}
+-            property bool initialized: false
+-
+-            delegate: Item {
+-                width: parent.width
+-                height: parent.height / 5
+-
+-                Text {
+-                    text: model.value
+-                    fontSizeMode: Text.Fit
+-                    minimumPixelSize: 10
+-                    font.pixelSize: 20
+-                    anchors.centerIn: parent
+-                    color: index === encCrfTumbler.currentIndex ? ThemeUtils.getAccentColor() : "grey"
+-                }
+-            }
+-
+-            Component.onCompleted: {
+-                for (var i = 0; i <= 51; i++) {
+-                    model.append({ value: i });
+-                }
+-            }
+-
+-            onVisibleChanged: {
+-                if(visible && !initialized){
+-                    encCrfTumbler.currentIndex = camera.encCrf
+-                    initialized = true
+-                }
+-            }
+-
+-            onCurrentIndexChanged: {
+-                if(initialized)
+-                    camera.encCrf = encCrfTumbler.currentIndex
+-            }
+-        }
+ 
+-        RowLayout {
+-            width: root.width * 0.8
+-            height: bitRateHeader.height
+-            uniformCellSizes: true
+-            Item {
+-                Layout.fillWidth: true
+-                RadioButton {
+-                    anchors.right: swTxt.left
+-                    checked: camera.swEncode
+-                    onClicked: {
+-                        camera.swEncode = true
+-                    }
+-                }
+-                Text {
+-                    id: swTxt
+-                    anchors.right: parent.right
+-                    text: "SW Encoder"
+-                    color: camera.swEncode ? ThemeUtils.getAccentColor() : "grey"
+-                    font.pixelSize: 24
+-                    MouseArea{
+-                        anchors.fill: parent
+-                            onClicked: {
+-                            camera.swEncode = true
+-                        }
+-                    }
++        // tap: focus and metering on the point; hold: back to automatic areas
++        MouseArea {
++            anchors.fill: parent
++            enabled: camera.camMode !== HybrisCamera.QrMode
++            pressAndHoldInterval: 600
++            onClicked: mouse => {
++                if (camera.focusAt(mouse.x / width, mouse.y / height)) {
++                    focusRing.x = mouse.x - focusRing.width / 2
++                    focusRing.y = mouse.y - focusRing.height / 2
++                    focusRing.show()
+                 }
+             }
+-            Item {
+-                Layout.fillWidth: true
+-                RadioButton {
+-                    id: hwRadioBtn
+-                    checked: !camera.swEncode
+-                    anchors.left: parent.left
+-                    onClicked: {
+-                        camera.swEncode = false
+-                    }
+-                }
+-                Text {
+-                    anchors.left: hwRadioBtn.right
+-                    text: "HW Encoder"
+-                    color: !camera.swEncode ? ThemeUtils.getAccentColor() : "grey"
+-                    font.pixelSize: 24
+-                    MouseArea{
+-                        anchors.fill: parent
+-                            onClicked: {
+-                            camera.swEncode = false
+-                        }
+-                    }
+-                }
++            onPressAndHold: {
++                camera.resetFocus()
++                focusRing.opacity = 0
+             }
+         }
+     }
+ 
+-    ColumnLayout {
+-        id: timeLapseSettings
+-        width: parent.width * 0.5
+-        height: parent.landscape ? parent.height * 0.8 : parent.width * 0.8
+-        anchors.centerIn: parent
+-        visible: timeLapseFps.opacity > 0.0
+-
+-        Text {
+-            id: timeLapseHeader
+-            Layout.fillWidth: true
+-            Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
+-            horizontalAlignment: Text.AlignHCenter
+-            verticalAlignment: Text.AlignVCenter
+-            text: "Timelapse FPS"
+-            font.pixelSize: 28
+-            font.bold: true
+-            color: ThemeUtils.getAccentColor()
+-            anchors.bottomMargin: 10
++    Rectangle {
++        id: focusRing
++        width: 90
++        height: 90
++        radius: width / 2
++        color: "transparent"
++        border.color: ThemeUtils.getAccentColor()
++        border.width: 2
++        opacity: 0
++        function show() {
++            ringAnim.restart()
++        }
++        SequentialAnimation {
++            id: ringAnim
++            ParallelAnimation {
++                NumberAnimation { target: focusRing; property: "opacity"; from: 0; to: 1; duration: 120 }
++                NumberAnimation { target: focusRing; property: "scale"; from: 1.4; to: 1.0; duration: 200 }
++            }
++            PauseAnimation { duration: 1200 }
++            NumberAnimation { target: focusRing; property: "opacity"; to: 0.35; duration: 400 }
+         }
++    }
+ 
+-        Tumbler {
+-            id: timeLapseFps
+-            Layout.fillWidth: true
+-            Layout.fillHeight: true
+-            model: ListModel {}
+-            opacity: 0.0
+-            visible: true
+-
+-            delegate: Item {
+-                width: parent.width
+-                height: 60
+-
+-                Text {
+-                    text: model.value > 0 ? model.value + " FPS" : "OFF"
+-                    font.pixelSize: 24
+-                    anchors.centerIn: parent
+-                    color: index === timeLapseFps.currentIndex ? ThemeUtils.getAccentColor() : "grey"
+-                }
+-            }
+-
+-            Component.onCompleted: {
+-                for (var i = 0; i <= 300; i++) {
+-                    model.append({ value: i / 10 });
+-                }
+-            }
+-
+-            onCurrentIndexChanged: camera.timeLapseFps = timeLapseFps.currentIndex / 10;
+-
+-            Behavior on opacity {
+-                NumberAnimation { duration: 400 }
+-            }
+-        }
+-
+-        RowLayout {
+-            spacing: 10
+-            uniformCellSizes: true
+-            visible: timeLapseFps.currentIndex
+-            width: parent.width
+-            height: 40
+-            DefaultButton {
+-                Layout.fillWidth: true
+-                Layout.fillHeight: true
+-                Layout.alignment: Qt.AlignHCenter | Qt.AlignLeft
+-                color: "green"
+-                code: "\ue5ca"
+-
+-                onClicked: {
+-                    camera.startRecording()
+-                    timeLapseFps.opacity = 0.0
+-                }
+-            }
+-            DefaultButton {
+-                Layout.fillWidth: true
+-                Layout.fillHeight: true
+-                Layout.alignment: Qt.AlignHCenter | Qt.AlignRight
+-                color: "red"
+-                code: "\ue5cd"
+-
+-                onClicked: timeLapseFps.currentIndex = 0
+-            }
++    // faces from the HAL's face detection, already mapped to this item
++    Repeater {
++        model: camera.faces
++        delegate: Rectangle {
++            required property var modelData
++            x: modelData.x * root.width
++            y: modelData.y * root.height
++            width: modelData.width * root.width
++            height: modelData.height * root.height
++            color: "transparent"
++            radius: 8
++            border.color: "#ffd54f"
++            border.width: 2
+         }
+     }
+ 
+diff --git a/src/shaders/viewfinder.frag b/src/shaders/viewfinder.frag
+index c63ec9d..fb28100 100644
+--- a/src/shaders/viewfinder.frag
++++ b/src/shaders/viewfinder.frag
+@@ -21,7 +21,7 @@ void main() {
+         weights[6] = 0.002596;
+ 
+         for (int i = -6; i <= 6; ++i) {
+-            int index = abs(i);
++            int index = i < 0 ? -i : i; // GLSL ES 1.00 has no abs(int); Mali rejects it
+             vec2 offset = float(i) * texOffset;
+             vec4 sampleX = texture2D(s_texture, v_texCoord + offset);
+             vec4 sampleY = texture2D(s_texture, v_texCoord + vec2(0.0, offset.y));
+diff --git a/src/translations/droidian-camera_pl.ts b/src/translations/droidian-camera_pl.ts
+new file mode 100644
+index 0000000..8f1f868
+--- /dev/null
++++ b/src/translations/droidian-camera_pl.ts
+@@ -0,0 +1,246 @@
++<?xml version="1.0" encoding="utf-8"?>
++<!DOCTYPE TS>
++<TS version="2.1" language="pl_PL">
++<context>
++    <name>DefaultUI</name>
++    <message>
++        <source>Focus</source>
++        <translation>Ostrość</translation>
++    </message>
++    <message>
++        <source>Full</source>
++        <translation>Pełny</translation>
++    </message>
++    <message>
++        <source>HYPERLAPSE</source>
++        <translation>HYPERLAPSE</translation>
++    </message>
++    <message>
++        <source>MORE</source>
++        <translation>WIĘCEJ</translation>
++    </message>
++    <message>
++        <source>Off</source>
++        <translation>Wył.</translation>
++    </message>
++    <message>
++        <source>PHOTO</source>
++        <translation>ZDJĘCIE</translation>
++    </message>
++    <message>
++        <source>PRO</source>
++        <translation>PRO</translation>
++    </message>
++    <message>
++        <source>PRO VIDEO</source>
++        <translation>PRO WIDEO</translation>
++    </message>
++    <message>
++        <source>QR CODE</source>
++        <translation>KOD QR</translation>
++    </message>
++    <message>
++        <source>VIDEO</source>
++        <translation>WIDEO</translation>
++    </message>
++</context>
++<context>
++    <name>ProPanel</name>
++    <message>
++        <source>(no fix yet)</source>
++        <translation>(brak pozycji)</translation>
++    </message>
++    <message>
++        <source>50 Hz</source>
++        <translation>50 Hz</translation>
++    </message>
++    <message>
++        <source>60 Hz</source>
++        <translation>60 Hz</translation>
++    </message>
++    <message>
++        <source>Advanced controls unavailable: libcamx.so not loaded</source>
++        <translation>Zaawansowane sterowanie niedostępne: nie załadowano libcamx.so</translation>
++    </message>
++    <message>
++        <source>Anti-flicker</source>
++        <translation>Redukcja migotania</translation>
++    </message>
++    <message>
++        <source>Aqua</source>
++        <translation>Aqua</translation>
++    </message>
++    <message>
++        <source>Auto</source>
++        <translation>Auto</translation>
++    </message>
++    <message>
++        <source>Bit rate</source>
++        <translation>Przepływność</translation>
++    </message>
++    <message>
++        <source>Blackboard</source>
++        <translation>Tablica</translation>
++    </message>
++    <message>
++        <source>Cloudy</source>
++        <translation>Pochmurno</translation>
++    </message>
++    <message>
++        <source>Color effect</source>
++        <translation>Efekt kolorów</translation>
++    </message>
++    <message>
++        <source>Continuous</source>
++        <translation>Ciągła</translation>
++    </message>
++    <message>
++        <source>Continuous (video)</source>
++        <translation>Ciągła (wideo)</translation>
++    </message>
++    <message>
++        <source>Daylight</source>
++        <translation>Światło dzienne</translation>
++    </message>
++    <message>
++        <source>EDOF</source>
++        <translation>EDOF</translation>
++    </message>
++    <message>
++        <source>Encoder</source>
++        <translation>Koder</translation>
++    </message>
++    <message>
++        <source>Exposure</source>
++        <translation>Ekspozycja</translation>
++    </message>
++    <message>
++        <source>Face detection</source>
++        <translation>Wykrywanie twarzy</translation>
++    </message>
++    <message>
++        <source>Fixed</source>
++        <translation>Stała</translation>
++    </message>
++    <message>
++        <source>Fluorescent</source>
++        <translation>Świetlówka</translation>
++    </message>
++    <message>
++        <source>Focus</source>
++        <translation>Ostrość</translation>
++    </message>
++    <message>
++        <source>Geotag photos</source>
++        <translation>Lokalizacja w zdjęciach</translation>
++    </message>
++    <message>
++        <source>HDR</source>
++        <translation>HDR</translation>
++    </message>
++    <message>
++        <source>Hardware</source>
++        <translation>Sprzętowy</translation>
++    </message>
++    <message>
++        <source>Incandescent</source>
++        <translation>Żarówka</translation>
++    </message>
++    <message>
++        <source>Infinity</source>
++        <translation>Nieskończoność</translation>
++    </message>
++    <message>
++        <source>JPEG quality</source>
++        <translation>Jakość JPEG</translation>
++    </message>
++    <message>
++        <source>Lock exposure (AE)</source>
++        <translation>Blokada ekspozycji (AE)</translation>
++    </message>
++    <message>
++        <source>Lock white balance (AWB)</source>
++        <translation>Blokada balansu bieli (AWB)</translation>
++    </message>
++    <message>
++        <source>Macro</source>
++        <translation>Makro</translation>
++    </message>
++    <message>
++        <source>Mono</source>
++        <translation>Mono</translation>
++    </message>
++    <message>
++        <source>Negative</source>
++        <translation>Negatyw</translation>
++    </message>
++    <message>
++        <source>None</source>
++        <translation>Brak</translation>
++    </message>
++    <message>
++        <source>Off</source>
++        <translation>Wył.</translation>
++    </message>
++    <message>
++        <source>On</source>
++        <translation>Wł.</translation>
++    </message>
++    <message>
++        <source>Photo size</source>
++        <translation>Rozmiar zdjęcia</translation>
++    </message>
++    <message>
++        <source>Posterize</source>
++        <translation>Posteryzacja</translation>
++    </message>
++    <message>
++        <source>Quality (CRF, lower is better)</source>
++        <translation>Jakość (CRF, mniej = lepiej)</translation>
++    </message>
++    <message>
++        <source>Scene</source>
++        <translation>Scena</translation>
++    </message>
++    <message>
++        <source>Sepia</source>
++        <translation>Sepia</translation>
++    </message>
++    <message>
++        <source>Shade</source>
++        <translation>Cień</translation>
++    </message>
++    <message>
++        <source>Software (FFmpeg)</source>
++        <translation>Programowy (FFmpeg)</translation>
++    </message>
++    <message>
++        <source>Solarize</source>
++        <translation>Solaryzacja</translation>
++    </message>
++    <message>
++        <source>Twilight</source>
++        <translation>Zmierzch</translation>
++    </message>
++    <message>
++        <source>Video codec</source>
++        <translation>Kodek wideo</translation>
++    </message>
++    <message>
++        <source>Video frame rate</source>
++        <translation>Liczba klatek wideo</translation>
++    </message>
++    <message>
++        <source>Warm fluorescent</source>
++        <translation>Ciepła świetlówka</translation>
++    </message>
++    <message>
++        <source>White balance</source>
++        <translation>Balans bieli</translation>
++    </message>
++    <message>
++        <source>Whiteboard</source>
++        <translation>Tablica biała</translation>
++    </message>
++</context>
++</TS>
+-- 
+2.55.0
+

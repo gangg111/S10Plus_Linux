@@ -1,0 +1,43 @@
+From 4f88690e7e1631c726f5496ff84670bc85f0cdf4 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Thu, 1 Oct 2026 06:49:34 +0200
+Subject: [PATCH] Install the icons into the hicolor theme
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ CMakeLists.txt   | 4 ++--
+ debian/changelog | 8 ++++++++
+ 2 files changed, 10 insertions(+), 2 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 30a51fa..48f28d0 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -107,6 +107,6 @@ endif()
+ 
+ install(TARGETS ${PROJECT_NAME} DESTINATION /usr/bin)
+ install(FILES ${CMAKE_SOURCE_DIR}/droidian-camera.desktop DESTINATION /usr/share/applications)
+-install(FILES ${CMAKE_SOURCE_DIR}/droidian-camera.svg DESTINATION /usr/share/icons)
++install(FILES ${CMAKE_SOURCE_DIR}/droidian-camera.svg DESTINATION /usr/share/icons/hicolor/scalable/apps)
+ install(FILES ${CMAKE_SOURCE_DIR}/droidian-qr.desktop DESTINATION /usr/share/applications)
+-install(FILES ${CMAKE_SOURCE_DIR}/droidian-qr.png DESTINATION /usr/share/icons)
++install(FILES ${CMAKE_SOURCE_DIR}/droidian-qr.png DESTINATION /usr/share/icons/hicolor/256x256/apps)
+diff --git a/debian/changelog b/debian/changelog
+index aab02f7..24662fa 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,11 @@
++droidian-camera (26.1+s10plus7) unstable; urgency=medium
++
++  * Install the camera and QR scanner icons into the hicolor theme
++    (scalable/apps, 256x256/apps): the launcher found no icon in the bare
++    /usr/share/icons directory.
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 14:00:00 +0200
++
+ droidian-camera (26.1+s10plus6) unstable; urgency=medium
+ 
+   * Watermark like One UI: model name and time in the lower left corner of
+-- 
+2.55.0
+

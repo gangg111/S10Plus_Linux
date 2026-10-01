@@ -1,0 +1,2334 @@
+From a151ae128c552dc10f0b4aa360d4412120db59aa Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Thu, 1 Oct 2026 03:18:42 +0200
+Subject: [PATCH] Run PRO modes and video on a live Camera2 session
+
+The viewfinder of the PRO modes now comes from Camera2, so manual ISO,
+shutter and focus show live. Preview frames are AHardwareBuffers bound as
+EGLImages to the external texture the renderer already draws, without
+copies. Video (PRO video and plain video) records from the camera into a
+persistent encoder input surface; libcamx muxes it with AAC sound into an
+MP4. Hyperlapse and the software encoder stay on Camera1, whose
+MediaRecorder cannot take the microphone on Droidian.
+
+The camera keeps the screen on: a blanked screen makes mobile-power-saver
+limit real-time threads to 50 ms per second and the ISP drops frames.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ CMakeLists.txt                         |   6 +-
+ debian/changelog                       |  16 +
+ debian/control                         |   1 +
+ src/camera-extras.cpp                  |  16 +
+ src/camera-extras.h                    |  19 +
+ src/camera-manager.cpp                 |  18 +-
+ src/camera-manager.h                   |  10 +
+ src/camera-renderer.cpp                |  68 +-
+ src/camera-renderer.h                  |  24 +-
+ src/camx/cam2.cpp                      | 817 ++++++++++++++++++++++---
+ src/camx/cam2.h                        |  48 +-
+ src/camx/ndk-camera.h                  |  69 ++-
+ src/hybris-camera-cam2.cpp             | 397 +++++++++++-
+ src/hybris-camera-pro.cpp              |  30 +
+ src/hybris-camera.cpp                  |  44 +-
+ src/hybris-camera.h                    |  57 ++
+ src/qml/DefaultUI/DefaultUI.qml        |  19 +-
+ src/qml/DefaultUI/ProPanel.qml         |   5 +
+ src/translations/droidian-camera_pl.ts |  11 +
+ 19 files changed, 1563 insertions(+), 112 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 56265db..76b01d4 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,7 +10,7 @@ set(CMAKE_INSTALL_RPATH "")
+ set(CMAKE_SKIP_RPATH TRUE)
+ 
+ find_package(PkgConfig REQUIRED)
+-find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia Sensors Concurrent Positioning LinguistTools)
++find_package(Qt6 REQUIRED COMPONENTS Core Gui Qml Quick Multimedia Sensors Concurrent Positioning DBus LinguistTools)
+ 
+ pkg_check_modules(android_headers REQUIRED android-headers)
+ pkg_check_modules(hybris_camera REQUIRED libcamera)
+@@ -52,6 +52,8 @@ target_link_libraries(droidian-camera PRIVATE
+     Qt6::Sensors
+     Qt6::Concurrent
+     Qt6::Positioning
++    Qt6::DBus
++    EGL
+     hybris-common
+     ${AVCODEC_LIBRARY}
+     ${AVFORMAT_LIBRARY}
+@@ -86,7 +88,7 @@ if (CAMX_CXX AND CAMX_LLD AND EXISTS ${ANDROID_SYSTEM_LIBS}/libcamera_client.so)
+ 			-o ${CAMX_SO} ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp ${CMAKE_SOURCE_DIR}/src/camx/cam2.cpp
+ 			${ANDROID_SYSTEM_LIBS}/libcamera_client.so ${ANDROID_SYSTEM_LIBS}/libutils.so
+ 			${ANDROID_SYSTEM_LIBS}/libcamera2ndk.so ${ANDROID_SYSTEM_LIBS}/libmediandk.so
+-			${ANDROID_SYSTEM_LIBS}/libbinder_ndk.so
++			${ANDROID_SYSTEM_LIBS}/libbinder_ndk.so ${ANDROID_SYSTEM_LIBS}/libnativewindow.so
+ 			${ANDROID_SYSTEM_LIBS}/libc++.so ${ANDROID_LIBC}
+ 		DEPENDS ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp ${CMAKE_SOURCE_DIR}/src/camx/cam2.cpp
+ 			${CMAKE_SOURCE_DIR}/src/camx/cam2.h ${CMAKE_SOURCE_DIR}/src/camx/ndk-camera.h
+diff --git a/debian/changelog b/debian/changelog
+index ddbf643..d1d749d 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,19 @@
++droidian-camera (26.1+s10plus3) unstable; urgency=medium
++
++  * PRO and PRO video run on a live Camera2 session: the viewfinder shows
++    manual ISO, shutter and focus, frames reach the GPU without copies
++    (AHardwareBuffer as EGLImage), the chips show the automatic values.
++  * Video through Camera2 (PRO video and plain video): hardware H.264/HEVC
++    from the camera into a persistent encoder surface, AAC sound, MP4 by
++    AMediaMuxer; manual ISO and shutter while recording, torch.
++  * Tap to focus and meter, exposure and white balance locks in the session.
++  * Record sound setting (on by default); hyperlapse and the software encoder
++    stay on Camera1 without sound, MediaRecorder cannot take the microphone.
++  * The screen does not blank while the camera is open (ScreenSaver inhibit):
++    a blanked screen throttles real-time threads and the camera drops frames.
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 04:00:00 +0200
++
+ droidian-camera (26.1+s10plus2) unstable; urgency=medium
+ 
+   * PRO photo mode through Camera2 (NDK, in libcamx): manual ISO and
+diff --git a/debian/control b/debian/control
+index 47b2d9e..097c935 100644
+--- a/debian/control
++++ b/debian/control
+@@ -21,6 +21,7 @@ Build-Depends:
+   libswscale-dev,
+   libquirc-dev,
+   qt6-positioning-dev,
++  libegl-dev,
+   clang,
+   lld
+ Standards-Version: 4.6.0
+diff --git a/src/camera-extras.cpp b/src/camera-extras.cpp
+index 9229c3a..95dea40 100644
+--- a/src/camera-extras.cpp
++++ b/src/camera-extras.cpp
+@@ -5,6 +5,7 @@
+ #include <QFile>
+ 
+ #include <dlfcn.h>
++#include <type_traits>
+ 
+ #include <camera-extras.h>
+ 
+@@ -64,6 +65,16 @@ bool CameraExtras::load()
+ 	// optional: an older libcamx has no Camera2 part
+ 	m_cam2Info = reinterpret_cast<cam2_info_t>(android_dlsym(m_lib, "cam2_info"));
+ 	m_cam2Capture = reinterpret_cast<cam2_capture_t>(android_dlsym(m_lib, "cam2_capture"));
++	const auto sym = [this](auto &fn, const char *name) {
++		fn = reinterpret_cast<std::remove_reference_t<decltype(fn)>>(android_dlsym(m_lib, name));
++		return fn != nullptr;
++	};
++	m_sessionOk = sym(m_session.open, "cam2s_open") && sym(m_session.close, "cam2s_close") &&
++		      sym(m_session.controls, "cam2s_controls") && sym(m_session.state, "cam2s_state") &&
++		      sym(m_session.acquire, "cam2s_acquire") && sym(m_session.release, "cam2s_release") &&
++		      sym(m_session.still, "cam2s_still") && sym(m_session.recordStart, "cam2s_record_start") &&
++		      sym(m_session.recordAudio, "cam2s_record_audio") &&
++		      sym(m_session.recordPump, "cam2s_record_pump") && sym(m_session.recordStop, "cam2s_record_stop");
+ 
+ 	if (!m_check || !m_set || !m_get || !m_dump || !m_command || !m_listen || !m_faces) {
+ 		qWarning() << "camx: missing symbols, advanced camera controls disabled";
+@@ -189,6 +200,11 @@ int CameraExtras::cam2Capture(int cameraId, const Cam2Settings &settings, cam2_j
+ 			     meteredExpNs);
+ }
+ 
++const Cam2Api *CameraExtras::cam2Session()
++{
++	return load() && m_sessionOk ? &m_session : nullptr;
++}
++
+ QStringList CameraExtras::splitValues(const QString &values)
+ {
+ 	return values.split(',', Qt::SkipEmptyParts);
+diff --git a/src/camera-extras.h b/src/camera-extras.h
+index a471f6e..df2e830 100644
+--- a/src/camera-extras.h
++++ b/src/camera-extras.h
+@@ -21,6 +21,21 @@
+ struct CameraControl;
+ struct CameraControlListener;
+ 
++// the live Camera2 session of libcamx (camx/cam2.h), resolved once
++struct Cam2Api {
++	decltype(&cam2s_open) open;
++	decltype(&cam2s_close) close;
++	decltype(&cam2s_controls) controls;
++	decltype(&cam2s_state) state;
++	decltype(&cam2s_acquire) acquire;
++	decltype(&cam2s_release) release;
++	decltype(&cam2s_still) still;
++	decltype(&cam2s_record_start) recordStart;
++	decltype(&cam2s_record_audio) recordAudio;
++	decltype(&cam2s_record_pump) recordPump;
++	decltype(&cam2s_record_stop) recordStop;
++};
++
+ struct CameraFace {
+ 	QRect rect; // sensor coordinates, -1000..1000
+ 	int score;
+@@ -60,8 +75,12 @@ class CameraExtras {
+ 	bool cam2Info(int cameraId, Cam2Info *info);
+ 	int cam2Capture(int cameraId, const Cam2Settings &settings, cam2_jpeg_cb onJpeg, cam2_raw_cb onRaw,
+ 			void *ctx, int *meteredIso, long long *meteredExpNs);
++	// null when libcamx has no live session part
++	const Cam2Api *cam2Session();
+ 
+     private:
++	Cam2Api m_session = {};
++	bool m_sessionOk = false;
+ 	typedef int (*cam2_info_t)(const char *, Cam2Info *);
+ 	typedef int (*cam2_capture_t)(const char *, const Cam2Settings *, cam2_jpeg_cb, cam2_raw_cb, void *, int *,
+ 				      long long *);
+diff --git a/src/camera-manager.cpp b/src/camera-manager.cpp
+index a669866..6e418dd 100644
+--- a/src/camera-manager.cpp
++++ b/src/camera-manager.cpp
+@@ -24,6 +24,7 @@ CameraManager::CameraManager(QObject *parent)
+ 	if(!m_settings.contains("last-camera"))
+ 		m_settings.setValue("last-camera", 0);
+ 	m_jpegQuality = m_settings.value("jpeg-quality", 95).toInt();
++	m_withMic = m_settings.value("with-mic", true).toBool(); // videos with sound, like One UI
+ 	m_settings.endGroup();
+ 
+ 	int lastCam = m_settings.value("AppSettings/last-camera", 0).toInt();
+@@ -294,6 +295,14 @@ void CameraManager::refreshParameters()
+ 
+ bool CameraManager::setParameter(const QString &key, const QString &value)
+ {
++	if (m_cam2Mode) {
++		// Camera1 is handed over: keep the value for the Camera2 session and
++		// for the next Camera1 connection
++		m_params.insert(key, value);
++		m_settings.setValue(savedParameterGroup() + "/" + key, value);
++		Q_EMIT parametersChanged();
++		return true;
++	}
+ 	if (!m_extras.available())
+ 		return false;
+ 	const bool ok = m_extras.set(key, value) == 0;
+@@ -494,7 +503,8 @@ CameraManager::Flash CameraManager::flash()
+ 
+ void CameraManager::setFlash(Flash mode)
+ {
+-	android_camera_set_flash_mode(m_cameraControl, convertFlashMode(mode));
++	if (m_cameraControl) // a Camera2 session takes the mode from flash()
++		android_camera_set_flash_mode(m_cameraControl, convertFlashMode(mode));
+ 	m_flashMode = mode;
+ 	refreshParameters();
+ 	Q_EMIT flashChanged();
+@@ -521,9 +531,10 @@ int CameraManager::zoom() const
+ 
+ void CameraManager::setZoom(int zoom)
+ {
+-	if (m_zoom != zoom && m_cameraControl) {
++	if (m_zoom != zoom && (m_cameraControl || m_cam2Mode)) {
+ 		m_zoom = zoom;
+-		android_camera_set_zoom(m_cameraControl, zoom);
++		if (m_cameraControl)
++			android_camera_set_zoom(m_cameraControl, zoom);
+ 		Q_EMIT zoomChanged();
+ 	}
+ }
+@@ -537,6 +548,7 @@ void CameraManager::setWithMic(bool enable)
+ {
+ 	if (m_withMic != enable) {
+ 		m_withMic = enable;
++		m_settings.setValue("AppSettings/with-mic", enable);
+ 		Q_EMIT withMicChanged();
+ 	}
+ }
+diff --git a/src/camera-manager.h b/src/camera-manager.h
+index 9c13057..d41f835 100644
+--- a/src/camera-manager.h
++++ b/src/camera-manager.h
+@@ -147,6 +147,15 @@ class CameraManager : public QObject {
+ 	// Camera1 hands the device to a Camera2 capture and takes it back
+ 	void releaseCamera();
+ 	void reconnectCamera();
++	// a live Camera2 session owns the camera: parameters and zoom are only kept
++	void setCam2Mode(bool on)
++	{
++		m_cam2Mode = on;
++	}
++	bool cam2Mode() const
++	{
++		return m_cam2Mode;
++	}
+ 
+     public Q_SLOTS:
+ 	void onReadyForPreview();
+@@ -217,6 +226,7 @@ class CameraManager : public QObject {
+ 	CameraExtras m_extras;
+ 	QMap<QString, QString> m_params;
+ 	int m_jpegQuality = 95;
++	bool m_cam2Mode = false;
+ 	QSize m_userPicSize;
+ 	QSettings m_settings;
+ };
+\ No newline at end of file
+diff --git a/src/camera-renderer.cpp b/src/camera-renderer.cpp
+index 80f9339..dce8027 100644
+--- a/src/camera-renderer.cpp
++++ b/src/camera-renderer.cpp
+@@ -9,11 +9,61 @@
+ #include <camera-renderer.h>
+ #include <QThreadPool>
+ 
++#include <EGL/egl.h>
++
++namespace {
++const unsigned EGL_NATIVE_BUFFER_ANDROID_ = 0x3140;
++const int EGL_IMAGE_PRESERVED_KHR_ = 0x30D2;
++}
++
+ CameraRenderer::~CameraRenderer()
+ {
+ 	delete m_prgViewFinder;
+ }
+ 
++void CameraRenderer::setCam2Session(const Cam2Api *api, void *session)
++{
++	QMutexLocker lock(&m_cam2Mutex);
++	dropCam2Frame();
++	m_cam2Api = api;
++	m_cam2Session = session;
++}
++
++// with m_cam2Mutex held
++void CameraRenderer::dropCam2Frame()
++{
++	if (m_cam2Image && m_eglDestroyImage)
++		m_eglDestroyImage(m_eglDisplay, m_cam2Image);
++	m_cam2Image = nullptr;
++	if (m_cam2Frame && m_cam2Api)
++		m_cam2Api->release(m_cam2Session, m_cam2Frame);
++	m_cam2Frame = nullptr;
++}
++
++// newest Camera2 frame into m_textureId (render thread, m_cam2Mutex held);
++// the previous frame stays bound when none is new
++void CameraRenderer::updateCam2Texture()
++{
++	glBindTexture(GL_TEXTURE_EXTERNAL_OES, m_textureId);
++	if (!m_eglCreateImage || !m_glEGLImageTargetTexture)
++		return;
++	void *buffer = nullptr;
++	void *frame = m_cam2Api->acquire(m_cam2Session, &buffer);
++	if (!frame)
++		return;
++	const int attrs[] = { EGL_IMAGE_PRESERVED_KHR_, EGL_TRUE, EGL_NONE };
++	void *image = m_eglCreateImage(m_eglDisplay, EGL_NO_CONTEXT, EGL_NATIVE_BUFFER_ANDROID_,
++				       m_eglGetNativeClientBuffer(buffer), attrs);
++	if (!image) {
++		m_cam2Api->release(m_cam2Session, frame);
++		return;
++	}
++	m_glEGLImageTargetTexture(GL_TEXTURE_EXTERNAL_OES, image);
++	dropCam2Frame();
++	m_cam2Frame = frame;
++	m_cam2Image = image;
++}
++
+ void CameraRenderer::setCameraControl(CameraControl *cc)
+ {
+ 	qDebug() << "CHANGE CAMERA";
+@@ -62,6 +112,16 @@ void CameraRenderer::init()
+ 
+ 		initRecordingGl();
+ 		initQrGl();
++
++		m_eglDisplay = eglGetCurrentDisplay();
++		m_eglGetNativeClientBuffer = reinterpret_cast<decltype(m_eglGetNativeClientBuffer)>(
++			eglGetProcAddress("eglGetNativeClientBufferANDROID"));
++		m_eglCreateImage = reinterpret_cast<decltype(m_eglCreateImage)>(eglGetProcAddress("eglCreateImageKHR"));
++		m_eglDestroyImage = reinterpret_cast<decltype(m_eglDestroyImage)>(eglGetProcAddress("eglDestroyImageKHR"));
++		m_glEGLImageTargetTexture = reinterpret_cast<decltype(m_glEGLImageTargetTexture)>(
++			eglGetProcAddress("glEGLImageTargetTexture2DOES"));
++		if (!m_eglGetNativeClientBuffer || !m_eglCreateImage || !m_glEGLImageTargetTexture)
++			qWarning() << "EGL has no Android buffer import, the Camera2 preview stays empty";
+ 		qDebug() << "START CAMERA";
+ 		android_camera_set_preview_size(m_cc, m_textureWidth,
+ 						m_textureHeight);
+@@ -83,7 +143,8 @@ void CameraRenderer::setQrScan(bool scan)
+ 
+ void CameraRenderer::paint()
+ {
+-	if (m_cc == nullptr)
++	QMutexLocker lock(&m_cam2Mutex);
++	if (m_cc == nullptr && m_cam2Session == nullptr)
+ 		return;
+ 
+ 	bool rotated =
+@@ -146,7 +207,10 @@ void CameraRenderer::paint()
+ 	glActiveTexture(GL_TEXTURE0);
+ 	glUniform1i(m_gsTextureHandle, 0);
+ 
+-	android_camera_update_preview_texture(m_cc);
++	if (m_cam2Session)
++		updateCam2Texture();
++	else
++		android_camera_update_preview_texture(m_cc);
+ 
+ 	glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, m_indices);
+ 
+diff --git a/src/camera-renderer.h b/src/camera-renderer.h
+index aede0e0..4e8e6f1 100644
+--- a/src/camera-renderer.h
++++ b/src/camera-renderer.h
+@@ -13,9 +13,12 @@
+ #include <QOpenGLFunctions>
+ #include <QImage>
+ #include <QElapsedTimer>
++#include <QMutex>
+ 
+ #include <atomic>
+ 
++#include <camera-extras.h>
++
+ #include <hybris/camera/camera_compatibility_layer.h>
+ #include <hybris/camera/camera_compatibility_layer_capabilities.h>
+ 
+@@ -49,11 +52,16 @@ class CameraRenderer : public QObject, protected QOpenGLFunctions {
+ 		m_window = window;
+ 	}
+ 	void setCameraControl(CameraControl *cc);
+-	// stop drawing before the camera is handed to another client
++	// stop drawing before the camera is handed to another client; returns once
++	// a frame being drawn is done
+ 	void detachCamera()
+ 	{
++		QMutexLocker lock(&m_cam2Mutex);
+ 		m_cc = nullptr;
+ 	}
++	// a live Camera2 session as the preview source (PRO modes); null: none.
++	// Releases the frame the renderer holds, so call it before closing a session.
++	void setCam2Session(const Cam2Api *api, void *session);
+ 	void setRenderMode(bool blur)
+ 	{
+ 		if (blur)
+@@ -115,6 +123,20 @@ class CameraRenderer : public QObject, protected QOpenGLFunctions {
+     void renderQrFrame();
+     void readQrFrame();
+     void decodeQr(const std::vector<uint8_t> &buffer);
++	void updateCam2Texture();
++	void dropCam2Frame();
++
++	// Camera2 frames reach the texture as EGLImages of their hardware buffers
++	QMutex m_cam2Mutex;
++	const Cam2Api *m_cam2Api = nullptr;
++	void *m_cam2Session = nullptr;
++	void *m_cam2Frame = nullptr;
++	void *m_cam2Image = nullptr; // EGLImageKHR
++	void *m_eglDisplay = nullptr;
++	void *(*m_eglGetNativeClientBuffer)(const void *) = nullptr;
++	void *(*m_eglCreateImage)(void *, void *, unsigned, void *, const int *) = nullptr;
++	unsigned (*m_eglDestroyImage)(void *, void *) = nullptr;
++	void (*m_glEGLImageTargetTexture)(unsigned, void *) = nullptr;
+ 
+     std::vector<uint8_t> m_frameBuffer;
+     int m_aPosition = -1;
+diff --git a/src/camx/cam2.cpp b/src/camx/cam2.cpp
+index d410d34..de3e8c4 100644
+--- a/src/camx/cam2.cpp
++++ b/src/camx/cam2.cpp
+@@ -95,6 +95,8 @@ struct Shared {
+ 	int aeState = -1, afState = -1, previewResults = 0;
+ 	int iso = 0;
+ 	long long exp = 0;
++	float focus = 0;
++	long long frames = 0;
+ };
+ 
+ void onCompleted(void *ctx, ACameraCaptureSession *, ACaptureRequest *req, const ACameraMetadata *m)
+@@ -117,6 +119,11 @@ void onCompleted(void *ctx, ACameraCaptureSession *, ACaptureRequest *req, const
+ 		__atomic_store_n(&s->iso, e.data.i32[0], __ATOMIC_RELAXED);
+ 	if (entry(m, ACAMERA_SENSOR_EXPOSURE_TIME, &e))
+ 		__atomic_store_n(&s->exp, (long long)e.data.i64[0], __ATOMIC_RELAXED);
++	if (entry(m, ACAMERA_LENS_FOCUS_DISTANCE, &e)) {
++		float f = e.data.f[0];
++		__atomic_store(&s->focus, &f, __ATOMIC_RELAXED);
++	}
++	__atomic_add_fetch(&s->frames, 1, __ATOMIC_RELAXED);
+ 	__atomic_add_fetch(&s->previewResults, 1, __ATOMIC_RELEASE);
+ }
+ 
+@@ -130,9 +137,11 @@ struct Output {
+ 	ACaptureSessionOutput *output = nullptr;
+ 	ACameraOutputTarget *target = nullptr;
+ 
+-	bool create(int w, int h, int format, int images, ACaptureSessionOutputContainer *c)
++	// usage 0: CPU reader; otherwise AHardwareBuffer usage bits (GPU preview)
++	bool create(int w, int h, int format, int images, ACaptureSessionOutputContainer *c, uint64_t usage = 0)
+ 	{
+-		if (AImageReader_new(w, h, format, images, &reader) != AMEDIA_OK)
++		if ((usage ? AImageReader_newWithUsage(w, h, format, usage, images, &reader)
++			   : AImageReader_new(w, h, format, images, &reader)) != AMEDIA_OK)
+ 			return false;
+ 		AImageReader_getWindow(reader, &window);
+ 		ACaptureSessionOutput_create(window, &output);
+@@ -161,10 +170,29 @@ int jpegSize(const uint8_t *d, int n)
+ }
+ 
+ // the controls both the metering stream and the shot use
+-// flash: 0 off, 1 auto, 2 on (already 0 on a lens without flash)
++// flash: 0 off, 1 auto, 2 on (already 0 on a lens without flash); active: the
++// active array, given for a live session (area, torch, locks, AF trigger)
+ void controls(ACaptureRequest *r, const Cam2Settings *s, int iso, long long exp, const int32_t *crop, int flash,
+-	      bool still)
++	      bool still, const int32_t *active = nullptr)
+ {
++	if (active) {
++		const uint8_t torch = s->torch ? 2 : 0, aeLock = s->aeLock ? 1 : 0, awbLock = s->awbLock ? 1 : 0;
++		if (!still)
++			ACaptureRequest_setEntry_u8(r, ACAMERA_FLASH_MODE, 1, &torch);
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AE_LOCK, 1, &aeLock);
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AWB_LOCK, 1, &awbLock);
++		const int *g = s->region;
++		if (g[0] || g[1] || g[2] || g[3]) {
++			const int aw = active[2] - active[0], ah = active[3] - active[1];
++			const int32_t reg[5] = { active[0] + (g[0] + 1000) * aw / 2000, active[1] + (g[1] + 1000) * ah / 2000,
++						 active[0] + (g[2] + 1000) * aw / 2000, active[1] + (g[3] + 1000) * ah / 2000,
++						 1000 };
++			ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AF_REGIONS, 5, reg);
++			ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AE_REGIONS, 5, reg);
++		}
++		const uint8_t trigger = 0; // IDLE: a START goes out once, with capture()
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_TRIGGER, 1, &trigger);
++	}
+ 	const uint8_t modeAuto = 1;
+ 	ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_MODE, 1, &modeAuto);
+ 	if (iso > 0 && exp > 0) {
+@@ -192,8 +220,9 @@ void controls(ACaptureRequest *r, const Cam2Settings *s, int iso, long long exp,
+ 		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_MODE, 1, &off);
+ 		ACaptureRequest_setEntry_float(r, ACAMERA_LENS_FOCUS_DISTANCE, 1, &d);
+ 	} else {
+-		const uint8_t continuous = 4; // CONTINUOUS_PICTURE
+-		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_MODE, 1, &continuous);
++		// CONTINUOUS_PICTURE; AUTO once an area was tapped (single scan, held)
++		const uint8_t mode = active && (s->region[0] || s->region[1] || s->region[2] || s->region[3]) ? 1 : 4;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_MODE, 1, &mode);
+ 	}
+ 	if (s->awb >= 0) {
+ 		const uint8_t awb = (uint8_t)s->awb;
+@@ -215,6 +244,99 @@ void controls(ACaptureRequest *r, const Cam2Settings *s, int iso, long long exp,
+ 		ACaptureRequest_setEntry_i32(r, ACAMERA_SCALER_CROP_REGION, 4, crop);
+ }
+ 
++void gpsEntries(ACaptureRequest *shot, const Cam2Settings *s)
++{
++	if (!s->gps)
++		return;
++	const double c[3] = { s->latitude, s->longitude, s->altitude };
++	const int64_t ts = s->gpsTime;
++	static const uint8_t method[] = "GPS";
++	ACaptureRequest_setEntry_double(shot, ACAMERA_JPEG_GPS_COORDINATES, 3, c);
++	ACaptureRequest_setEntry_i64(shot, ACAMERA_JPEG_GPS_TIMESTAMP, 1, &ts);
++	ACaptureRequest_setEntry_u8(shot, ACAMERA_JPEG_GPS_PROCESSING_METHOD, sizeof(method), method);
++}
++
++// the RAW frame with the colour data a DNG needs (static metadata + its result)
++void deliverRaw(AImage *img, const ACameraMetadata *ch, const ACameraMetadata *res, cam2_raw_cb onRaw, void *ctx)
++{
++	Cam2Dng m = {};
++	ACameraMetadata_const_entry e;
++	uint8_t *d = nullptr;
++	int n = 0;
++	AImage_getPlaneData(img, 0, &d, &n);
++	AImage_getWidth(img, &m.width);
++	AImage_getHeight(img, &m.height);
++	AImage_getPlaneRowStride(img, 0, &m.rowStride);
++	if (entry(ch, ACAMERA_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT, &e))
++		m.cfa = e.data.u8[0];
++	if (entry(ch, ACAMERA_SENSOR_BLACK_LEVEL_PATTERN, &e))
++		for (int i = 0; i < 4 && i < (int)e.count; i++)
++			m.black[i] = e.data.i32[i];
++	if (entry(ch, ACAMERA_SENSOR_INFO_WHITE_LEVEL, &e))
++		m.white = e.data.i32[0];
++	if (entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT1, &e))
++		m.illuminant1 = e.data.u8[0];
++	if (entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT2, &e))
++		m.illuminant2 = e.data.u8[0];
++	matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM1, m.colorMatrix1, 9);
++	matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM2, m.colorMatrix2, 9);
++	matrix(ch, ACAMERA_SENSOR_FORWARD_MATRIX1, m.forwardMatrix1, 9);
++	matrix(ch, ACAMERA_SENSOR_FORWARD_MATRIX2, m.forwardMatrix2, 9);
++	matrix(ch, ACAMERA_SENSOR_CALIBRATION_TRANSFORM1, m.calibration1, 9);
++	matrix(ch, ACAMERA_SENSOR_CALIBRATION_TRANSFORM2, m.calibration2, 9);
++	matrix(res, ACAMERA_SENSOR_NEUTRAL_COLOR_POINT, m.neutral, 3);
++	if (entry(res, ACAMERA_SENSOR_SENSITIVITY, &e))
++		m.iso = e.data.i32[0];
++	if (entry(res, ACAMERA_SENSOR_EXPOSURE_TIME, &e))
++		m.expNs = e.data.i64[0];
++	if (entry(res, ACAMERA_LENS_APERTURE, &e))
++		m.fNumber = e.data.f[0];
++	if (entry(res, ACAMERA_LENS_FOCAL_LENGTH, &e))
++		m.focalLength = e.data.f[0];
++	if (d && n >= m.rowStride * m.height)
++		onRaw(ctx, reinterpret_cast<const unsigned short *>(d), &m);
++}
++
++// JPEG frames (and the RAW of the first shot) of a capture sequence; drain: a
++// preview reader nobody else empties, or null. Returns the JPEG count.
++int collectShots(AImageReader *drain, AImageReader *jpeg, AImageReader *raw, Shared &shared,
++		 const ACameraMetadata *ch, int count, long long limitMs, cam2_jpeg_cb onJpeg, cam2_raw_cb onRaw,
++		 void *ctx)
++{
++	int delivered = 0;
++	bool rawDone = !raw;
++	AImage *rawImage = nullptr;
++	for (long long t = 0; t < limitMs && (delivered < count || !rawDone); t += 5) {
++		usleep(5000);
++		AImage *img = nullptr;
++		if (drain && AImageReader_acquireLatestImage(drain, &img) == AMEDIA_OK && img)
++			AImage_delete(img);
++		img = nullptr;
++		if (AImageReader_acquireNextImage(jpeg, &img) == AMEDIA_OK && img) {
++			uint8_t *d = nullptr;
++			int n = 0;
++			AImage_getPlaneData(img, 0, &d, &n);
++			if (d && n > 0)
++				onJpeg(ctx, d, jpegSize(d, n), delivered);
++			delivered++;
++			AImage_delete(img);
++		}
++		if (!rawDone && !rawImage && AImageReader_acquireNextImage(raw, &rawImage) != AMEDIA_OK)
++			rawImage = nullptr;
++		// the RAW frame waits for its capture result (white balance, gain)
++		ACameraMetadata *res = __atomic_load_n(&shared.stillResult, __ATOMIC_ACQUIRE);
++		if (!rawDone && rawImage && res) {
++			deliverRaw(rawImage, ch, res, onRaw, ctx);
++			AImage_delete(rawImage);
++			rawImage = nullptr;
++			rawDone = true;
++		}
++	}
++	if (rawImage)
++		AImage_delete(rawImage);
++	return delivered;
++}
++
+ } // namespace
+ 
+ extern "C" int cam2_info(const char *id, Cam2Info *out)
+@@ -326,8 +448,6 @@ extern "C" int cam2_capture(const char *id, const Cam2Settings *s, cam2_jpeg_cb
+ 	ACameraCaptureSession_stateCallbacks sesCb = { nullptr, noSession, noSession, noSession };
+ 	int iso = manualOk ? s->iso : 0;
+ 	long long exp = manualOk ? s->expNs : 0;
+-	int delivered = 0;
+-	AImage *rawImage = nullptr;
+ 
+ 	if (!preview.create(640, 480, AIMAGE_FORMAT_YUV_420_888, 3, container) ||
+ 	    !jpeg.create(jw, jh, AIMAGE_FORMAT_JPEG, 2, container) ||
+@@ -415,14 +535,7 @@ extern "C" int cam2_capture(const char *id, const Cam2Settings *s, cam2_jpeg_cb
+ 		const int32_t o = s->orientation;
+ 		ACaptureRequest_setEntry_u8(shot, ACAMERA_JPEG_QUALITY, 1, &q);
+ 		ACaptureRequest_setEntry_i32(shot, ACAMERA_JPEG_ORIENTATION, 1, &o);
+-		if (s->gps) {
+-			const double c[3] = { s->latitude, s->longitude, s->altitude };
+-			const int64_t ts = s->gpsTime;
+-			static const uint8_t method[] = "GPS";
+-			ACaptureRequest_setEntry_double(shot, ACAMERA_JPEG_GPS_COORDINATES, 3, c);
+-			ACaptureRequest_setEntry_i64(shot, ACAMERA_JPEG_GPS_TIMESTAMP, 1, &ts);
+-			ACaptureRequest_setEntry_u8(shot, ACAMERA_JPEG_GPS_PROCESSING_METHOD, sizeof(method), method);
+-		}
++		gpsEntries(shot, s);
+ 	}
+ 	ACaptureRequest_setUserContext(shot, &shared.stillResults);
+ 	{
+@@ -434,76 +547,11 @@ extern "C" int cam2_capture(const char *id, const Cam2Settings *s, cam2_jpeg_cb
+ 		if (ACameraCaptureSession_capture(session, &cb, count, shots, nullptr) != ACAMERA_OK)
+ 			goto out;
+ 		const long long perShot = (exp > 0 ? exp : 100000000LL) / 1000000 + 400;
+-		const long long limit = 3000 + perShot * count;
+-		bool rawDone = !rw;
+-		for (long long t = 0; t < limit && (delivered < count || !rawDone); t += 5) {
+-			usleep(5000);
+-			AImage *img = nullptr;
+-			if (AImageReader_acquireLatestImage(preview.reader, &img) == AMEDIA_OK && img)
+-				AImage_delete(img);
+-			img = nullptr;
+-			if (AImageReader_acquireNextImage(jpeg.reader, &img) == AMEDIA_OK && img) {
+-				uint8_t *d = nullptr;
+-				int n = 0;
+-				AImage_getPlaneData(img, 0, &d, &n);
+-				if (d && n > 0)
+-					onJpeg(ctx, d, jpegSize(d, n), delivered);
+-				delivered++;
+-				AImage_delete(img);
+-			}
+-			if (!rawDone && !rawImage) {
+-				if (AImageReader_acquireNextImage(raw.reader, &rawImage) != AMEDIA_OK)
+-					rawImage = nullptr;
+-			}
+-			// the RAW frame waits for its capture result (white balance, gain)
+-			ACameraMetadata *res = __atomic_load_n(&shared.stillResult, __ATOMIC_ACQUIRE);
+-			if (!rawDone && rawImage && res) {
+-				Cam2Dng m = {};
+-				uint8_t *d = nullptr;
+-				int n = 0;
+-				AImage_getPlaneData(rawImage, 0, &d, &n);
+-				AImage_getWidth(rawImage, &m.width);
+-				AImage_getHeight(rawImage, &m.height);
+-				AImage_getPlaneRowStride(rawImage, 0, &m.rowStride);
+-				if (entry(ch, ACAMERA_SENSOR_INFO_COLOR_FILTER_ARRANGEMENT, &e))
+-					m.cfa = e.data.u8[0];
+-				if (entry(ch, ACAMERA_SENSOR_BLACK_LEVEL_PATTERN, &e))
+-					for (int i = 0; i < 4 && i < (int)e.count; i++)
+-						m.black[i] = e.data.i32[i];
+-				if (entry(ch, ACAMERA_SENSOR_INFO_WHITE_LEVEL, &e))
+-					m.white = e.data.i32[0];
+-				if (entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT1, &e))
+-					m.illuminant1 = e.data.u8[0];
+-				if (entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT2, &e))
+-					m.illuminant2 = e.data.u8[0];
+-				matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM1, m.colorMatrix1, 9);
+-				matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM2, m.colorMatrix2, 9);
+-				matrix(ch, ACAMERA_SENSOR_FORWARD_MATRIX1, m.forwardMatrix1, 9);
+-				matrix(ch, ACAMERA_SENSOR_FORWARD_MATRIX2, m.forwardMatrix2, 9);
+-				matrix(ch, ACAMERA_SENSOR_CALIBRATION_TRANSFORM1, m.calibration1, 9);
+-				matrix(ch, ACAMERA_SENSOR_CALIBRATION_TRANSFORM2, m.calibration2, 9);
+-				matrix(res, ACAMERA_SENSOR_NEUTRAL_COLOR_POINT, m.neutral, 3);
+-				if (entry(res, ACAMERA_SENSOR_SENSITIVITY, &e))
+-					m.iso = e.data.i32[0];
+-				if (entry(res, ACAMERA_SENSOR_EXPOSURE_TIME, &e))
+-					m.expNs = e.data.i64[0];
+-				if (entry(res, ACAMERA_LENS_APERTURE, &e))
+-					m.fNumber = e.data.f[0];
+-				if (entry(res, ACAMERA_LENS_FOCAL_LENGTH, &e))
+-					m.focalLength = e.data.f[0];
+-				if (d && n >= m.rowStride * m.height)
+-					onRaw(ctx, reinterpret_cast<const unsigned short *>(d), &m);
+-				AImage_delete(rawImage);
+-				rawImage = nullptr;
+-				rawDone = true;
+-			}
+-		}
+-		ret = delivered;
++		ret = collectShots(preview.reader, jpeg.reader, rw ? raw.reader : nullptr, shared, ch, count,
++				   3000 + perShot * count, onJpeg, onRaw, ctx);
+ 	}
+ 
+ out:
+-	if (rawImage)
+-		AImage_delete(rawImage);
+ 	if (session) {
+ 		ACameraCaptureSession_stopRepeating(session);
+ 		ACameraCaptureSession_close(session);
+@@ -523,3 +571,606 @@ out:
+ 	ACameraManager_delete(mgr);
+ 	return ret;
+ }
++
++// ------------------------------------------------------------------ live session
++
++namespace {
++
++struct Pending {
++	uint8_t *data;
++	AMediaCodecBufferInfo info;
++	bool audio;
++};
++
++struct Session {
++	ACameraManager *mgr = nullptr;
++	ACameraMetadata *ch = nullptr;
++	ACameraDevice *dev = nullptr;
++	ACaptureSessionOutputContainer *container = nullptr;
++	ACameraCaptureSession *session = nullptr;
++	Output preview, jpeg, raw;
++	ANativeWindow *encSurface = nullptr;
++	ACaptureSessionOutput *encOutput = nullptr;
++	ACameraOutputTarget *encTarget = nullptr;
++	Cam2SessionConfig cfg = {};
++	Cam2Settings ctl = {};
++	int32_t active[4] = {};
++	int32_t crop[4] = {};
++	bool hasCrop = false;
++	bool manualOk = false;
++	bool flashAvail = false;
++	long long expMin = 0, expMax = 0;
++	int isoMin = 0, isoMax = 0;
++	Shared shared;
++	ACameraCaptureSession_captureCallbacks cb = {};
++	// values in the repeating request; a half-manual setting keeps the
++	// exposure (ISO x time) metered once by the automatic exposure
++	int liveIso = 0;
++	long long liveExp = 0;
++	double meteredExposure = 0;
++	bool metering = false;
++	long long meterUntil = 0;
++	// recording
++	AMediaCodec *venc = nullptr, *aenc = nullptr;
++	AMediaMuxer *mux = nullptr;
++	long vtrack = -1, atrack = -1;
++	bool recording = false, encoding = false, stopping = false;
++	bool muxStarted = false, veos = false, aeos = false;
++	long long stopAt = 0;
++	int sampleRate = 48000, channels = 2;
++	Pending pending[32];
++	int npending = 0;
++};
++
++// a closed session may still get callbacks: its memory is reused only after
++// three more sessions
++Session *graveyard[3];
++
++long long nowUs()
++{
++	long long ts[2];
++	clock_gettime(1, ts); // CLOCK_MONOTONIC
++	return ts[0] * 1000000LL + ts[1] / 1000;
++}
++
++AMediaCodec *newVideoEncoder(const Cam2SessionConfig &c, ANativeWindow *surface)
++{
++	const char *mime = c.hevc ? "video/hevc" : "video/avc";
++	AMediaCodec *enc = AMediaCodec_createEncoderByType(mime);
++	if (!enc)
++		return nullptr;
++	AMediaFormat *f = AMediaFormat_new();
++	AMediaFormat_setString(f, "mime", mime);
++	AMediaFormat_setInt32(f, "width", c.videoWidth);
++	AMediaFormat_setInt32(f, "height", c.videoHeight);
++	AMediaFormat_setInt32(f, "bitrate", c.bitrate > 0 ? c.bitrate : 17000000);
++	AMediaFormat_setInt32(f, "frame-rate", c.fps > 0 ? c.fps : 30);
++	AMediaFormat_setInt32(f, "i-frame-interval", 1);
++	AMediaFormat_setInt32(f, "color-format", COLOR_FORMAT_SURFACE);
++	const bool ok = AMediaCodec_configure(enc, f, nullptr, nullptr, AMEDIACODEC_CONFIGURE_FLAG_ENCODE) == AMEDIA_OK &&
++			AMediaCodec_setInputSurface(enc, surface) == AMEDIA_OK;
++	AMediaFormat_delete(f);
++	if (!ok) {
++		AMediaCodec_delete(enc);
++		return nullptr;
++	}
++	return enc;
++}
++
++void applyCrop(Session *S)
++{
++	const float z = S->ctl.zoom;
++	S->hasCrop = z > 1.01f;
++	if (!S->hasCrop)
++		return;
++	const int aw = S->active[2] - S->active[0], ah = S->active[3] - S->active[1];
++	S->crop[2] = (int32_t)(aw / z);
++	S->crop[3] = (int32_t)(ah / z);
++	S->crop[0] = S->active[0] + (aw - S->crop[2]) / 2;
++	S->crop[1] = S->active[1] + (ah - S->crop[3]) / 2;
++}
++
++// ISO and time for the stream from the manual settings
++void liveExposure(Session *S)
++{
++	const int iso = S->manualOk ? S->ctl.iso : 0;
++	const long long exp = S->manualOk ? S->ctl.expNs : 0;
++	// video: no exposure longer than a frame, the frame rate stays
++	const long long expMax = S->cfg.video ? 1000000000LL / (S->cfg.fps > 0 ? S->cfg.fps : 30) : S->expMax;
++	S->metering = false;
++	if (iso > 0 && exp > 0) {
++		S->liveIso = iso;
++		S->liveExp = exp;
++	} else if (iso > 0 || exp > 0) {
++		if (S->meteredExposure <= 0) {
++			// meter first with the automatic exposure, see cam2s_state()
++			S->liveIso = 0;
++			S->liveExp = 0;
++			S->metering = true;
++			S->meterUntil = __atomic_load_n(&S->shared.frames, __ATOMIC_RELAXED) + 10;
++		} else if (iso > 0) {
++			S->liveIso = iso;
++			S->liveExp = clampLL((long long)(S->meteredExposure / iso), S->expMin, expMax);
++		} else {
++			S->liveExp = exp;
++			S->liveIso = (int)clampLL((long long)(S->meteredExposure / exp), S->isoMin, S->isoMax);
++		}
++	} else {
++		S->liveIso = 0;
++		S->liveExp = 0;
++		S->meteredExposure = 0; // automatic again: meter anew next time
++	}
++}
++
++ACaptureRequest *streamRequest(Session *S, bool trigger)
++{
++	ACaptureRequest *r = nullptr;
++	ACameraDevice_createCaptureRequest(S->dev, S->cfg.video ? TEMPLATE_RECORD : TEMPLATE_PREVIEW, &r);
++	ACaptureRequest_addTarget(r, S->preview.target);
++	if (S->encoding)
++		ACaptureRequest_addTarget(r, S->encTarget);
++	const int flash = S->cfg.video || !S->flashAvail ? 0 : S->ctl.flash;
++	controls(r, &S->ctl, S->liveIso, S->liveExp, S->hasCrop ? S->crop : nullptr, flash, false, S->active);
++	const int fps = S->cfg.fps > 0 ? S->cfg.fps : 30;
++	if (S->liveIso > 0 && S->liveExp > 0) {
++		const int64_t frame = S->liveExp > 1000000000LL / fps ? S->liveExp : 1000000000LL / fps;
++		ACaptureRequest_setEntry_i64(r, ACAMERA_SENSOR_FRAME_DURATION, 1, &frame);
++	} else if (S->cfg.video) {
++		const int32_t range[2] = { fps, fps };
++		ACaptureRequest_setEntry_i32(r, ACAMERA_CONTROL_AE_TARGET_FPS_RANGE, 2, range);
++	}
++	if (trigger) {
++		const uint8_t start = 1;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AF_TRIGGER, 1, &start);
++	}
++	return r;
++}
++
++int restartStream(Session *S)
++{
++	ACaptureRequest *r = streamRequest(S, false);
++	const int ret = ACameraCaptureSession_setRepeatingRequest(S->session, &S->cb, 1, &r, nullptr);
++	ACaptureRequest_free(r);
++	return ret;
++}
++
++void freePending(Session *S)
++{
++	for (int i = 0; i < S->npending; i++)
++		free(S->pending[i].data);
++	S->npending = 0;
++}
++
++void writeSample(Session *S, bool audio, const uint8_t *data, const AMediaCodecBufferInfo &info)
++{
++	if (!S->muxStarted) {
++		// wait for the format of both tracks; keep the first frames (the key frame)
++		if (S->npending < 32) {
++			Pending &p = S->pending[S->npending++];
++			p.data = (uint8_t *)malloc(info.size);
++			memcpy(p.data, data + info.offset, info.size);
++			p.info = info;
++			p.info.offset = 0;
++			p.audio = audio;
++		}
++		return;
++	}
++	AMediaMuxer_writeSampleData(S->mux, audio ? S->atrack : S->vtrack, data, &info);
++}
++
++void tryStartMuxer(Session *S)
++{
++	if (S->muxStarted || S->vtrack < 0 || (S->aenc && S->atrack < 0))
++		return;
++	AMediaMuxer_start(S->mux);
++	S->muxStarted = true;
++	for (int i = 0; i < S->npending; i++)
++		AMediaMuxer_writeSampleData(S->mux, S->pending[i].audio ? S->atrack : S->vtrack, S->pending[i].data,
++					    &S->pending[i].info);
++	freePending(S);
++}
++
++// moves everything an encoder has ready into the muxer
++void drain(Session *S, AMediaCodec *enc, bool audio)
++{
++	for (int guard = 0; guard < 64; guard++) {
++		AMediaCodecBufferInfo info;
++		const long i = AMediaCodec_dequeueOutputBuffer(enc, &info, 0);
++		if (i == AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED) {
++			AMediaFormat *f = AMediaCodec_getOutputFormat(enc);
++			(audio ? S->atrack : S->vtrack) = AMediaMuxer_addTrack(S->mux, f);
++			AMediaFormat_delete(f);
++			tryStartMuxer(S);
++			continue;
++		}
++		if (i < 0)
++			return;
++		size_t n = 0;
++		uint8_t *b = AMediaCodec_getOutputBuffer(enc, i, &n);
++		if (b && info.size > 0 && !(info.flags & AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG))
++			writeSample(S, audio, b, info);
++		AMediaCodec_releaseOutputBuffer(enc, i, false);
++		if (info.flags & AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM)
++			(audio ? S->aeos : S->veos) = true;
++	}
++}
++
++void finishRecording(Session *S)
++{
++	if (S->muxStarted) {
++		AMediaMuxer_stop(S->mux);
++	}
++	AMediaMuxer_delete(S->mux);
++	S->mux = nullptr;
++	freePending(S);
++	if (S->venc) {
++		AMediaCodec_stop(S->venc);
++		AMediaCodec_delete(S->venc);
++	}
++	if (S->aenc) {
++		AMediaCodec_stop(S->aenc);
++		AMediaCodec_delete(S->aenc);
++	}
++	S->aenc = nullptr;
++	S->recording = S->stopping = S->muxStarted = false;
++	S->vtrack = S->atrack = -1;
++	// the persistent surface gets a fresh encoder for the next recording
++	S->venc = newVideoEncoder(S->cfg, S->encSurface);
++}
++
++void destroySession(Session *S)
++{
++	if (S->session) {
++		ACameraCaptureSession_stopRepeating(S->session);
++		ACameraCaptureSession_close(S->session);
++	}
++	if (S->dev)
++		ACameraDevice_close(S->dev);
++	S->preview.destroy();
++	S->jpeg.destroy();
++	S->raw.destroy();
++	if (S->encTarget)
++		ACameraOutputTarget_free(S->encTarget);
++	if (S->encOutput)
++		ACaptureSessionOutput_free(S->encOutput);
++	if (S->container)
++		ACaptureSessionOutputContainer_free(S->container);
++	if (S->venc)
++		AMediaCodec_delete(S->venc);
++	if (S->encSurface)
++		ANativeWindow_release(S->encSurface);
++	if (ACameraMetadata *res = __atomic_exchange_n(&S->shared.stillResult, nullptr, __ATOMIC_ACQ_REL))
++		ACameraMetadata_free(res);
++	if (S->ch)
++		ACameraMetadata_free(S->ch);
++	if (S->mgr)
++		ACameraManager_delete(S->mgr);
++	delete graveyard[2];
++	graveyard[2] = graveyard[1];
++	graveyard[1] = graveyard[0];
++	graveyard[0] = S;
++}
++
++} // namespace
++
++extern "C" void *cam2s_open(const char *id, const Cam2SessionConfig *cfg, int *error)
++{
++	startPool();
++	Session *S = new Session;
++	S->cfg = *cfg;
++	S->cb.context = &S->shared;
++	S->cb.onCaptureCompleted = onCompleted;
++	S->ctl.focus = -1;
++	S->ctl.ois = -1;
++	S->ctl.awb = -1;
++	S->ctl.effect = -1;
++	S->ctl.antibanding = -1;
++	S->ctl.zoom = 1;
++	*error = -1;
++	S->mgr = ACameraManager_create();
++	if (ACameraManager_getCameraCharacteristics(S->mgr, id, &S->ch) != ACAMERA_OK) {
++		destroySession(S);
++		return nullptr;
++	}
++	ACameraMetadata_const_entry e;
++	if (entry(S->ch, ACAMERA_SENSOR_INFO_ACTIVE_ARRAY_SIZE, &e))
++		for (int i = 0; i < 4; i++)
++			S->active[i] = e.data.i32[i];
++	// the active array entry is (x, y, w, h); keep (l, t, r, b)
++	S->active[2] += S->active[0];
++	S->active[3] += S->active[1];
++	if (entry(S->ch, ACAMERA_SENSOR_INFO_EXPOSURE_TIME_RANGE, &e)) {
++		S->expMin = e.data.i64[0];
++		S->expMax = e.data.i64[1];
++	}
++	if (entry(S->ch, ACAMERA_SENSOR_INFO_SENSITIVITY_RANGE, &e)) {
++		S->isoMin = e.data.i32[0];
++		S->isoMax = e.data.i32[1];
++	}
++	S->manualOk = hasCap(S->ch, CAP_MANUAL_SENSOR);
++	S->flashAvail = entry(S->ch, ACAMERA_FLASH_INFO_AVAILABLE, &e) && e.data.u8[0];
++
++	ACameraDevice_StateCallbacks devCb = { nullptr, noDevice, devError };
++	*error = -2;
++	if (ACameraManager_openCamera(S->mgr, id, &devCb, &S->dev) != ACAMERA_OK) {
++		S->dev = nullptr;
++		destroySession(S);
++		return nullptr;
++	}
++	ACaptureSessionOutputContainer_create(&S->container);
++	*error = -3;
++	if (!S->preview.create(cfg->previewWidth, cfg->previewHeight, AIMAGE_FORMAT_PRIVATE, 4, S->container,
++			       AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE)) {
++		destroySession(S);
++		return nullptr;
++	}
++	if (cfg->video) {
++		*error = -4;
++		if (AMediaCodec_createPersistentInputSurface(&S->encSurface) != AMEDIA_OK) {
++			S->encSurface = nullptr;
++			destroySession(S);
++			return nullptr;
++		}
++		// an encoder configured on the surface gives it size and format before
++		// the session sees it
++		*error = -5;
++		S->venc = newVideoEncoder(S->cfg, S->encSurface);
++		if (!S->venc) {
++			destroySession(S);
++			return nullptr;
++		}
++		ACaptureSessionOutput_create(S->encSurface, &S->encOutput);
++		ACaptureSessionOutputContainer_add(S->container, S->encOutput);
++		ACameraOutputTarget_create(S->encSurface, &S->encTarget);
++	} else {
++		*error = -6;
++		int rw = 0, rh = 0;
++		if (cfg->raw && hasCap(S->ch, CAP_RAW))
++			largest(S->ch, AIMAGE_FORMAT_RAW16, &rw, &rh);
++		int jw = cfg->stillWidth, jh = cfg->stillHeight;
++		if (!hasSize(S->ch, AIMAGE_FORMAT_JPEG, jw, jh))
++			largest(S->ch, AIMAGE_FORMAT_JPEG, &jw, &jh);
++		if (!S->jpeg.create(jw, jh, AIMAGE_FORMAT_JPEG, 2, S->container) ||
++		    (rw && !S->raw.create(rw, rh, AIMAGE_FORMAT_RAW16, 1, S->container))) {
++			destroySession(S);
++			return nullptr;
++		}
++	}
++	ACameraCaptureSession_stateCallbacks sesCb = { nullptr, noSession, noSession, noSession };
++	*error = -7;
++	if (ACameraDevice_createCaptureSession(S->dev, S->container, &sesCb, &S->session) != ACAMERA_OK) {
++		S->session = nullptr;
++		destroySession(S);
++		return nullptr;
++	}
++	*error = -8;
++	if (restartStream(S) != ACAMERA_OK) {
++		destroySession(S);
++		return nullptr;
++	}
++	*error = 0;
++	return S;
++}
++
++extern "C" void cam2s_close(void *session)
++{
++	Session *S = static_cast<Session *>(session);
++	if (!S)
++		return;
++	if (S->recording) {
++		cam2s_record_stop(S);
++		for (int i = 0; i < 300 && S->recording; i++) {
++			if (cam2s_record_pump(S) == 1)
++				break;
++			usleep(10000);
++		}
++		if (S->recording)
++			finishRecording(S);
++	}
++	destroySession(S);
++}
++
++extern "C" int cam2s_controls(void *session, const Cam2Settings *s)
++{
++	Session *S = static_cast<Session *>(session);
++	S->ctl = *s;
++	applyCrop(S);
++	liveExposure(S);
++	int ret = restartStream(S);
++	if (s->afTrigger) {
++		ACaptureRequest *r = streamRequest(S, true);
++		ACameraCaptureSession_capture(S->session, &S->cb, 1, &r, nullptr);
++		ACaptureRequest_free(r);
++	}
++	return ret;
++}
++
++extern "C" int cam2s_state(void *session, Cam2State *out)
++{
++	Session *S = static_cast<Session *>(session);
++	out->iso = __atomic_load_n(&S->shared.iso, __ATOMIC_RELAXED);
++	out->expNs = __atomic_load_n(&S->shared.exp, __ATOMIC_RELAXED);
++	__atomic_load(&S->shared.focus, &out->focusDiopters, __ATOMIC_RELAXED);
++	out->aeState = __atomic_load_n(&S->shared.aeState, __ATOMIC_RELAXED);
++	out->afState = __atomic_load_n(&S->shared.afState, __ATOMIC_RELAXED);
++	out->frames = __atomic_load_n(&S->shared.frames, __ATOMIC_RELAXED);
++	// half-manual: the automatic exposure has metered, fix the other value
++	if (S->metering && out->frames >= S->meterUntil && out->iso > 0 && out->expNs > 0) {
++		S->meteredExposure = (double)out->iso * (double)out->expNs;
++		liveExposure(S);
++		restartStream(S);
++	}
++	return 0;
++}
++
++extern "C" void *cam2s_acquire(void *session, void **hardwareBuffer)
++{
++	Session *S = static_cast<Session *>(session);
++	AImage *img = nullptr;
++	if (AImageReader_acquireLatestImage(S->preview.reader, &img) != AMEDIA_OK || !img)
++		return nullptr;
++	AHardwareBuffer *b = nullptr;
++	if (AImage_getHardwareBuffer(img, &b) != AMEDIA_OK || !b) {
++		AImage_delete(img);
++		return nullptr;
++	}
++	*hardwareBuffer = b;
++	return img;
++}
++
++extern "C" void cam2s_release(void *, void *frame)
++{
++	if (frame)
++		AImage_delete(static_cast<AImage *>(frame));
++}
++
++extern "C" int cam2s_still(void *session, const Cam2Settings *s, cam2_jpeg_cb onJpeg, cam2_raw_cb onRaw, void *ctx)
++{
++	Session *S = static_cast<Session *>(session);
++	if (S->cfg.video || !S->jpeg.reader)
++		return -1;
++	const int flash = S->flashAvail && !(S->liveIso > 0 && S->liveExp > 0) ? s->flash : (s->flash == 2 ? 2 : 0);
++	// automatic exposure with flash: precapture metering (pre-flash) first
++	if (flash && !(S->liveIso > 0 && S->liveExp > 0)) {
++		ACaptureRequest *r = streamRequest(S, false);
++		const uint8_t start = 1;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER, 1, &start);
++		ACameraCaptureSession_capture(S->session, &S->cb, 1, &r, nullptr);
++		ACaptureRequest_free(r);
++		bool seen = false;
++		for (int t = 0; t < 150; t++) {
++			usleep(10000);
++			const int ae = __atomic_load_n(&S->shared.aeState, __ATOMIC_RELAXED);
++			if (ae == 5)
++				seen = true;
++			else if ((seen || t > 50) && (ae == 2 || ae == 3 || ae == 4))
++				break;
++		}
++	}
++	if (ACameraMetadata *old = __atomic_exchange_n(&S->shared.stillResult, nullptr, __ATOMIC_ACQ_REL))
++		ACameraMetadata_free(old);
++	ACaptureRequest *shot = nullptr;
++	ACameraDevice_createCaptureRequest(S->dev, TEMPLATE_STILL_CAPTURE, &shot);
++	ACaptureRequest_addTarget(shot, S->preview.target);
++	ACaptureRequest_addTarget(shot, S->jpeg.target);
++	const bool raw = s->raw && S->raw.reader;
++	if (raw)
++		ACaptureRequest_addTarget(shot, S->raw.target);
++	Cam2Settings c = S->ctl;
++	c.flash = s->flash;
++	controls(shot, &c, S->liveIso, S->liveExp, S->hasCrop ? S->crop : nullptr, flash, true, S->active);
++	const uint8_t q = (uint8_t)(s->quality > 0 && s->quality <= 100 ? s->quality : 95);
++	const int32_t o = s->orientation;
++	ACaptureRequest_setEntry_u8(shot, ACAMERA_JPEG_QUALITY, 1, &q);
++	ACaptureRequest_setEntry_i32(shot, ACAMERA_JPEG_ORIENTATION, 1, &o);
++	gpsEntries(shot, s);
++	ACaptureRequest_setUserContext(shot, &S->shared.stillResults);
++	const int count = s->count > 1 ? (s->count > 30 ? 30 : s->count) : 1;
++	ACaptureRequest *shots[30];
++	for (int i = 0; i < count; i++)
++		shots[i] = shot;
++	int ret = -2;
++	if (ACameraCaptureSession_capture(S->session, &S->cb, count, shots, nullptr) == ACAMERA_OK) {
++		const long long perShot = (S->liveExp > 0 ? S->liveExp : 100000000LL) / 1000000 + 400;
++		ret = collectShots(nullptr, S->jpeg.reader, raw ? S->raw.reader : nullptr, S->shared, S->ch, count,
++				   3000 + perShot * count, onJpeg, onRaw, ctx);
++	}
++	ACaptureRequest_free(shot);
++	return ret;
++}
++
++extern "C" int cam2s_record_start(void *session, int fd, int orientation, int sampleRate, int channels)
++{
++	Session *S = static_cast<Session *>(session);
++	if (!S->cfg.video || S->recording)
++		return -1;
++	if (!S->venc)
++		S->venc = newVideoEncoder(S->cfg, S->encSurface);
++	if (!S->venc || AMediaCodec_start(S->venc) != AMEDIA_OK)
++		return -2;
++	if (sampleRate > 0 && channels > 0) {
++		S->sampleRate = sampleRate;
++		S->channels = channels;
++		S->aenc = AMediaCodec_createEncoderByType("audio/mp4a-latm");
++		AMediaFormat *f = AMediaFormat_new();
++		AMediaFormat_setString(f, "mime", "audio/mp4a-latm");
++		AMediaFormat_setInt32(f, "sample-rate", sampleRate);
++		AMediaFormat_setInt32(f, "channel-count", channels);
++		AMediaFormat_setInt32(f, "bitrate", 128000);
++		AMediaFormat_setInt32(f, "aac-profile", 2);
++		AMediaFormat_setInt32(f, "max-input-size", 16384);
++		if (!S->aenc || AMediaCodec_configure(S->aenc, f, nullptr, nullptr, AMEDIACODEC_CONFIGURE_FLAG_ENCODE) ||
++		    AMediaCodec_start(S->aenc)) {
++			if (S->aenc)
++				AMediaCodec_delete(S->aenc);
++			S->aenc = nullptr; // video without sound rather than no video
++		}
++		AMediaFormat_delete(f);
++	}
++	S->mux = AMediaMuxer_new(fd, 0); // MPEG-4
++	AMediaMuxer_setOrientationHint(S->mux, orientation);
++	S->vtrack = S->atrack = -1;
++	S->muxStarted = S->veos = false;
++	S->aeos = !S->aenc;
++	S->recording = S->encoding = true;
++	S->stopping = false;
++	return restartStream(S) == ACAMERA_OK ? 0 : -3;
++}
++
++extern "C" int cam2s_record_audio(void *session, const void *pcm, int bytes, long long ptsUs)
++{
++	Session *S = static_cast<Session *>(session);
++	if (!S->aenc || S->stopping)
++		return -1;
++	const uint8_t *p = static_cast<const uint8_t *>(pcm);
++	const int frameBytes = 2 * S->channels; // 16-bit samples
++	while (bytes > 0) {
++		const long i = AMediaCodec_dequeueInputBuffer(S->aenc, 5000);
++		if (i < 0)
++			return -2; // encoder busy: this chunk is dropped
++		size_t cap = 0;
++		uint8_t *b = AMediaCodec_getInputBuffer(S->aenc, i, &cap);
++		const int n = bytes < (int)cap ? bytes : (int)(cap - cap % frameBytes);
++		memcpy(b, p, n);
++		AMediaCodec_queueInputBuffer(S->aenc, i, 0, n, ptsUs, 0);
++		ptsUs += (long long)(n / frameBytes) * 1000000LL / S->sampleRate;
++		p += n;
++		bytes -= n;
++	}
++	return 0;
++}
++
++extern "C" int cam2s_record_pump(void *session)
++{
++	Session *S = static_cast<Session *>(session);
++	if (!S->recording)
++		return 1;
++	drain(S, S->venc, false);
++	if (S->aenc)
++		drain(S, S->aenc, true);
++	if (S->stopping && ((S->veos && S->aeos) || nowUs() > S->stopAt)) {
++		finishRecording(S);
++		return 1;
++	}
++	return 0;
++}
++
++extern "C" int cam2s_record_stop(void *session)
++{
++	Session *S = static_cast<Session *>(session);
++	if (!S->recording || S->stopping)
++		return -1;
++	S->stopping = true;
++	S->stopAt = nowUs() + 3000000;
++	S->encoding = false;
++	restartStream(S); // the preview goes on without the encoder
++	AMediaCodec_signalEndOfInputStream(S->venc);
++	if (S->aenc) {
++		const long i = AMediaCodec_dequeueInputBuffer(S->aenc, 20000);
++		if (i >= 0)
++			AMediaCodec_queueInputBuffer(S->aenc, i, 0, 0, nowUs(), AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM);
++		else
++			S->aeos = true;
++	}
++	return 0;
++}
+diff --git a/src/camx/cam2.h b/src/camx/cam2.h
+index f84166a..bc6a6aa 100644
+--- a/src/camx/cam2.h
++++ b/src/camx/cam2.h
+@@ -38,8 +38,53 @@ struct Cam2Settings {
+ 	int flash; // 0: off, 1: auto (automatic exposure only), 2: on
+ 	int effect; // -1: none, otherwise android.control.effectMode
+ 	int antibanding; // -1: HAL default, otherwise android.control.aeAntibandingMode
++	int torch; // live session: keep the flash lit (video)
++	int region[4]; // focus and metering area, Camera1 frame -1000..1000 (l, t, r, b); all 0: none
++	int afTrigger; // live session: start one autofocus scan on the area
++	int aeLock, awbLock; // live session: hold exposure / white balance
+ };
+ 
++struct Cam2Dng;
++typedef void (*cam2_jpeg_cb)(void *ctx, const unsigned char *data, int size, int index);
++typedef void (*cam2_raw_cb)(void *ctx, const unsigned short *data, const struct Cam2Dng *meta);
++
++// live session (PRO modes): the preview stays on Camera2, so manual values
++// show in the viewfinder; frames reach the GPU without copies
++struct Cam2SessionConfig {
++	int previewWidth, previewHeight;
++	int stillWidth, stillHeight, raw; // photo session: JPEG (and RAW) outputs
++	int video; // video session: an encoder input surface instead
++	int videoWidth, videoHeight, fps, bitrate, hevc;
++};
++
++// what the sensor really used in the latest preview frame
++struct Cam2State {
++	int iso;
++	long long expNs;
++	float focusDiopters;
++	int aeState, afState;
++	long long frames;
++};
++
++void *cam2s_open(const char *id, const struct Cam2SessionConfig *cfg, int *error);
++void cam2s_close(void *session);
++// new controls for the running preview (and the recording)
++int cam2s_controls(void *session, const struct Cam2Settings *s);
++int cam2s_state(void *session, struct Cam2State *out);
++// newest preview frame as an AHardwareBuffer; returns a handle for cam2s_release,
++// or 0 when no new frame arrived
++void *cam2s_acquire(void *session, void **hardwareBuffer);
++void cam2s_release(void *session, void *frame);
++// photo in a photo session, callbacks on the calling thread; returns JPEG count
++int cam2s_still(void *session, const struct Cam2Settings *s, cam2_jpeg_cb onJpeg, cam2_raw_cb onRaw, void *ctx);
++// video session: MP4 into fd (H.264/HEVC + AAC from PCM pushed with
++// cam2s_record_audio); every call below from one thread
++int cam2s_record_start(void *session, int fd, int orientation, int sampleRate, int channels);
++int cam2s_record_audio(void *session, const void *pcm, int bytes, long long ptsUs);
++// moves encoded data into the file; returns 1 once a stopped recording is complete
++int cam2s_record_pump(void *session);
++int cam2s_record_stop(void *session);
++
+ // what a DNG writer needs, from the static and the capture metadata
+ struct Cam2Dng {
+ 	int width, height, rowStride;
+@@ -53,9 +98,6 @@ struct Cam2Dng {
+ 	float fNumber, focalLength;
+ };
+ 
+-typedef void (*cam2_jpeg_cb)(void *ctx, const unsigned char *data, int size, int index);
+-typedef void (*cam2_raw_cb)(void *ctx, const unsigned short *data, const struct Cam2Dng *meta);
+-
+ // 0 on success
+ int cam2_info(const char *id, struct Cam2Info *out);
+ // Opens the camera (Camera1 must be disconnected), meters, focuses and shoots;
+diff --git a/src/camx/ndk-camera.h b/src/camx/ndk-camera.h
+index 3d5b4f2..bf6c214 100644
+--- a/src/camx/ndk-camera.h
++++ b/src/camx/ndk-camera.h
+@@ -87,7 +87,13 @@ enum {
+ 	ACAMERA_CONTROL_AE_ANTIBANDING_MODE = 65536,
+ 	ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION = 65537,
+ 	ACAMERA_CONTROL_AE_MODE = 65539,
++	ACAMERA_CONTROL_AE_LOCK = 65538,
++	ACAMERA_CONTROL_AE_REGIONS = 65540,
++	ACAMERA_CONTROL_AE_TARGET_FPS_RANGE = 65541,
+ 	ACAMERA_CONTROL_AE_PRECAPTURE_TRIGGER = 65542,
++	ACAMERA_CONTROL_AF_REGIONS = 65544,
++	ACAMERA_CONTROL_AF_TRIGGER = 65545,
++	ACAMERA_CONTROL_AWB_LOCK = 65546,
+ 	ACAMERA_CONTROL_AF_MODE = 65543,
+ 	ACAMERA_CONTROL_AWB_MODE = 65547,
+ 	ACAMERA_CONTROL_EFFECT_MODE = 65550,
+@@ -134,11 +140,68 @@ enum {
+ 
+ enum {
+ 	AIMAGE_FORMAT_RAW16 = 32,
++	AIMAGE_FORMAT_PRIVATE = 34,
+ 	AIMAGE_FORMAT_YUV_420_888 = 35,
+ 	AIMAGE_FORMAT_JPEG = 256,
+ };
+ 
+-enum { TEMPLATE_PREVIEW = 1, TEMPLATE_STILL_CAPTURE = 2 };
++enum { TEMPLATE_PREVIEW = 1, TEMPLATE_STILL_CAPTURE = 2, TEMPLATE_RECORD = 3 };
++
++// AHardwareBuffer usage: sampled by the GPU
++enum : uint64_t { AHARDWAREBUFFER_USAGE_GPU_SAMPLED_IMAGE = 1ULL << 8 };
++
++typedef struct AHardwareBuffer AHardwareBuffer;
++typedef struct AMediaCodec AMediaCodec;
++typedef struct AMediaFormat AMediaFormat;
++typedef struct AMediaMuxer AMediaMuxer;
++typedef struct AMediaCodecBufferInfo {
++	int32_t offset;
++	int32_t size;
++	int64_t presentationTimeUs;
++	uint32_t flags;
++} AMediaCodecBufferInfo;
++enum {
++	AMEDIACODEC_CONFIGURE_FLAG_ENCODE = 1,
++	AMEDIACODEC_BUFFER_FLAG_KEY_FRAME = 1,
++	AMEDIACODEC_BUFFER_FLAG_CODEC_CONFIG = 2,
++	AMEDIACODEC_BUFFER_FLAG_END_OF_STREAM = 4,
++	AMEDIACODEC_INFO_OUTPUT_FORMAT_CHANGED = -2,
++	COLOR_FORMAT_SURFACE = 0x7F000789,
++};
++
++AMediaCodec *AMediaCodec_createEncoderByType(const char *mime);
++media_status_t AMediaCodec_configure(AMediaCodec *, const AMediaFormat *, ANativeWindow *, void *crypto,
++				     uint32_t flags);
++media_status_t AMediaCodec_createPersistentInputSurface(ANativeWindow **surface);
++media_status_t AMediaCodec_setInputSurface(AMediaCodec *, ANativeWindow *surface);
++media_status_t AMediaCodec_start(AMediaCodec *);
++media_status_t AMediaCodec_stop(AMediaCodec *);
++media_status_t AMediaCodec_delete(AMediaCodec *);
++media_status_t AMediaCodec_signalEndOfInputStream(AMediaCodec *);
++long AMediaCodec_dequeueInputBuffer(AMediaCodec *, int64_t timeoutUs);
++uint8_t *AMediaCodec_getInputBuffer(AMediaCodec *, size_t idx, size_t *size);
++media_status_t AMediaCodec_queueInputBuffer(AMediaCodec *, size_t idx, long offset, size_t size, uint64_t timeUs,
++					    uint32_t flags);
++long AMediaCodec_dequeueOutputBuffer(AMediaCodec *, AMediaCodecBufferInfo *info, int64_t timeoutUs);
++uint8_t *AMediaCodec_getOutputBuffer(AMediaCodec *, size_t idx, size_t *size);
++media_status_t AMediaCodec_releaseOutputBuffer(AMediaCodec *, size_t idx, bool render);
++AMediaFormat *AMediaCodec_getOutputFormat(AMediaCodec *);
++AMediaFormat *AMediaFormat_new(void);
++media_status_t AMediaFormat_delete(AMediaFormat *);
++void AMediaFormat_setString(AMediaFormat *, const char *name, const char *value);
++void AMediaFormat_setInt32(AMediaFormat *, const char *name, int32_t value);
++AMediaMuxer *AMediaMuxer_new(int fd, int outputFormat);
++long AMediaMuxer_addTrack(AMediaMuxer *, const AMediaFormat *format);
++media_status_t AMediaMuxer_start(AMediaMuxer *);
++media_status_t AMediaMuxer_stop(AMediaMuxer *);
++media_status_t AMediaMuxer_delete(AMediaMuxer *);
++media_status_t AMediaMuxer_setOrientationHint(AMediaMuxer *, int degrees);
++media_status_t AMediaMuxer_writeSampleData(AMediaMuxer *, size_t trackIdx, const uint8_t *data,
++					   const AMediaCodecBufferInfo *info);
++void ANativeWindow_release(ANativeWindow *window);
++void *malloc(size_t);
++void free(void *);
++void *memcpy(void *, const void *, size_t);
+ 
+ // request capabilities
+ enum {
+@@ -204,6 +267,9 @@ camera_status_t ACameraCaptureSession_setRepeatingRequest(ACameraCaptureSession
+ 							  int *captureSequenceId);
+ camera_status_t ACameraCaptureSession_stopRepeating(ACameraCaptureSession *session);
+ 
++media_status_t AImageReader_newWithUsage(int32_t width, int32_t height, int32_t format, uint64_t usage,
++					 int32_t maxImages, AImageReader **reader);
++media_status_t AImage_getHardwareBuffer(const AImage *image, AHardwareBuffer **buffer);
+ media_status_t AImageReader_new(int32_t width, int32_t height, int32_t format, int32_t maxImages,
+ 				AImageReader **reader);
+ void AImageReader_delete(AImageReader *reader);
+@@ -220,6 +286,7 @@ void ABinderProcess_startThreadPool(void);
+ bool ABinderProcess_setThreadPoolMaxThreadCount(uint32_t numThreads);
+ 
+ int usleep(unsigned usec);
++int clock_gettime(int clock, void *ts);
+ int prctl(int option, ...);
+ enum { PR_SET_NAME = 15, PR_GET_NAME = 16 };
+ }
+diff --git a/src/hybris-camera-cam2.cpp b/src/hybris-camera-cam2.cpp
+index 18ebe2e..de506db 100644
+--- a/src/hybris-camera-cam2.cpp
++++ b/src/hybris-camera-cam2.cpp
+@@ -1,17 +1,28 @@
+ /* SPDX-License-Identifier: GPL-2.0-only
+  *
+- * The HAL3 features Camera1 cannot reach, through a Camera2 still capture in
+- * libcamx (camx/cam2.cpp): manual ISO and shutter, manual focus distance,
+- * OIS off, RAW (saved as DNG) and burst. Camera1 gives the device up for the
+- * shot and takes it back afterwards; the preview stops for that time.
++ * The HAL3 features Camera1 cannot reach, through Camera2 in libcamx
++ * (camx/cam2.cpp): manual ISO and shutter, manual focus distance, OIS off,
++ * RAW (saved as DNG), burst and PRO video. In the PRO modes a live Camera2
++ * session owns the camera (the viewfinder shows the manual values); elsewhere
++ * Camera1 hands the camera over for a single Camera2 shot.
+  */
+ 
++#include <QAudioSource>
+ #include <QDateTime>
++#include <QDBusConnection>
++#include <QDBusInterface>
++#include <QDBusReply>
+ #include <QDebug>
+ #include <QFile>
++#include <QGuiApplication>
++#include <QMediaDevices>
+ #include <QSettings>
+ #include <QThread>
+ 
++#include <fcntl.h>
++#include <time.h>
++#include <unistd.h>
++
+ #include <dng-writer.h>
+ #include <hybris-camera.h>
+ 
+@@ -115,6 +126,7 @@ void HybrisCamera::setProActive(bool active)
+ 	if (active == m_proActive)
+ 		return;
+ 	m_proActive = active;
++	m_c2Failures = 0;
+ 	Q_EMIT proChanged();
+ }
+ 
+@@ -187,20 +199,23 @@ bool HybrisCamera::needsCam2() const
+ 
+ void HybrisCamera::takeBurst()
+ {
+-	if (m_cam2.value("burst").toBool() && m_cameraManager->camMode() == CameraManager::PictureMode)
++	if (!m_cam2.value("burst").toBool() || m_cameraManager->camMode() != CameraManager::PictureMode)
++		return;
++	if (m_c2s)
++		stillCam2(m_burstCount, false);
++	else
+ 		captureCam2(m_burstCount, false);
+ }
+ 
+-void HybrisCamera::captureCam2(int count, bool raw)
++// Camera2 controls from the PRO values (pro) and the Camera1 settings kept by
++// CameraManager (white balance, EV, effect, anti-flicker, zoom, flash)
++Cam2Settings HybrisCamera::cam2Settings(bool pro) const
+ {
+-	if (m_busy || m_isRecording || !m_cameraManager->cameraControl())
+-		return;
+-
+ 	const QMap<QString, QString> p = m_cameraManager->parameters();
+ 	Cam2Settings s = {};
+-	const bool pro = m_proActive;
+ 	s.iso = pro ? m_manualIso : 0;
+ 	s.expNs = pro ? qint64(m_manualExposureUs) * 1000 : 0;
++	s.count = 1;
+ 	s.focus = pro && m_manualFocus >= 0 ? float(m_manualFocus) : -1.0f;
+ 	s.ois = pro && !m_ois ? 0 : -1;
+ 	s.awb = awbMode(p.value("whitebalance"));
+@@ -220,8 +235,11 @@ void HybrisCamera::captureCam2(int count, bool raw)
+ 	s.zoom = zoom >= 0 && zoom < ratios.size() ? ratios[zoom].toFloat() / 100.0f : 1.0f;
+ 	const CameraManager::Flash flash = m_cameraManager->flash();
+ 	s.flash = flash == CameraManager::FLASH_OFF ? 0 : flash == CameraManager::FLASH_AUTO ? 1 : 2;
+-	s.raw = raw && m_cam2.value("raw").toBool();
+-	s.count = count;
++	s.torch = flash == CameraManager::FLASH_TORCH;
++	s.aeLock = p.value("auto-exposure-lock") == "true";
++	s.awbLock = p.value("auto-whitebalance-lock") == "true";
++	for (int i = 0; i < 4; i++)
++		s.region[i] = m_c2Region[i];
+ 	if (m_geotag && m_position.isValid()) {
+ 		const QGeoCoordinate c = m_position.coordinate();
+ 		s.gps = 1;
+@@ -230,6 +248,17 @@ void HybrisCamera::captureCam2(int count, bool raw)
+ 		s.altitude = c.type() == QGeoCoordinate::Coordinate3D ? c.altitude() : 0.0;
+ 		s.gpsTime = m_position.timestamp().toSecsSinceEpoch();
+ 	}
++	return s;
++}
++
++void HybrisCamera::captureCam2(int count, bool raw)
++{
++	if (m_busy || m_isRecording || !m_cameraManager->cameraControl())
++		return;
++
++	Cam2Settings s = cam2Settings(m_proActive);
++	s.raw = raw && m_cam2.value("raw").toBool();
++	s.count = count;
+ 
+ 	Job *job = new Job;
+ 	job->base = m_picturePath + "/IMG" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz");
+@@ -266,3 +295,347 @@ void HybrisCamera::captureCam2(int count, bool raw)
+ 		worker->start();
+ 	});
+ }
++
++// --------------------------------------------------------------- live session
++
++namespace {
++
++long long monotonicUs()
++{
++	timespec t;
++	clock_gettime(CLOCK_MONOTONIC, &t);
++	return t.tv_sec * 1000000LL + t.tv_nsec / 1000;
++}
++
++} // namespace
++
++// PRO video recording on its own thread: microphone PCM into the session's AAC
++// encoder (stamped with CLOCK_MONOTONIC like the camera frames), encoded data
++// into the MP4. Every recording call of the session comes from this thread.
++class Cam2Recorder : public QObject {
++    public:
++	const Cam2Api *api = nullptr;
++	void *session = nullptr;
++	QString path;
++	int fd = -1;
++	QAudioSource *audio = nullptr;
++	QIODevice *io = nullptr;
++	QTimer *timer = nullptr;
++	long long audioStart = -1, audioFrames = 0;
++	static const int rate = 48000, channels = 2;
++
++	bool start(int orientation, bool mic)
++	{
++		fd = ::open(path.toUtf8().constData(), O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
++		if (fd < 0)
++			return false;
++		const int r = api->recordStart(session, fd, orientation, mic ? rate : 0, channels);
++		if (r != 0) {
++			qWarning() << "cam2: recording did not start, error" << r;
++			::close(fd);
++			fd = -1;
++			return false;
++		}
++		if (mic) {
++			QAudioFormat f;
++			f.setSampleRate(rate);
++			f.setChannelCount(channels);
++			f.setSampleFormat(QAudioFormat::Int16);
++			audio = new QAudioSource(QMediaDevices::defaultAudioInput(), f, this);
++			io = audio->start();
++		}
++		timer = new QTimer(this);
++		timer->setInterval(10);
++		connect(timer, &QTimer::timeout, this, [this]() { tick(); });
++		timer->start();
++		return true;
++	}
++
++	void tick()
++	{
++		if (io) {
++			const QByteArray pcm = io->readAll();
++			const int frames = pcm.size() / (2 * channels);
++			if (frames > 0) {
++				// the first chunk was recorded during the time it spans
++				if (audioStart < 0)
++					audioStart = monotonicUs() - frames * 1000000LL / rate;
++				api->recordAudio(session, pcm.constData(), frames * 2 * channels,
++						 audioStart + audioFrames * 1000000LL / rate);
++				audioFrames += frames;
++			}
++		}
++		api->recordPump(session);
++	}
++
++	// end of stream, the rest of the encoded data, then the MP4 index
++	bool stop()
++	{
++		if (timer)
++			timer->stop();
++		if (audio)
++			audio->stop();
++		tick();
++		api->recordStop(session);
++		bool done = false;
++		for (int i = 0; i < 400 && !done; i++) {
++			done = api->recordPump(session) == 1;
++			if (!done)
++				QThread::msleep(10);
++		}
++		::close(fd);
++		fd = -1;
++		return done;
++	}
++};
++
++void HybrisCamera::setProVideoActive(bool active)
++{
++	if (active == m_proVideoActive)
++		return;
++	m_proVideoActive = active;
++	m_c2Failures = 0;
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::scheduleCam2()
++{
++	if (m_c2Scheduled)
++		return;
++	m_c2Scheduled = true;
++	// after QML has set every property of a mode switch
++	QTimer::singleShot(0, this, [this]() {
++		m_c2Scheduled = false;
++		updateCam2();
++	});
++}
++
++void HybrisCamera::updateCam2()
++{
++	const CameraManager::CamMode mode = m_cameraManager->camMode();
++	const bool available = m_cam2.value("available").toBool();
++	const bool manual = available && m_cam2.value("manualSensor").toBool();
++	// every video but hyperlapse and the software encoder goes through Camera2:
++	// MediaRecorder of Camera1 cannot take the microphone here (no audio socket)
++	const bool hyperlapse = m_cameraRecorder->timeLapseFps() > 0;
++	const bool video = mode == CameraManager::VideoMode && !hyperlapse && !m_swEncode &&
++			   (m_proVideoActive ? manual : available);
++	const bool photo = m_proActive && mode == CameraManager::PictureMode && manual;
++	const bool want = (photo || video) && !m_busy && !(m_isRecording && !m_c2s);
++	const QSize size = video ? m_cameraManager->currentVideoSize() : m_cameraManager->currentPictureSize();
++	if (m_c2s && (!want || m_c2Video != video || m_c2Size != size)) {
++		if (m_isRecording || m_busy)
++			return;
++		exitCam2();
++	}
++	if (want && !m_c2s && m_c2Failures < 2 && !enterCam2(video))
++		m_c2Failures++;
++}
++
++bool HybrisCamera::enterCam2(bool video)
++{
++	m_c2 = m_cameraManager->extras().cam2Session();
++	if (!m_c2 || !m_cameraManager->cameraControl())
++		return false;
++	const QSize size = video ? m_cameraManager->currentVideoSize() : m_cameraManager->currentPictureSize();
++	if (size.isEmpty())
++		return false;
++	// the largest preview size of the same shape, at most 1920x1080
++	const double aspect = double(size.width()) / size.height();
++	QSize preview;
++	for (const QSize &p : m_cameraManager->currentCamera().previewSizes)
++		if (p.width() <= 1920 && p.height() <= 1080 && qAbs(double(p.width()) / p.height() - aspect) < 0.02 &&
++		    p.width() * p.height() > preview.width() * preview.height())
++			preview = p;
++	if (preview.isEmpty())
++		preview = QSize(1280, 720);
++
++	Cam2SessionConfig cfg = {};
++	cfg.previewWidth = preview.width();
++	cfg.previewHeight = preview.height();
++	if (video) {
++		cfg.video = 1;
++		cfg.videoWidth = size.width();
++		cfg.videoHeight = size.height();
++		cfg.fps = m_videoFps;
++		cfg.bitrate = m_cameraManager->videoBitRate() * 1000000;
++		cfg.hevc = m_hevc;
++	} else {
++		cfg.stillWidth = size.width();
++		cfg.stillHeight = size.height();
++		cfg.raw = m_cam2.value("raw").toBool();
++	}
++
++	if (m_renderer)
++		m_renderer->detachCamera(); // waits for a frame being drawn
++	m_cameraManager->releaseCamera();
++	m_cameraManager->setCam2Mode(true);
++	int error = 0;
++	m_c2s = m_c2->open(QByteArray::number(m_cameraManager->camId()).constData(), &cfg, &error);
++	if (!m_c2s) {
++		qWarning() << "cam2: live session not opened, error" << error;
++		m_cameraManager->setCam2Mode(false);
++		m_cameraManager->reconnectCamera();
++		return false;
++	}
++	qDebug() << "cam2: live session" << (video ? "video" : "photo") << size << "preview" << preview;
++	m_c2Video = video;
++	m_c2Size = size;
++	m_previewSize = preview;
++	pushCam2();
++	if (m_renderer) {
++		m_renderer->setTextureSize(preview);
++		m_renderer->setCam2Session(m_c2, m_c2s);
++	}
++	m_c2Timer->start();
++	Q_EMIT cam2LiveChanged();
++	return true;
++}
++
++void HybrisCamera::exitCam2()
++{
++	if (!m_c2s)
++		return;
++	if (m_renderer)
++		m_renderer->setCam2Session(nullptr, nullptr); // frees the frame it holds
++	m_c2Timer->stop();
++	m_c2->close(m_c2s);
++	m_c2s = nullptr;
++	for (int &r : m_c2Region)
++		r = 0;
++	m_cameraManager->setCam2Mode(false);
++	m_cameraManager->reconnectCamera();
++	qDebug() << "cam2: back to Camera1";
++	Q_EMIT cam2LiveChanged();
++}
++
++void HybrisCamera::pushCam2()
++{
++	if (!m_c2s)
++		return;
++	// manual values only in the PRO modes; plain video is automatic
++	Cam2Settings s = cam2Settings(m_proActive || m_proVideoActive);
++	s.afTrigger = m_c2Trigger;
++	m_c2Trigger = false;
++	m_c2->controls(m_c2s, &s);
++}
++
++// redraws the viewfinder and reads what the sensor uses (automatic values)
++void HybrisCamera::pollCam2()
++{
++	if (!m_c2s)
++		return;
++	if (window())
++		window()->update();
++	static int tick = 0;
++	if (++tick % 6)
++		return;
++	Cam2State st = {};
++	m_c2->state(m_c2s, &st);
++	const int us = int(st.expNs / 1000);
++	if (st.iso != m_liveIso || us != m_liveExposureUs) {
++		m_liveIso = st.iso;
++		m_liveExposureUs = us;
++		Q_EMIT liveStateChanged();
++	}
++}
++
++void HybrisCamera::stillCam2(int count, bool raw)
++{
++	if (m_busy || !m_c2s || m_c2Video)
++		return;
++	Cam2Settings s = cam2Settings(true);
++	s.raw = raw && m_cam2.value("raw").toBool();
++	s.count = count;
++	Job *job = new Job;
++	job->base = m_picturePath + "/IMG" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz");
++	job->count = count;
++	job->orientation = s.orientation;
++	m_busy = true;
++	Q_EMIT busyChanged();
++	const Cam2Api *api = m_c2;
++	void *session = m_c2s;
++	QThread *worker = QThread::create([this, api, session, s, job]() {
++		const int n = api->still(session, &s, onJpeg, onRaw, job);
++		qDebug() << "cam2 live still:" << n << "frames, ISO" << s.iso << "exposure us" << s.expNs / 1000
++			 << "files" << job->saved;
++		QMetaObject::invokeMethod(this, [this, job]() {
++			m_busy = false;
++			Q_EMIT busyChanged();
++			for (const QString &path : job->saved)
++				if (path.endsWith(".jpg"))
++					Q_EMIT newMediaSaved(path);
++			delete job;
++		}, Qt::QueuedConnection);
++	});
++	connect(worker, &QThread::finished, worker, &QObject::deleteLater);
++	worker->start();
++}
++
++void HybrisCamera::startCam2Recording()
++{
++	if (m_c2Recorder || !m_c2s || !m_c2Video)
++		return;
++	m_recordingFile = m_videoPath + "/VID" + QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz") + ".mp4";
++	m_c2Recorder = new Cam2Recorder;
++	m_c2Recorder->api = m_c2;
++	m_c2Recorder->session = m_c2s;
++	m_c2Recorder->path = m_recordingFile;
++	m_c2RecorderThread = new QThread(this);
++	m_c2Recorder->moveToThread(m_c2RecorderThread);
++	connect(m_c2RecorderThread, &QThread::finished, m_c2Recorder, &QObject::deleteLater);
++	m_c2RecorderThread->start();
++	const int orientation = m_cameraManager->effectiveRotation();
++	const bool mic = m_cameraManager->withMic();
++	Cam2Recorder *rec = m_c2Recorder;
++	QMetaObject::invokeMethod(rec, [this, rec, orientation, mic]() {
++		const bool ok = rec->start(orientation, mic);
++		QMetaObject::invokeMethod(this, [this, ok]() {
++			if (ok) {
++				setRecordingState(true);
++			} else {
++				stopCam2Recording();
++			}
++		}, Qt::QueuedConnection);
++	}, Qt::QueuedConnection);
++}
++
++void HybrisCamera::stopCam2Recording()
++{
++	if (!m_c2Recorder)
++		return;
++	Cam2Recorder *rec = m_c2Recorder;
++	QThread *thread = m_c2RecorderThread;
++	m_c2Recorder = nullptr;
++	m_c2RecorderThread = nullptr;
++	QMetaObject::invokeMethod(rec, [this, rec, thread]() {
++		const bool ok = rec->fd < 0 || rec->stop();
++		qDebug() << "cam2: recording" << rec->path << (ok ? "complete" : "NOT finished cleanly");
++		thread->quit(); // the recorder is deleted when the thread finishes
++		QMetaObject::invokeMethod(this, [this, thread]() {
++			thread->wait();
++			delete thread;
++			setRecordingState(false);
++			scheduleCam2();
++		}, Qt::QueuedConnection);
++	}, Qt::QueuedConnection);
++}
++
++// the screen must not blank while the camera is open: a blanked screen also
++// makes mobile-power-saver throttle real-time threads, and the camera then
++// loses frames (about 270 ms every second)
++void HybrisCamera::setScreenInhibit(bool on)
++{
++	QDBusInterface ss("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver", "org.freedesktop.ScreenSaver",
++			  QDBusConnection::sessionBus());
++	if (!ss.isValid())
++		return;
++	if (on && !m_inhibitCookie) {
++		QDBusReply<uint> r = ss.call("Inhibit", "droidian-camera", tr("Camera in use"));
++		if (r.isValid())
++			m_inhibitCookie = r.value();
++	} else if (!on && m_inhibitCookie) {
++		ss.call("UnInhibit", m_inhibitCookie);
++		m_inhibitCookie = 0;
++	}
++}
+diff --git a/src/hybris-camera-pro.cpp b/src/hybris-camera-pro.cpp
+index 0e159d3..a0b35db 100644
+--- a/src/hybris-camera-pro.cpp
++++ b/src/hybris-camera-pro.cpp
+@@ -46,6 +46,10 @@ void HybrisCamera::setVideoFps(int fps)
+ 		return;
+ 	m_videoFps = fps;
+ 	QSettings().setValue("AppSettings/video-fps", fps);
++	if (m_c2Video && !m_isRecording) {
++		exitCam2(); // the encoder is configured with the frame rate
++		scheduleCam2();
++	}
+ 	Q_EMIT videoFpsChanged();
+ }
+ 
+@@ -55,6 +59,10 @@ void HybrisCamera::setHevc(bool hevc)
+ 		return;
+ 	m_hevc = hevc;
+ 	QSettings().setValue("AppSettings/hevc", hevc);
++	if (m_c2Video && !m_isRecording) {
++		exitCam2();
++		scheduleCam2();
++	}
+ 	Q_EMIT hevcChanged();
+ }
+ 
+@@ -171,6 +179,22 @@ QPointF HybrisCamera::sensorToItem(const QPointF &sensor) const
+ 
+ bool HybrisCamera::focusAt(qreal x, qreal y)
+ {
++	if (m_c2s) {
++		// live Camera2 session: one AF scan and metering on the area
++		bool inside = false;
++		const QPointF s = itemToSensor(QPointF(x, y), &inside);
++		if (!inside)
++			return false;
++		const int cx = qBound(-1000 + FOCUS_AREA_HALF, int(s.x()), 1000 - FOCUS_AREA_HALF);
++		const int cy = qBound(-1000 + FOCUS_AREA_HALF, int(s.y()), 1000 - FOCUS_AREA_HALF);
++		m_c2Region[0] = cx - FOCUS_AREA_HALF;
++		m_c2Region[1] = cy - FOCUS_AREA_HALF;
++		m_c2Region[2] = cx + FOCUS_AREA_HALF;
++		m_c2Region[3] = cy + FOCUS_AREA_HALF;
++		m_c2Trigger = true;
++		pushCam2();
++		return true;
++	}
+ 	CameraControl *cc = m_cameraManager->cameraControl();
+ 	if (!cc)
+ 		return false;
+@@ -197,6 +221,12 @@ bool HybrisCamera::focusAt(qreal x, qreal y)
+ 
+ void HybrisCamera::resetFocus()
+ {
++	if (m_c2s) {
++		for (int &r : m_c2Region)
++			r = 0;
++		pushCam2();
++		return;
++	}
+ 	CameraControl *cc = m_cameraManager->cameraControl();
+ 	if (!cc)
+ 		return;
+diff --git a/src/hybris-camera.cpp b/src/hybris-camera.cpp
+index da68a92..3236441 100644
+--- a/src/hybris-camera.cpp
++++ b/src/hybris-camera.cpp
+@@ -101,6 +101,22 @@ HybrisCamera::HybrisCamera()
+ 	loadProSettings();
+ 	refreshCam2();
+ 
++	// live Camera2 session of the PRO modes
++	m_c2Timer = new QTimer(this);
++	m_c2Timer->setInterval(33);
++	connect(m_c2Timer, &QTimer::timeout, this, &HybrisCamera::pollCam2);
++	connect(this, &HybrisCamera::proChanged, this, [this]() {
++		pushCam2();
++		scheduleCam2();
++	});
++	connect(m_cameraManager, &CameraManager::parametersChanged, this, &HybrisCamera::pushCam2);
++	connect(m_cameraManager, &CameraManager::zoomChanged, this, &HybrisCamera::pushCam2);
++	connect(m_cameraManager, &CameraManager::flashChanged, this, &HybrisCamera::pushCam2);
++	connect(this, &HybrisCamera::cam2Changed, this, &HybrisCamera::scheduleCam2);
++	connect(qGuiApp, &QGuiApplication::applicationStateChanged, this,
++		[this](Qt::ApplicationState state) { setScreenInhibit(state == Qt::ApplicationActive); });
++	setScreenInhibit(true);
++
+ 	connect(m_cameraManager, &CameraManager::rawImageCaptured, this,
+ 		[this]() {
+ 			qDebug() << "RAW IMAGE CALLBACK";
+@@ -153,6 +169,10 @@ void HybrisCamera::takePicture()
+ {
+ 	if (m_busy)
+ 		return;
++	if (m_c2s) {
++		stillCam2(1, m_rawCapture);
++		return;
++	}
+ 	if (needsCam2()) {
+ 		captureCam2(1, m_rawCapture);
+ 		return;
+@@ -200,6 +220,10 @@ void HybrisCamera::cleanupVideo()
+ 
+ void HybrisCamera::startRecording()
+ {
++	if (m_c2s && m_c2Video) {
++		startCam2Recording();
++		return;
++	}
+ 	m_recordingFile = m_videoPath + "/VID" +
+ 						QDateTime::currentDateTime().toString("yyyyMMdd_hhmmsszzz") +
+ 						".mp4";
+@@ -235,7 +259,10 @@ void HybrisCamera::startRecording()
+ 			return;
+ 
+ 		m_cameraRecorder->setCamera(m_cameraManager->cameraControl());
+-		m_cameraRecorder->setMicEnabled(withMic());
++		// Camera1 MediaRecorder with the microphone wants an audio socket that
++		// Droidian does not offer: the file then has no index (no moov atom).
++		// Videos with sound go through the Camera2 session.
++		m_cameraRecorder->setMicEnabled(false);
+ 		m_cameraRecorder->setVideoSize(m_cameraManager->currentVideoSize());
+ 		m_cameraRecorder->setOrientation(m_cameraManager->effectiveRotation());
+ 		m_cameraRecorder->setOutputPath(m_recordingFile);
+@@ -251,6 +278,10 @@ void HybrisCamera::startRecording()
+ 
+ void HybrisCamera::stopRecording()
+ {
++	if (m_c2Recorder) {
++		stopCam2Recording();
++		return;
++	}
+ 	if(m_swEncode){
+ 		Q_EMIT stopRecordingSignal();
+ 	} else {
+@@ -261,7 +292,11 @@ void HybrisCamera::stopRecording()
+ 
+ void HybrisCamera::setVideoSize(int width, int height)
+ {
++	if (m_isRecording)
++		return;
++	exitCam2(); // Camera1 sets the sizes, the session follows
+ 	m_cameraManager->setVideoSize(QSize(width, height));
++	scheduleCam2();
+ }
+ 
+ void HybrisCamera::takeSnapshot()
+@@ -369,6 +404,9 @@ void HybrisCamera::setWithMic(bool enable)
+ void HybrisCamera::setCamMode(CameraManager::CamMode mode)
+ {
+ 	if (m_cameraManager->camMode() != mode) {
++		exitCam2();
++		m_c2Failures = 0;
++		scheduleCam2();
+ 		m_cameraManager->setCamMode(mode);
+ 		Q_EMIT camModeChanged();
+ 
+@@ -389,7 +427,11 @@ void HybrisCamera::setFlash(CameraManager::Flash mode)
+ 
+ void HybrisCamera::setCamId(int id)
+ {
++	if (id != m_cameraManager->camId())
++		exitCam2();
++	m_c2Failures = 0;
+ 	m_cameraManager->setCamId(id);
++	scheduleCam2();
+ }
+ 
+ void HybrisCamera::handleCameraChanged(const CameraDevice &device)
+diff --git a/src/hybris-camera.h b/src/hybris-camera.h
+index 8c2fdc9..43c8c92 100644
+--- a/src/hybris-camera.h
++++ b/src/hybris-camera.h
+@@ -82,6 +82,13 @@ class HybrisCamera : public QQuickItem {
+ 	Q_PROPERTY(int burstCount READ burstCount WRITE setBurstCount NOTIFY proChanged)
+ 	// a Camera2 shot is running (the preview is stopped meanwhile)
+ 	Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
++	// the PRO video mode is shown
++	Q_PROPERTY(bool proVideoActive READ proVideoActive WRITE setProVideoActive NOTIFY proChanged)
++	// the preview runs on a live Camera2 session (PRO modes): manual values show live
++	Q_PROPERTY(bool cam2Live READ cam2Live NOTIFY cam2LiveChanged)
++	// what the sensor uses right now (automatic values included)
++	Q_PROPERTY(int liveIso READ liveIso NOTIFY liveStateChanged)
++	Q_PROPERTY(int liveExposureUs READ liveExposureUs NOTIFY liveStateChanged)
+ 
+     public:
+ 	HybrisCamera();
+@@ -102,7 +109,9 @@ class HybrisCamera : public QQuickItem {
+ 	}
+ 	Q_INVOKABLE void setPictureSize(int width, int height)
+ 	{
++		exitCam2(); // Camera1 sets the sizes, the session follows
+ 		m_cameraManager->setPictureSizeByUser(QSize(width, height));
++		scheduleCam2();
+ 	}
+ 	// focus and metering on a point of the preview (item coordinates 0..1);
+ 	// false when the point is outside the picture
+@@ -154,6 +163,23 @@ class HybrisCamera : public QQuickItem {
+ 	{
+ 		return m_busy;
+ 	}
++	bool proVideoActive() const
++	{
++		return m_proVideoActive;
++	}
++	void setProVideoActive(bool active);
++	bool cam2Live() const
++	{
++		return m_c2s != nullptr;
++	}
++	int liveIso() const
++	{
++		return m_liveIso;
++	}
++	int liveExposureUs() const
++	{
++		return m_liveExposureUs;
++	}
+ 
+ 	QVariantList lenses() const;
+ 	bool proAvailable() const
+@@ -269,10 +295,12 @@ class HybrisCamera : public QQuickItem {
+ 	void setTimeLapseFps(float fps)
+ 	{
+ 		m_cameraRecorder->setTimeLapseFps(fps);
++		scheduleCam2(); // hyperlapse records through Camera1
+ 	}
+ 	void setSwEncode(bool sw)
+ 	{
+ 		m_swEncode = sw;
++		scheduleCam2(); // the software encoder records through Camera1
+ 		Q_EMIT swEncodeChanged();
+ 	}
+ 	void setEncCrf(int crf)
+@@ -331,6 +359,8 @@ class HybrisCamera : public QQuickItem {
+ 	void cam2Changed();
+ 	void proChanged();
+ 	void busyChanged();
++	void cam2LiveChanged();
++	void liveStateChanged();
+ 
+     public Q_SLOTS:
+ 	void sync();
+@@ -364,6 +394,33 @@ class HybrisCamera : public QQuickItem {
+ 	void refreshCam2();
+ 	bool needsCam2() const;
+ 	void captureCam2(int count, bool raw);
++	Cam2Settings cam2Settings(bool pro) const;
++	// live session (PRO modes)
++	void scheduleCam2();
++	void updateCam2();
++	bool enterCam2(bool video);
++	void exitCam2();
++	void pushCam2();
++	void pollCam2();
++	void stillCam2(int count, bool raw);
++	void startCam2Recording();
++	void stopCam2Recording();
++	void setScreenInhibit(bool on);
++	const Cam2Api *m_c2 = nullptr;
++	void *m_c2s = nullptr;
++	bool m_c2Video = false;
++	QSize m_c2Size; // still or video size the session was opened for
++	bool m_c2Scheduled = false;
++	int m_c2Failures = 0; // no endless retries when the session cannot open
++	QTimer *m_c2Timer = nullptr;
++	int m_c2Region[4] = {};
++	bool m_c2Trigger = false;
++	bool m_proVideoActive = false;
++	int m_liveIso = 0;
++	int m_liveExposureUs = 0;
++	class Cam2Recorder *m_c2Recorder = nullptr;
++	QThread *m_c2RecorderThread = nullptr;
++	uint m_inhibitCookie = 0;
+ 	QVariantMap m_cam2;
+ 	bool m_proActive = false;
+ 	int m_manualIso = 0;
+diff --git a/src/qml/DefaultUI/DefaultUI.qml b/src/qml/DefaultUI/DefaultUI.qml
+index 62fd01d..f9cd188 100644
+--- a/src/qml/DefaultUI/DefaultUI.qml
++++ b/src/qml/DefaultUI/DefaultUI.qml
+@@ -74,19 +74,26 @@ Item {
+ 
+     // manual ISO, shutter and focus go through Camera2 (camera.cam2)
+     readonly property var c2: camera.cam2
+-    readonly property bool manualPro: uiMode === "pro" && c2.available === true && c2.manualSensor === true
++    readonly property bool manualPro: proLike && c2.available === true && c2.manualSensor === true
+     Binding {
+         target: camera
+         property: "proActive"
+         value: root.uiMode === "pro"
+     }
++    Binding {
++        target: camera
++        property: "proVideoActive"
++        value: root.uiMode === "provideo"
++    }
+     function shutterName(us) {
+         return "1/" + Math.round(1000000 / us)
+     }
+     readonly property var isoStops: [50, 100, 200, 400, 800, 1600, 3200, 6400]
+         .filter(i => c2.isoMin !== undefined && i >= c2.isoMin && i <= c2.isoMax)
++    // in video the frame time caps the shutter (1/30 at 30 fps)
+     readonly property var shutterStops: [125, 250, 500, 1000, 2000, 4000, 8000, 16667, 33333, 66667, 100000]
+-        .filter(u => c2.expMinUs !== undefined && u >= c2.expMinUs && u <= c2.expMaxUs)
++        .filter(u => c2.expMinUs !== undefined && u >= c2.expMinUs && u <= c2.expMaxUs
++                && (uiMode !== "provideo" || u <= 1000000 / camera.videoFps))
+ 
+     function values(key) {
+         const v = p[key]
+@@ -672,13 +679,17 @@ Item {
+             visible: root.proLike && !camera.isRecording
+             Chip {
+                 visible: root.manualPro
+-                text: "ISO " + (camera.manualIso > 0 ? camera.manualIso : qsTr("AUTO"))
++                // automatic: what the sensor uses now, like One UI
++                text: "ISO " + (camera.manualIso > 0 ? camera.manualIso
++                                : camera.cam2Live && camera.liveIso > 0 ? "A " + camera.liveIso : qsTr("AUTO"))
+                 selected: root.openPicker === "iso"
+                 onClicked: root.togglePicker("iso")
+             }
+             Chip {
+                 visible: root.manualPro
+-                text: camera.manualExposureUs > 0 ? root.shutterName(camera.manualExposureUs) : "S " + qsTr("AUTO")
++                text: camera.manualExposureUs > 0 ? root.shutterName(camera.manualExposureUs)
++                      : camera.cam2Live && camera.liveExposureUs > 0 ? "S A " + root.shutterName(camera.liveExposureUs)
++                      : "S " + qsTr("AUTO")
+                 selected: root.openPicker === "shutter"
+                 onClicked: root.togglePicker("shutter")
+             }
+diff --git a/src/qml/DefaultUI/ProPanel.qml b/src/qml/DefaultUI/ProPanel.qml
+index 7375f6d..864dccd 100644
+--- a/src/qml/DefaultUI/ProPanel.qml
++++ b/src/qml/DefaultUI/ProPanel.qml
+@@ -334,6 +334,11 @@ Rectangle {
+                         }
+                     }
+                 }
++                Toggle {
++                    title: qsTr("Record sound")
++                    checked: camera.withMic
++                    onToggled: on => camera.withMic = on
++                }
+                 Text {
+                     text: qsTr("Video codec")
+                     color: "white"
+diff --git a/src/translations/droidian-camera_pl.ts b/src/translations/droidian-camera_pl.ts
+index e385b68..7b03a53 100644
+--- a/src/translations/droidian-camera_pl.ts
++++ b/src/translations/droidian-camera_pl.ts
+@@ -52,6 +52,13 @@
+         <translation>WIDEO</translation>
+     </message>
+ </context>
++<context>
++    <name>HybrisCamera</name>
++    <message>
++        <source>Camera in use</source>
++        <translation>Aparat w użyciu</translation>
++    </message>
++</context>
+ <context>
+     <name>ProPanel</name>
+     <message>
+@@ -214,6 +221,10 @@
+         <source>Quality (CRF, lower is better)</source>
+         <translation>Jakość (CRF, mniej = lepiej)</translation>
+     </message>
++    <message>
++        <source>Record sound</source>
++        <translation>Nagrywaj dźwięk</translation>
++    </message>
+     <message>
+         <source>Scene</source>
+         <translation>Scena</translation>
+-- 
+2.55.0
+

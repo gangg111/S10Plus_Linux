@@ -5,3 +5,11 @@ __pycache__/
 
 # Tymczasowe drzewo robocze do sprawdzania nakladania serii
 .wt-serie/
+
+# Artefakty kompilacji narzedzi telefonu
+*.o
+*.symvers
+tools/klawiatura/klawiatura
+
+# Pozostalosc po checkpatch --strict
+.checkpatch-camelcase.git.

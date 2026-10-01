@@ -1,0 +1,707 @@
+From 101abee687f0f4004ce2348fb26f0cd7aa17568b Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Thu, 1 Oct 2026 03:36:59 +0200
+Subject: [PATCH] PRO: white balance in Kelvin, contrast, noise reduction,
+ sharpening
+
+The HAL offers MANUAL_POST_PROCESSING. White balance gains for a colour
+temperature are computed the way a DNG reader does it: the point on the
+Planckian locus, its XYZ, and the camera response through the colour
+matrix interpolated in 1/T between the two calibration illuminants; the
+camera to sRGB matrix stays the one the automatic white balance used last.
+Contrast replaces the tone curve with the sRGB curve plus a monotonic S;
+noise reduction and sharpening take the modes the camera lists.
+
+In PRO video the PRO controls stay on screen while recording; the live
+session applies them without reopening.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ CMakeLists.txt                         |   3 +-
+ debian/changelog                       |  10 ++
+ src/camx/cam2.cpp                      | 123 +++++++++++++++++++++++++
+ src/camx/cam2.h                        |   5 +
+ src/camx/ndk-camera.h                  |  13 +++
+ src/hybris-camera-cam2.cpp             |  56 +++++++++++
+ src/hybris-camera.h                    |  29 ++++++
+ src/qml/DefaultUI/DefaultUI.qml        |  74 ++++++++++++++-
+ src/qml/DefaultUI/ProPanel.qml         |  42 +++++++++
+ src/translations/droidian-camera_pl.ts |  32 +++++++
+ 10 files changed, 382 insertions(+), 5 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 76b01d4..ea69c73 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -76,6 +76,7 @@ qt_add_translations(TARGETS ${PROJECT_NAME}
+ # Android target against the device's own system libraries.
+ set(ANDROID_SYSTEM_LIBS "/android/system/lib64" CACHE PATH "Android system libraries to link libcamx against")
+ set(ANDROID_LIBC "/apex/com.android.runtime/lib64/bionic/libc.so" CACHE FILEPATH "Android libc to link libcamx against")
++set(ANDROID_LIBM "/apex/com.android.runtime/lib64/bionic/libm.so" CACHE FILEPATH "Android libm to link libcamx against")
+ find_program(CAMX_CXX NAMES clang++ clang++-21)
+ find_program(CAMX_LLD NAMES ld.lld ld.lld-21)
+ if (CAMX_CXX AND CAMX_LLD AND EXISTS ${ANDROID_SYSTEM_LIBS}/libcamera_client.so)
+@@ -89,7 +90,7 @@ if (CAMX_CXX AND CAMX_LLD AND EXISTS ${ANDROID_SYSTEM_LIBS}/libcamera_client.so)
+ 			${ANDROID_SYSTEM_LIBS}/libcamera_client.so ${ANDROID_SYSTEM_LIBS}/libutils.so
+ 			${ANDROID_SYSTEM_LIBS}/libcamera2ndk.so ${ANDROID_SYSTEM_LIBS}/libmediandk.so
+ 			${ANDROID_SYSTEM_LIBS}/libbinder_ndk.so ${ANDROID_SYSTEM_LIBS}/libnativewindow.so
+-			${ANDROID_SYSTEM_LIBS}/libc++.so ${ANDROID_LIBC}
++			${ANDROID_SYSTEM_LIBS}/libc++.so ${ANDROID_LIBM} ${ANDROID_LIBC}
+ 		DEPENDS ${CMAKE_SOURCE_DIR}/src/camx/camx.cpp ${CMAKE_SOURCE_DIR}/src/camx/cam2.cpp
+ 			${CMAKE_SOURCE_DIR}/src/camx/cam2.h ${CMAKE_SOURCE_DIR}/src/camx/ndk-camera.h
+ 		COMMENT "Building libcamx.so for the Android side")
+diff --git a/debian/changelog b/debian/changelog
+index d1d749d..ae205b1 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,13 @@
++droidian-camera (26.1+s10plus4) unstable; urgency=medium
++
++  * PRO: white balance in Kelvin (2300-10000 K), gains from the sensor's own
++    colour calibration (Planckian locus -> XYZ -> colour matrix interpolated
++    between the calibration illuminants), contrast through the tone curve,
++    noise reduction and sharpening modes the camera offers.
++  * PRO video: the PRO controls stay usable while recording.
++
++ -- Artur <ganggg111@gmail.com>  Thu, 01 Oct 2026 05:00:00 +0200
++
+ droidian-camera (26.1+s10plus3) unstable; urgency=medium
+ 
+   * PRO and PRO video run on a live Camera2 session: the viewfinder shows
+diff --git a/src/camx/cam2.cpp b/src/camx/cam2.cpp
+index de3e8c4..05fe745 100644
+--- a/src/camx/cam2.cpp
++++ b/src/camx/cam2.cpp
+@@ -97,6 +97,9 @@ struct Shared {
+ 	long long exp = 0;
+ 	float focus = 0;
+ 	long long frames = 0;
++	// colour correction matrix of the automatic white balance, for manual Kelvin
++	ACameraMetadata_rational ccm[9] = {};
++	int haveCcm = 0;
+ };
+ 
+ void onCompleted(void *ctx, ACameraCaptureSession *, ACaptureRequest *req, const ACameraMetadata *m)
+@@ -123,6 +126,13 @@ void onCompleted(void *ctx, ACameraCaptureSession *, ACaptureRequest *req, const
+ 		float f = e.data.f[0];
+ 		__atomic_store(&s->focus, &f, __ATOMIC_RELAXED);
+ 	}
++	ACameraMetadata_const_entry mode;
++	if (entry(m, ACAMERA_COLOR_CORRECTION_MODE, &mode) && mode.data.u8[0] != 0 &&
++	    entry(m, ACAMERA_COLOR_CORRECTION_TRANSFORM, &e) && e.count == 9) {
++		for (int i = 0; i < 9; i++)
++			s->ccm[i] = e.data.r[i];
++		__atomic_store_n(&s->haveCcm, 1, __ATOMIC_RELEASE);
++	}
+ 	__atomic_add_fetch(&s->frames, 1, __ATOMIC_RELAXED);
+ 	__atomic_add_fetch(&s->previewResults, 1, __ATOMIC_RELEASE);
+ }
+@@ -169,6 +179,108 @@ int jpegSize(const uint8_t *d, int n)
+ 	return n;
+ }
+ 
++// colour temperature of an EXIF LightSource value (the two calibration illuminants)
++double illuminantKelvin(int e)
++{
++	switch (e) {
++	case 17: return 2856; // standard light A
++	case 18: return 4874; // B
++	case 19: return 6774; // C
++	case 20: return 5503; // D55
++	case 21: return 6504; // D65
++	case 22: return 7504; // D75
++	case 23: return 5003; // D50
++	case 2: return 4230; // fluorescent
++	case 3: return 2856; // tungsten
++	default: return 0;
++	}
++}
++
++// White balance gains (R, Geven, Godd, B) for a colour temperature the way a DNG
++// reader computes them: point on the Planckian locus (Kim et al. 2002) -> XYZ ->
++// camera through the colour matrix interpolated in 1/T between the two
++// calibration illuminants. Returns false without calibration data.
++bool kelvinGains(const ACameraMetadata *ch, double t, float g[4])
++{
++	float m1[9], m2[9];
++	matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM1, m1, 9);
++	matrix(ch, ACAMERA_SENSOR_COLOR_TRANSFORM2, m2, 9);
++	ACameraMetadata_const_entry e;
++	const double t1 = entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT1, &e) ? illuminantKelvin(e.data.u8[0]) : 0;
++	const double t2 = entry(ch, ACAMERA_SENSOR_REFERENCE_ILLUMINANT2, &e) ? illuminantKelvin(e.data.u8[0]) : 0;
++	if (t1 <= 0 || m1[0] == 0)
++		return false;
++	t = t < 1667 ? 1667 : t > 25000 ? 25000 : t;
++	const double t3 = t * t * t;
++	const double x = t <= 4000 ? -0.2661239e9 / t3 - 0.2343589e6 / (t * t) + 0.8776956e3 / t + 0.179910
++				   : -3.0258469e9 / t3 + 2.1070379e6 / (t * t) + 0.2226347e3 / t + 0.240390;
++	const double y = t <= 2222 ? -1.1063814 * x * x * x - 1.34811020 * x * x + 2.18555832 * x - 0.20219683
++			 : t <= 4000 ? -0.9549476 * x * x * x - 1.37418593 * x * x + 2.09137015 * x - 0.16748867
++				     : 3.0817580 * x * x * x - 5.87338670 * x * x + 3.75112997 * x - 0.37001483;
++	const double xyz[3] = { x / y, 1.0, (1.0 - x - y) / y };
++	double w = 1;
++	if (t2 > 0 && m2[0] != 0 && t1 != t2) {
++		w = (1.0 / t - 1.0 / t2) / (1.0 / t1 - 1.0 / t2);
++		w = w < 0 ? 0 : w > 1 ? 1 : w;
++	}
++	double cam[3];
++	for (int r = 0; r < 3; r++) {
++		cam[r] = 0;
++		for (int c = 0; c < 3; c++)
++			cam[r] += (w * m1[3 * r + c] + (1 - w) * (t2 > 0 && m2[0] != 0 ? m2[3 * r + c] : m1[3 * r + c])) * xyz[c];
++	}
++	if (cam[0] <= 0 || cam[1] <= 0 || cam[2] <= 0)
++		return false;
++	g[0] = (float)(cam[1] / cam[0]);
++	g[1] = g[2] = 1.0f;
++	g[3] = (float)(cam[1] / cam[2]);
++	return true;
++}
++
++// manual white balance, tone curve, noise reduction and sharpening
++void postProcessing(ACaptureRequest *r, const Cam2Settings *s, const ACameraMetadata *ch, const Shared *sh)
++{
++	if (s->noise >= 0) {
++		const uint8_t v = (uint8_t)s->noise;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_NOISE_REDUCTION_MODE, 1, &v);
++	}
++	if (s->edge >= 0) {
++		const uint8_t v = (uint8_t)s->edge;
++		ACaptureRequest_setEntry_u8(r, ACAMERA_EDGE_MODE, 1, &v);
++	}
++	if (!ch || !hasCap(ch, CAP_MANUAL_POST_PROCESSING))
++		return;
++	float g[4];
++	if (s->kelvin > 0 && kelvinGains(ch, s->kelvin, g)) {
++		const uint8_t off = 0, matrixMode = 0; // AWB OFF, TRANSFORM_MATRIX
++		ACaptureRequest_setEntry_u8(r, ACAMERA_CONTROL_AWB_MODE, 1, &off);
++		ACaptureRequest_setEntry_u8(r, ACAMERA_COLOR_CORRECTION_MODE, 1, &matrixMode);
++		ACaptureRequest_setEntry_float(r, ACAMERA_COLOR_CORRECTION_GAINS, 4, g);
++		// keep the camera -> sRGB matrix the automatic white balance used last
++		if (sh && __atomic_load_n(&sh->haveCcm, __ATOMIC_ACQUIRE))
++			ACaptureRequest_setEntry_rational(r, ACAMERA_COLOR_CORRECTION_TRANSFORM, 9, sh->ccm);
++	}
++	if (s->contrast != 0) {
++		// sRGB curve with an S (or inverted S) on top; monotonic for |contrast| <= 2
++		enum { N = 64 };
++		float curve[2 * N];
++		const double k = 0.075 * (s->contrast < -2 ? -2 : s->contrast > 2 ? 2 : s->contrast);
++		for (int i = 0; i < N; i++) {
++			const double in = (double)i / (N - 1);
++			const double srgb = in <= 0.0031308 ? 12.92 * in : 1.055 * __builtin_pow(in, 1 / 2.4) - 0.055;
++			double out = srgb - k * __builtin_sin(6.283185307179586 * srgb);
++			out = out < 0 ? 0 : out > 1 ? 1 : out;
++			curve[2 * i] = (float)in;
++			curve[2 * i + 1] = (float)out;
++		}
++		const uint8_t contrastCurve = 0; // TONEMAP_MODE_CONTRAST_CURVE
++		ACaptureRequest_setEntry_u8(r, ACAMERA_TONEMAP_MODE, 1, &contrastCurve);
++		ACaptureRequest_setEntry_float(r, ACAMERA_TONEMAP_CURVE_RED, 2 * N, curve);
++		ACaptureRequest_setEntry_float(r, ACAMERA_TONEMAP_CURVE_GREEN, 2 * N, curve);
++		ACaptureRequest_setEntry_float(r, ACAMERA_TONEMAP_CURVE_BLUE, 2 * N, curve);
++	}
++}
++
+ // the controls both the metering stream and the shot use
+ // flash: 0 off, 1 auto, 2 on (already 0 on a lens without flash); active: the
+ // active array, given for a live session (area, torch, locks, AF trigger)
+@@ -372,6 +484,12 @@ extern "C" int cam2_info(const char *id, Cam2Info *out)
+ 	largest(ch, AIMAGE_FORMAT_JPEG, &out->jpegWidth, &out->jpegHeight);
+ 	if (entry(ch, ACAMERA_CONTROL_AE_COMPENSATION_STEP, &e) && e.data.r[0].denominator)
+ 		out->evStep = (float)e.data.r[0].numerator / e.data.r[0].denominator;
++	if (entry(ch, ACAMERA_NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES, &e))
++		for (uint32_t i = 0; i < e.count; i++)
++			out->noiseModes |= 1 << e.data.u8[i];
++	if (entry(ch, ACAMERA_EDGE_AVAILABLE_EDGE_MODES, &e))
++		for (uint32_t i = 0; i < e.count; i++)
++			out->edgeModes |= 1 << e.data.u8[i];
+ 	if (!out->rawWidth)
+ 		out->raw = 0;
+ 	ACameraMetadata_free(ch);
+@@ -530,6 +648,7 @@ extern "C" int cam2_capture(const char *id, const Cam2Settings *s, cam2_jpeg_cb
+ 	if (rw)
+ 		ACaptureRequest_addTarget(shot, raw.target);
+ 	controls(shot, s, iso, exp, cropp, flash, true);
++	postProcessing(shot, s, ch, &shared);
+ 	{
+ 		const uint8_t q = (uint8_t)(s->quality > 0 && s->quality <= 100 ? s->quality : 95);
+ 		const int32_t o = s->orientation;
+@@ -711,6 +830,7 @@ ACaptureRequest *streamRequest(Session *S, bool trigger)
+ 		ACaptureRequest_addTarget(r, S->encTarget);
+ 	const int flash = S->cfg.video || !S->flashAvail ? 0 : S->ctl.flash;
+ 	controls(r, &S->ctl, S->liveIso, S->liveExp, S->hasCrop ? S->crop : nullptr, flash, false, S->active);
++	postProcessing(r, &S->ctl, S->ch, &S->shared);
+ 	const int fps = S->cfg.fps > 0 ? S->cfg.fps : 30;
+ 	if (S->liveIso > 0 && S->liveExp > 0) {
+ 		const int64_t frame = S->liveExp > 1000000000LL / fps ? S->liveExp : 1000000000LL / fps;
+@@ -865,6 +985,8 @@ extern "C" void *cam2s_open(const char *id, const Cam2SessionConfig *cfg, int *e
+ 	S->ctl.awb = -1;
+ 	S->ctl.effect = -1;
+ 	S->ctl.antibanding = -1;
++	S->ctl.noise = -1;
++	S->ctl.edge = -1;
+ 	S->ctl.zoom = 1;
+ 	*error = -1;
+ 	S->mgr = ACameraManager_create();
+@@ -1059,6 +1181,7 @@ extern "C" int cam2s_still(void *session, const Cam2Settings *s, cam2_jpeg_cb on
+ 	Cam2Settings c = S->ctl;
+ 	c.flash = s->flash;
+ 	controls(shot, &c, S->liveIso, S->liveExp, S->hasCrop ? S->crop : nullptr, flash, true, S->active);
++	postProcessing(shot, &c, S->ch, &S->shared);
+ 	const uint8_t q = (uint8_t)(s->quality > 0 && s->quality <= 100 ? s->quality : 95);
+ 	const int32_t o = s->orientation;
+ 	ACaptureRequest_setEntry_u8(shot, ACAMERA_JPEG_QUALITY, 1, &q);
+diff --git a/src/camx/cam2.h b/src/camx/cam2.h
+index bc6a6aa..0374dd7 100644
+--- a/src/camx/cam2.h
++++ b/src/camx/cam2.h
+@@ -19,6 +19,7 @@ struct Cam2Info {
+ 	int rawWidth, rawHeight;
+ 	int jpegWidth, jpegHeight; // largest JPEG size
+ 	float evStep; // exposure compensation step in EV
++	int noiseModes, edgeModes; // bit n: android.noiseReduction / android.edge mode n offered
+ };
+ 
+ struct Cam2Settings {
+@@ -42,6 +43,10 @@ struct Cam2Settings {
+ 	int region[4]; // focus and metering area, Camera1 frame -1000..1000 (l, t, r, b); all 0: none
+ 	int afTrigger; // live session: start one autofocus scan on the area
+ 	int aeLock, awbLock; // live session: hold exposure / white balance
++	// manual post-processing (MANUAL_POST_PROCESSING cameras)
++	int kelvin; // 0: automatic white balance, otherwise colour temperature
++	int contrast; // 0: the HAL's tone curve, -2..2 flatter / steeper
++	int noise, edge; // -1: HAL default, otherwise android.noiseReduction.mode / android.edge.mode
+ };
+ 
+ struct Cam2Dng;
+diff --git a/src/camx/ndk-camera.h b/src/camx/ndk-camera.h
+index bf6c214..973686d 100644
+--- a/src/camx/ndk-camera.h
++++ b/src/camx/ndk-camera.h
+@@ -85,6 +85,17 @@ static_assert(offsetof(ACameraCaptureSession_captureCallbacks, onCaptureComplete
+ 
+ enum {
+ 	ACAMERA_CONTROL_AE_ANTIBANDING_MODE = 65536,
++	ACAMERA_COLOR_CORRECTION_MODE = 0,
++	ACAMERA_COLOR_CORRECTION_TRANSFORM = 1,
++	ACAMERA_COLOR_CORRECTION_GAINS = 2,
++	ACAMERA_EDGE_MODE = 196608,
++	ACAMERA_EDGE_AVAILABLE_EDGE_MODES = 196610,
++	ACAMERA_NOISE_REDUCTION_MODE = 655360,
++	ACAMERA_NOISE_REDUCTION_AVAILABLE_NOISE_REDUCTION_MODES = 655362,
++	ACAMERA_TONEMAP_CURVE_BLUE = 1245184,
++	ACAMERA_TONEMAP_CURVE_GREEN = 1245185,
++	ACAMERA_TONEMAP_CURVE_RED = 1245186,
++	ACAMERA_TONEMAP_MODE = 1245187,
+ 	ACAMERA_CONTROL_AE_EXPOSURE_COMPENSATION = 65537,
+ 	ACAMERA_CONTROL_AE_MODE = 65539,
+ 	ACAMERA_CONTROL_AE_LOCK = 65538,
+@@ -252,6 +263,8 @@ camera_status_t ACaptureRequest_setEntry_i32(ACaptureRequest *request, uint32_t
+ 					     const int32_t *data);
+ camera_status_t ACaptureRequest_setEntry_float(ACaptureRequest *request, uint32_t tag, uint32_t count,
+ 					       const float *data);
++camera_status_t ACaptureRequest_setEntry_rational(ACaptureRequest *request, uint32_t tag, uint32_t count,
++						  const ACameraMetadata_rational *data);
+ camera_status_t ACaptureRequest_setEntry_double(ACaptureRequest *request, uint32_t tag, uint32_t count,
+ 						const double *data);
+ camera_status_t ACaptureRequest_setEntry_i64(ACaptureRequest *request, uint32_t tag, uint32_t count,
+diff --git a/src/hybris-camera-cam2.cpp b/src/hybris-camera-cam2.cpp
+index de506db..12955cb 100644
+--- a/src/hybris-camera-cam2.cpp
++++ b/src/hybris-camera-cam2.cpp
+@@ -97,6 +97,48 @@ void HybrisCamera::loadProSettings()
+ 	m_rawCapture = s.value("Pro/raw", false).toBool();
+ 	m_ois = s.value("Pro/ois", true).toBool();
+ 	m_burstCount = s.value("Pro/burst", 10).toInt();
++	m_kelvin = s.value("Pro/kelvin", 0).toInt();
++	m_contrast = s.value("Pro/contrast", 0).toInt();
++	m_noiseMode = s.value("Pro/noise", -1).toInt();
++	m_edgeMode = s.value("Pro/edge", -1).toInt();
++}
++
++void HybrisCamera::setKelvin(int k)
++{
++	k = k <= 0 ? 0 : qBound(2300, k, 10000);
++	if (k == m_kelvin)
++		return;
++	m_kelvin = k;
++	QSettings().setValue("Pro/kelvin", k);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setContrast(int c)
++{
++	c = qBound(-2, c, 2);
++	if (c == m_contrast)
++		return;
++	m_contrast = c;
++	QSettings().setValue("Pro/contrast", c);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setNoiseMode(int m)
++{
++	if (m == m_noiseMode)
++		return;
++	m_noiseMode = m;
++	QSettings().setValue("Pro/noise", m);
++	Q_EMIT proChanged();
++}
++
++void HybrisCamera::setEdgeMode(int m)
++{
++	if (m == m_edgeMode)
++		return;
++	m_edgeMode = m;
++	QSettings().setValue("Pro/edge", m);
++	Q_EMIT proChanged();
+ }
+ 
+ void HybrisCamera::refreshCam2()
+@@ -116,6 +158,16 @@ void HybrisCamera::refreshCam2()
+ 		map["ois"] = info.ois != 0;
+ 		map["burst"] = info.burst != 0;
+ 		map["evStep"] = info.evStep;
++		map["manualPost"] = info.manualPost != 0;
++		QVariantList noise, edge;
++		for (int m = 0; m < 5; m++) {
++			if (info.noiseModes & (1 << m))
++				noise.append(m);
++			if (info.edgeModes & (1 << m))
++				edge.append(m);
++		}
++		map["noiseModes"] = noise;
++		map["edgeModes"] = edge;
+ 	}
+ 	m_cam2 = map;
+ 	Q_EMIT cam2Changed();
+@@ -216,6 +268,10 @@ Cam2Settings HybrisCamera::cam2Settings(bool pro) const
+ 	s.iso = pro ? m_manualIso : 0;
+ 	s.expNs = pro ? qint64(m_manualExposureUs) * 1000 : 0;
+ 	s.count = 1;
++	s.kelvin = pro ? m_kelvin : 0;
++	s.contrast = pro ? m_contrast : 0;
++	s.noise = pro ? m_noiseMode : -1;
++	s.edge = pro ? m_edgeMode : -1;
+ 	s.focus = pro && m_manualFocus >= 0 ? float(m_manualFocus) : -1.0f;
+ 	s.ois = pro && !m_ois ? 0 : -1;
+ 	s.awb = awbMode(p.value("whitebalance"));
+diff --git a/src/hybris-camera.h b/src/hybris-camera.h
+index 43c8c92..63a4b43 100644
+--- a/src/hybris-camera.h
++++ b/src/hybris-camera.h
+@@ -80,6 +80,11 @@ class HybrisCamera : public QQuickItem {
+ 	Q_PROPERTY(bool rawCapture READ rawCapture WRITE setRawCapture NOTIFY proChanged)
+ 	Q_PROPERTY(bool ois READ ois WRITE setOis NOTIFY proChanged)
+ 	Q_PROPERTY(int burstCount READ burstCount WRITE setBurstCount NOTIFY proChanged)
++	// manual post-processing of the PRO modes
++	Q_PROPERTY(int kelvin READ kelvin WRITE setKelvin NOTIFY proChanged) // 0: auto white balance
++	Q_PROPERTY(int contrast READ contrast WRITE setContrast NOTIFY proChanged) // -2..2
++	Q_PROPERTY(int noiseMode READ noiseMode WRITE setNoiseMode NOTIFY proChanged) // -1: default
++	Q_PROPERTY(int edgeMode READ edgeMode WRITE setEdgeMode NOTIFY proChanged) // -1: default
+ 	// a Camera2 shot is running (the preview is stopped meanwhile)
+ 	Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
+ 	// the PRO video mode is shown
+@@ -167,6 +172,26 @@ class HybrisCamera : public QQuickItem {
+ 	{
+ 		return m_proVideoActive;
+ 	}
++	int kelvin() const
++	{
++		return m_kelvin;
++	}
++	int contrast() const
++	{
++		return m_contrast;
++	}
++	int noiseMode() const
++	{
++		return m_noiseMode;
++	}
++	int edgeMode() const
++	{
++		return m_edgeMode;
++	}
++	void setKelvin(int k);
++	void setContrast(int c);
++	void setNoiseMode(int m);
++	void setEdgeMode(int m);
+ 	void setProVideoActive(bool active);
+ 	bool cam2Live() const
+ 	{
+@@ -416,6 +441,10 @@ class HybrisCamera : public QQuickItem {
+ 	int m_c2Region[4] = {};
+ 	bool m_c2Trigger = false;
+ 	bool m_proVideoActive = false;
++	int m_kelvin = 0;
++	int m_contrast = 0;
++	int m_noiseMode = -1;
++	int m_edgeMode = -1;
+ 	int m_liveIso = 0;
+ 	int m_liveExposureUs = 0;
+ 	class Cam2Recorder *m_c2Recorder = nullptr;
+diff --git a/src/qml/DefaultUI/DefaultUI.qml b/src/qml/DefaultUI/DefaultUI.qml
+index f9cd188..6652fee 100644
+--- a/src/qml/DefaultUI/DefaultUI.qml
++++ b/src/qml/DefaultUI/DefaultUI.qml
+@@ -75,6 +75,8 @@ Item {
+     // manual ISO, shutter and focus go through Camera2 (camera.cam2)
+     readonly property var c2: camera.cam2
+     readonly property bool manualPro: proLike && c2.available === true && c2.manualSensor === true
++    // Kelvin and contrast need the live session and MANUAL_POST_PROCESSING
++    readonly property bool postPro: proLike && camera.cam2Live && c2.manualPost === true
+     Binding {
+         target: camera
+         property: "proActive"
+@@ -537,7 +539,7 @@ Item {
+         Item {
+             width: parent.width
+             height: 52
+-            visible: root.proLike && ["ev", "wb", "focus", "iso", "shutter", "mf"].indexOf(root.openPicker) >= 0
++            visible: root.proLike && ["ev", "wb", "focus", "iso", "shutter", "mf", "contrast"].indexOf(root.openPicker) >= 0
+ 
+             // exposure compensation in EV
+             Rectangle {
+@@ -645,9 +647,65 @@ Item {
+                     color: "white"
+                 }
+             }
++            // white balance in Kelvin (live PRO session)
++            Rectangle {
++                visible: root.openPicker === "wb" && root.postPro
++                anchors.horizontalCenter: parent.horizontalCenter
++                width: parent.width - 24
++                height: 52
++                radius: 26
++                color: Qt.rgba(0.25, 0.25, 0.25, 0.8)
++                Chip {
++                    id: wbAuto
++                    anchors.left: parent.left
++                    anchors.leftMargin: 8
++                    anchors.verticalCenter: parent.verticalCenter
++                    text: qsTr("AUTO")
++                    selected: camera.kelvin === 0
++                    onClicked: camera.kelvin = 0
++                }
++                Slider {
++                    id: kelvinSlider
++                    anchors.left: wbAuto.right
++                    anchors.right: kelvinLabel.left
++                    anchors.leftMargin: 8
++                    anchors.rightMargin: 8
++                    anchors.verticalCenter: parent.verticalCenter
++                    from: 2300
++                    to: 10000
++                    stepSize: 100
++                    value: camera.kelvin > 0 ? camera.kelvin : 5500
++                    onMoved: camera.kelvin = Math.round(value)
++                }
++                Text {
++                    id: kelvinLabel
++                    anchors.right: parent.right
++                    anchors.rightMargin: 16
++                    anchors.verticalCenter: parent.verticalCenter
++                    width: 60
++                    horizontalAlignment: Text.AlignRight
++                    text: Math.round(kelvinSlider.value) + "K"
++                    color: camera.kelvin > 0 ? root.yellow : "white"
++                    font.pixelSize: 15
++                    font.bold: true
++                }
++            }
++            OptionPill {
++                anchors.horizontalCenter: parent.horizontalCenter
++                visible: root.openPicker === "contrast"
++                Repeater {
++                    model: [-2, -1, 0, 1, 2]
++                    delegate: Chip {
++                        required property int modelData
++                        text: modelData > 0 ? "+" + modelData : modelData
++                        selected: camera.contrast === modelData
++                        onClicked: camera.contrast = modelData
++                    }
++                }
++            }
+             OptionPill {
+                 anchors.horizontalCenter: parent.horizontalCenter
+-                visible: root.openPicker === "wb"
++                visible: root.openPicker === "wb" && !root.postPro
+                 Repeater {
+                     model: root.values("whitebalance-values")
+                     delegate: Chip {
+@@ -676,7 +734,8 @@ Item {
+         // pro strip: ISO, shutter and focus distance (Camera2) and the Camera1 controls
+         OptionPill {
+             anchors.horizontalCenter: parent.horizontalCenter
+-            visible: root.proLike && !camera.isRecording
++            // PRO video: the values change while recording too (live session)
++            visible: root.proLike && (!camera.isRecording || camera.cam2Live) && !settingsSheet.visible
+             Chip {
+                 visible: root.manualPro
+                 // automatic: what the sensor uses now, like One UI
+@@ -710,10 +769,17 @@ Item {
+             }
+             Chip {
+                 visible: root.values("whitebalance-values").length > 1
+-                text: "WB " + settingsSheet.label(root.p["whitebalance"] || "auto")
++                text: "WB " + (root.postPro && camera.kelvin > 0 ? camera.kelvin + "K"
++                                                                : settingsSheet.label(root.p["whitebalance"] || "auto"))
+                 selected: root.openPicker === "wb"
+                 onClicked: root.togglePicker("wb")
+             }
++            Chip {
++                visible: root.postPro
++                text: qsTr("Contrast") + " " + (camera.contrast > 0 ? "+" + camera.contrast : camera.contrast)
++                selected: root.openPicker === "contrast"
++                onClicked: root.togglePicker("contrast")
++            }
+             Chip {
+                 visible: root.values("focus-mode-values").length > 1
+                 text: qsTr("Focus") + " " + settingsSheet.label(root.p["focus-mode"] || "")
+diff --git a/src/qml/DefaultUI/ProPanel.qml b/src/qml/DefaultUI/ProPanel.qml
+index 864dccd..18107a6 100644
+--- a/src/qml/DefaultUI/ProPanel.qml
++++ b/src/qml/DefaultUI/ProPanel.qml
+@@ -213,6 +213,48 @@ Rectangle {
+                 onToggled: on => camera.faceDetection = on
+             }
+ 
++            // noise reduction and sharpening of the live PRO session
++            Repeater {
++                model: camera.cam2Live && (camera.proActive || camera.proVideoActive) ? [
++                    // names of the android.noiseReduction.mode / android.edge.mode values
++                    { title: qsTr("Noise reduction"), modes: camera.cam2.noiseModes || [], prop: "noiseMode",
++                      names: [qsTr("Off"), qsTr("Fast"), qsTr("High quality"), qsTr("Minimal"), qsTr("Zero shutter lag")] },
++                    { title: qsTr("Sharpening"), modes: camera.cam2.edgeModes || [], prop: "edgeMode",
++                      names: [qsTr("Off"), qsTr("Fast"), qsTr("High quality"), qsTr("Zero shutter lag")] }
++                ] : []
++                delegate: ColumnLayout {
++                    id: ppRow
++                    required property var modelData
++                    readonly property string prop: modelData.prop
++                    readonly property var names: modelData.names
++                    Layout.fillWidth: true
++                    Text {
++                        text: modelData.title
++                        color: "white"
++                        font.pixelSize: 15
++                        font.bold: true
++                    }
++                    Flow {
++                        Layout.fillWidth: true
++                        spacing: 6
++                        Chip {
++                            text: qsTr("Default")
++                            selected: camera[ppRow.prop] === -1
++                            onClicked: camera[ppRow.prop] = -1
++                        }
++                        Repeater {
++                            model: modelData.modes
++                            delegate: Chip {
++                                required property int modelData
++                                text: ppRow.names[modelData] || modelData
++                                selected: camera[ppRow.prop] === modelData
++                                onClicked: camera[ppRow.prop] = modelData
++                            }
++                        }
++                    }
++                }
++            }
++
+             Toggle {
+                 visible: camera.cam2.ois === true
+                 title: qsTr("Optical stabilization (PRO)")
+diff --git a/src/translations/droidian-camera_pl.ts b/src/translations/droidian-camera_pl.ts
+index 7b03a53..3339004 100644
+--- a/src/translations/droidian-camera_pl.ts
++++ b/src/translations/droidian-camera_pl.ts
+@@ -11,6 +11,10 @@
+         <source>AUTO</source>
+         <translation>AUTO</translation>
+     </message>
++    <message>
++        <source>Contrast</source>
++        <translation>Kontrast</translation>
++    </message>
+     <message>
+         <source>Focus</source>
+         <translation>Ostrość</translation>
+@@ -121,6 +125,10 @@
+         <source>Daylight</source>
+         <translation>Światło dzienne</translation>
+     </message>
++    <message>
++        <source>Default</source>
++        <translation>Domyślnie</translation>
++    </message>
+     <message>
+         <source>EDOF</source>
+         <translation>EDOF</translation>
+@@ -137,6 +145,10 @@
+         <source>Face detection</source>
+         <translation>Wykrywanie twarzy</translation>
+     </message>
++    <message>
++        <source>Fast</source>
++        <translation>Szybka</translation>
++    </message>
+     <message>
+         <source>Fixed</source>
+         <translation>Stała</translation>
+@@ -161,6 +173,10 @@
+         <source>Hardware</source>
+         <translation>Sprzętowy</translation>
+     </message>
++    <message>
++        <source>High quality</source>
++        <translation>Wysoka jakość</translation>
++    </message>
+     <message>
+         <source>Incandescent</source>
+         <translation>Żarówka</translation>
+@@ -185,6 +201,10 @@
+         <source>Macro</source>
+         <translation>Makro</translation>
+     </message>
++    <message>
++        <source>Minimal</source>
++        <translation>Minimalna</translation>
++    </message>
+     <message>
+         <source>Mono</source>
+         <translation>Mono</translation>
+@@ -193,6 +213,10 @@
+         <source>Negative</source>
+         <translation>Negatyw</translation>
+     </message>
++    <message>
++        <source>Noise reduction</source>
++        <translation>Redukcja szumu</translation>
++    </message>
+     <message>
+         <source>None</source>
+         <translation>Brak</translation>
+@@ -237,6 +261,10 @@
+         <source>Shade</source>
+         <translation>Cień</translation>
+     </message>
++    <message>
++        <source>Sharpening</source>
++        <translation>Wyostrzanie</translation>
++    </message>
+     <message>
+         <source>Software (FFmpeg)</source>
+         <translation>Programowy (FFmpeg)</translation>
+@@ -269,5 +297,9 @@
+         <source>Whiteboard</source>
+         <translation>Tablica biała</translation>
+     </message>
++    <message>
++        <source>Zero shutter lag</source>
++        <translation>Bez opóźnienia</translation>
++    </message>
+ </context>
+ </TS>
+-- 
+2.55.0
+
