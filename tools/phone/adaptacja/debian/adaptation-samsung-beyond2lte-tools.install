@@ -1,3 +1,4 @@
 tools/plasma-workspace/plasma_session usr/bin
 tools/plasma-workspace/ksplashqml usr/bin
 tools/wayfire/libpodglad.so usr/lib/aarch64-linux-gnu/wayfire
+tools/plasma-mobile-wf/wayfire.ini usr/share/plasma-mobile-wf

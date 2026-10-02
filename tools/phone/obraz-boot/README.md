@@ -18,3 +18,10 @@ second, recovery_dtbo i dtb, kazdy z dlugoscia) i sprawdzaja wzor na obrazie wej
 Dowod: `System.map` nowego jadra ma o 11 symboli mniej, wszystkie `s10*`; obraz
 `D:\S10Plus-droidian\boot-bez-debugu-2026-10-01.img` (sha256 `2d9f9f8c...`). Po wgraniu
 `grep -c s10probe_hit /proc/kallsyms` daje 0.
+
+Drugie wydanie, 02.10.2026: to samo plus galaz `droidian` 15ac51bc9 (`fimc-is2`: zaslepki
+`VIDIOC_ENUM_FMT` wezlow kamery zwracaly 0 dla kazdego indeksu, wiec FFmpeg `v4l2m2m` i kazdy
+program wyliczajacy kamery krecil sie w nieskonczonosc; teraz `-EINVAL`). Obraz
+`D:\S10Plus-droidian\boot-bez-debugu-fimc-2026-10-02.img` (sha256 `35bb8067...`), na telefonie
+`~/boot-bez-debugu-fimc.img`. Po wgraniu sprawdzic aparat (HAL producenta korzysta z tych wezlow)
+oraz `python3 v4l2-sonda.py`: wezly `exynos-fimc-is-*` bez formatow zamiast `64+`.

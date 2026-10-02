@@ -1,3 +1,22 @@
+adaptation-samsung-beyond2lte (4) unstable; urgency=medium
+
+  * Screen blank inhibition from applications: blokada-wygaszania owns
+    org.freedesktop.ScreenSaver (Firefox, Chromium, KDE apps), forwards each
+    inhibition to powerdevil and follows its ChangeScreenSettings inhibitions
+    (portal Inhibit); the state goes to wayfire through the new podglad IPC
+    methods idle-inhibit and idle-activity.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Fri, 02 Oct 2026 19:30:00 +0200
+
+adaptation-samsung-beyond2lte (3) unstable; urgency=medium
+
+  * podglad: a new window is stretched over the workarea until the client
+    draws at full size, so apps no longer show their remembered size first.
+  * Ship the S10+ wayfire.ini as a diversion of the plasma-mobile-wf default
+    (podglad plugin, task switcher gestures, scale 3, [grid] type = none).
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Fri, 02 Oct 2026 18:00:00 +0200
+
 adaptation-samsung-beyond2lte (2) unstable; urgency=medium
 
   * Package everything the port needs that was installed by hand:

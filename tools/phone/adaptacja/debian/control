@@ -24,12 +24,14 @@ Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
  Exynos 9820 (SM-G975F, beyond2lte): device node permissions from the
  Android ueventd files, the vibrator node, the PulseAudio droid card
  options the Samsung audio HAL needs, the boot splash theme matching the
- S-Boot logo, automatic screen brightness, CPU touch boost and the KDE
+ S-Boot logo, automatic screen brightness, screen blank inhibition for
+ applications (org.freedesktop.ScreenSaver and powerdevil inhibitions
+ passed to wayfire), CPU touch boost and the KDE
  portal unit limited to Wayland sessions.
 
 Package: adaptation-samsung-beyond2lte-tools
 Architecture: arm64
-Depends: wayfire, plasma-workspace (>= 4:6.7.4), plasma-workspace (<< 4:6.7.5),
+Depends: wayfire, plasma-mobile-wf, plasma-workspace (>= 4:6.7.4), plasma-workspace (<< 4:6.7.5),
          ${shlibs:Depends}, ${misc:Depends}
 Description: Droidian device tools for the Samsung Galaxy S10+ (Exynos)
  Prebuilt binaries for the Samsung Galaxy S10+ (beyond2lte):
@@ -37,4 +39,6 @@ Description: Droidian device tools for the Samsung Galaxy S10+ (Exynos)
     Droidian KDE_NO_KWIN patches (diverted over the Debian ones), so the
     Plasma session runs on the wayfire compositor,
   - the podglad wayfire plugin: window thumbnails for the task switcher,
-    maximized windows kept at full size, volume keys for the camera.
+    maximized windows kept at full size, volume keys for the camera,
+    screen blank inhibition,
+  - the S10+ wayfire.ini, diverted over the plasma-mobile-wf default.

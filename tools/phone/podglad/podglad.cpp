@@ -14,15 +14,24 @@
 // after it maps, and the client's first commit at its own default size can
 // land after that and win: the toplevel stays tiled on all edges but at
 // e.g. 360x720 (kclock) instead of the 480x946 workarea, in about two of
-// three launches of Qt apps.  Such a window gets the tile request again.
+// three launches of Qt apps.  Such a window gets the tile request again, and
+// until the client redraws at the workarea size its frame is stretched over it.
 //
 // IPC: podglad/volume-keys {"app-id": "...", "enabled": true|false}.  While a
 // window of a registered app is active, the volume keys do not reach the
 // compositor at all (no amixer bindings, no client).  The camera reads them
 // from the evdev device as its shutter.  A registration ends with the client's
 // connection.
+//
+// IPC: podglad/idle-inhibit {"enabled": true|false} holds a wf::idle_inhibitor_t
+// for the calling client, so the screen does not blank (wayfire idle plugin)
+// while a D-Bus screensaver inhibition is active; the bridge for
+// org.freedesktop.ScreenSaver and powerdevil sits in the adaptation package.
+// The hold ends with the client's connection.  podglad/idle-activity resets
+// the idle timers, as if the user touched the screen.
 
 #include <wayfire/core.hpp>
+#include <wayfire/idle.hpp>
 #include <wayfire/nonstd/wlroots-full.hpp>
 #include <wayfire/opengl.hpp>
 #include <wayfire/seat.hpp>
@@ -43,6 +52,7 @@
 
 #include <cstdio>
 #include <map>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -60,11 +70,16 @@ class wayfire_podglad : public wf::plugin_interface_t
     // app-id -> IPC client that asked for the volume keys
     std::map<std::string, wf::ipc::client_interface_t*> volume_key_apps;
 
+    // IPC client -> its idle inhibition
+    std::map<wf::ipc::client_interface_t*, std::unique_ptr<wf::idle_inhibitor_t>> idle_holds;
+
   public:
     void init() override
     {
         ipc_repo->register_method("podglad/capture", on_capture);
         ipc_repo->register_method("podglad/volume-keys", on_volume_keys);
+        ipc_repo->register_method("podglad/idle-inhibit", on_idle_inhibit);
+        ipc_repo->register_method("podglad/idle-activity", on_idle_activity);
         ipc_repo->connect(&on_client_disconnected);
         wf::get_core().connect(&on_mapped);
         wf::get_core().connect(&on_geometry);
@@ -76,6 +91,9 @@ class wayfire_podglad : public wf::plugin_interface_t
     {
         ipc_repo->unregister_method("podglad/capture");
         ipc_repo->unregister_method("podglad/volume-keys");
+        ipc_repo->unregister_method("podglad/idle-inhibit");
+        ipc_repo->unregister_method("podglad/idle-activity");
+        idle_holds.clear();
         on_client_disconnected.disconnect();
         on_mapped.disconnect();
         on_geometry.disconnect();
@@ -109,9 +127,35 @@ class wayfire_podglad : public wf::plugin_interface_t
         return wf::ipc::json_ok();
     };
 
+    wf::ipc::method_callback_full on_idle_inhibit =
+        [=] (nlohmann::json data, wf::ipc::client_interface_t *client)
+    {
+        WFJSON_EXPECT_FIELD(data, "enabled", boolean);
+        if (data["enabled"])
+        {
+            if (!idle_holds.count(client))
+            {
+                idle_holds[client] = std::make_unique<wf::idle_inhibitor_t>();
+            }
+        } else
+        {
+            idle_holds.erase(client);
+        }
+
+        return wf::ipc::json_ok();
+    };
+
+    wf::ipc::method_callback on_idle_activity = [=] (nlohmann::json)
+    {
+        wlr_idle_notifier_v1_notify_activity(wf::get_core().protocols.idle_notifier,
+            wf::get_core().get_current_seat());
+        return wf::ipc::json_ok();
+    };
+
     wf::signal::connection_t<wf::ipc::client_disconnected_signal> on_client_disconnected =
         [=] (wf::ipc::client_disconnected_signal *ev)
     {
+        idle_holds.erase(ev->client);
         for (auto it = volume_key_apps.begin(); it != volume_key_apps.end();)
         {
             it = (it->second == ev->client) ? volume_key_apps.erase(it) : std::next(it);

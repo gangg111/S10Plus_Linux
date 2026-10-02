@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Blokada wygaszania
+Comment=Blokady wygaszania ekranu od aplikacji (org.freedesktop.ScreenSaver, powerdevil) dla wayfire
+Exec=/usr/bin/python3 /usr/lib/s10plus/blokada-wygaszania.py
+NoDisplay=true
+X-KDE-autostart-phase=1

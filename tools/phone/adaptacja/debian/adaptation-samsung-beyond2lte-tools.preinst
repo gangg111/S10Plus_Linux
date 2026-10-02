@@ -2,13 +2,16 @@
 # plasma_session and ksplashqml of plasma-workspace are replaced by builds with
 # the Droidian KDE_NO_KWIN patches.  The first phone had local diversions made
 # by hand (the Debian binaries moved to *.distrib); they become diversions of
-# this package without moving any file again.
+# this package without moving any file again.  The default wayfire.ini of
+# plasma-mobile-wf (copied to ~/.config on the first session start) is
+# replaced by the S10+ one: podglad plugin, task switcher gestures, scale 3,
+# no grid crossfade.
 set -e
 
 PKG=adaptation-samsung-beyond2lte-tools
 
 if [ "$1" = install ] || [ "$1" = upgrade ]; then
-	for f in /usr/bin/plasma_session /usr/bin/ksplashqml; do
+	for f in /usr/bin/plasma_session /usr/bin/ksplashqml /usr/share/plasma-mobile-wf/wayfire.ini; do
 		owner=$(dpkg-divert --listpackage "$f")
 		if [ "$owner" = "$PKG" ]; then
 			continue
