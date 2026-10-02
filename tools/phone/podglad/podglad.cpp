@@ -32,6 +32,7 @@
 #include <wayfire/toplevel-view.hpp>
 #include <wayfire/util.hpp>
 #include <wayfire/view.hpp>
+#include <wayfire/view-transform.hpp>
 #include <wayfire/window-manager.hpp>
 #include <wayfire/workarea.hpp>
 #include <wayfire/plugins/common/shared-core-data.hpp>
@@ -67,6 +68,7 @@ class wayfire_podglad : public wf::plugin_interface_t
         ipc_repo->connect(&on_client_disconnected);
         wf::get_core().connect(&on_mapped);
         wf::get_core().connect(&on_geometry);
+        wf::get_core().connect(&on_unmapped);
         wf::get_core().connect(&on_key);
     }
 
@@ -79,6 +81,15 @@ class wayfire_podglad : public wf::plugin_interface_t
         on_geometry.disconnect();
         on_key.disconnect();
         idle_retile.disconnect();
+        on_unmapped.disconnect();
+        watches.clear();
+        for (auto id : fitted)
+        {
+            if (auto v = wf::ipc::find_view_by_id(id))
+            {
+                v->get_transformed_node()->rem_transformer(FIT);
+            }
+        }
     }
 
     wf::ipc::method_callback_full on_volume_keys =
@@ -138,22 +149,160 @@ class wayfire_podglad : public wf::plugin_interface_t
 
     std::set<uint32_t> swallowed;
 
+    // Many Kirigami apps commit their remembered size once after being
+    // maximized. Until the client redraws at the workarea size, the committed
+    // frame is stretched over the workarea, so that size never shows up as a
+    // small window jumping to fullscreen.
+    static constexpr const char *FIT = "podglad-dopasuj";
+    std::set<uint32_t> fitted;
+
+    static bool is_plain_toplevel(wayfire_toplevel_view view)
+    {
+        return view && view->is_mapped() && !view->parent &&
+               (view->role == wf::VIEW_ROLE_TOPLEVEL) && view->get_output();
+    }
+
+    void unfit(wayfire_view view)
+    {
+        if (fitted.erase(view->get_id()))
+        {
+            view->get_transformed_node()->rem_transformer(FIT);
+            view->damage();
+        }
+    }
+
+    // The toplevel geometry lags behind the buffers the client really commits
+    // (kclock draws 360x720 while the geometry already says 480x946), so the
+    // fit follows the surface size, checked on every commit for a while
+    // after the view maps.
+    static constexpr uint32_t WATCH_MS = 2000;
+    struct commit_watch
+    {
+        wf::wl_listener_wrapper on_commit;
+        wf::wl_timer<false> expire;
+    };
+    std::map<uint32_t, std::unique_ptr<commit_watch>> watches;
+
+    void watch_commits(wayfire_toplevel_view view)
+    {
+        auto surface = view->get_wlr_surface();
+        if (!surface)
+        {
+            return;
+        }
+
+        const uint32_t id = view->get_id();
+        auto& w = watches[id];
+        w = std::make_unique<commit_watch>();
+        w->on_commit.set_callback([=] (void*)
+        {
+            update_fit(wf::toplevel_cast(wf::ipc::find_view_by_id(id)));
+        });
+        w->on_commit.connect(&surface->events.commit);
+        // the entry itself goes on unmap: a timer must not free itself
+        // from its own callback
+        w->expire.set_timeout(WATCH_MS, [=] ()
+        {
+            auto it = watches.find(id);
+            if (it != watches.end())
+            {
+                it->second->on_commit.disconnect();
+            }
+
+            if (auto v = wf::ipc::find_view_by_id(id))
+            {
+                unfit(v);
+            }
+        });
+    }
+
+    void update_fit(wayfire_toplevel_view view)
+    {
+        if (!is_plain_toplevel(view))
+        {
+            return;
+        }
+
+        auto surface = view->get_wlr_surface();
+        if (!surface)
+        {
+            return;
+        }
+
+        const auto& pending = view->toplevel()->pending();
+        const auto geom = view->toplevel()->current().geometry;
+        const wf::geometry_t cur = {geom.x, geom.y,
+            surface->current.width, surface->current.height};
+        const auto wa = view->get_output()->workarea->get_workarea();
+        const auto it  = retries.find(view->get_id());
+        const bool given_up = (it != retries.end()) && (it->second > MAX_RETRIES);
+        if ((pending.tiled_edges != wf::TILED_EDGES_ALL) || pending.fullscreen ||
+            (cur == wa) || (cur.width <= 0) || (cur.height <= 0) || given_up)
+        {
+            unfit(view);
+            return;
+        }
+
+        auto node = view->get_transformed_node();
+        auto tr   = node->get_transformer<wf::scene::view_2d_transformer_t>(FIT);
+        if (!tr)
+        {
+            tr = std::make_shared<wf::scene::view_2d_transformer_t>(view);
+            // below the open/close animations, so they animate the fitted frame
+            node->add_transformer(tr, wf::TRANSFORMER_HIGHLEVEL - 1, FIT);
+            fitted.insert(view->get_id());
+        }
+
+        // The surface is not always where the toplevel geometry says, and the
+        // 2D transformer pivots on the centre of that geometry, not on the
+        // surface: kclock draws 360x720 at the corner of a 480x946 geometry.
+        const auto bb = tr->get_children_bounding_box();
+        if ((bb.width <= 0) || (bb.height <= 0))
+        {
+            unfit(view);
+            return;
+        }
+
+        const auto g = view->get_geometry();
+        const float px = g.x + g.width / 2.0f;
+        const float py = g.y + g.height / 2.0f;
+        tr->scale_x = (float)wa.width / bb.width;
+        tr->scale_y = (float)wa.height / bb.height;
+        tr->translation_x = wa.x - px - tr->scale_x * (bb.x - px);
+        tr->translation_y = wa.y - py - tr->scale_y * (bb.y - py);
+        view->damage();
+    }
+
     wf::signal::connection_t<wf::view_mapped_signal> on_mapped =
         [=] (wf::view_mapped_signal *ev)
     {
-        check_maximized(wf::toplevel_cast(ev->view));
+        auto view = wf::toplevel_cast(ev->view);
+        check_maximized(view);
+        if (is_plain_toplevel(view))
+        {
+            watch_commits(view);
+        }
+
+        update_fit(view);
+    };
+
+    wf::signal::connection_t<wf::view_unmapped_signal> on_unmapped =
+        [=] (wf::view_unmapped_signal *ev)
+    {
+        watches.erase(ev->view->get_id());
+        fitted.erase(ev->view->get_id());
     };
 
     wf::signal::connection_t<wf::view_geometry_changed_signal> on_geometry =
         [=] (wf::view_geometry_changed_signal *ev)
     {
         check_maximized(ev->view);
+        update_fit(ev->view);
     };
 
     void check_maximized(wayfire_toplevel_view view)
     {
-        if (!view || !view->is_mapped() || view->parent ||
-            (view->role != wf::VIEW_ROLE_TOPLEVEL) || !view->get_output())
+        if (!is_plain_toplevel(view))
         {
             return;
         }
