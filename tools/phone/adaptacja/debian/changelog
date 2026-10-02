@@ -1,3 +1,14 @@
+adaptation-samsung-beyond2lte (5) unstable; urgency=medium
+
+  * Sound: the Samsung audio HAL is 32-bit only, so the 64-bit pulseaudio
+    loaded the AOSP stub audio.primary.default (silence in, nothing out).
+    Keep the vendor HIDL audio service enabled (droid-system-overlay
+    init.disabled.rc) and bind audio.hidl_compat over the stub at
+    android-mount, only when ABOX got calliope_sram.bin at boot (needs the
+    boot image with the firmware in the initramfs; otherwise the stub stays).
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Fri, 02 Oct 2026 21:30:00 +0200
+
 adaptation-samsung-beyond2lte (4) unstable; urgency=medium
 
   * Screen blank inhibition from applications: blokada-wygaszania owns

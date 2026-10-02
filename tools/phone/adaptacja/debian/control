@@ -26,7 +26,8 @@ Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
  options the Samsung audio HAL needs, the boot splash theme matching the
  S-Boot logo, automatic screen brightness, screen blank inhibition for
  applications (org.freedesktop.ScreenSaver and powerdevil inhibitions
- passed to wayfire), CPU touch boost and the KDE
+ passed to wayfire), sound through the vendor HIDL audio HAL, CPU touch
+ boost and the KDE
  portal unit limited to Wayland sessions.
 
 Package: adaptation-samsung-beyond2lte-tools

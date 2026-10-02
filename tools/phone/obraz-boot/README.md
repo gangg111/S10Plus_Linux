@@ -25,3 +25,11 @@ program wyliczajacy kamery krecil sie w nieskonczonosc; teraz `-EINVAL`). Obraz
 `D:\S10Plus-droidian\boot-bez-debugu-fimc-2026-10-02.img` (sha256 `35bb8067...`), na telefonie
 `~/boot-bez-debugu-fimc.img`. Po wgraniu sprawdzic aparat (HAL producenta korzysta z tych wezlow)
 oraz `python3 v4l2-sonda.py`: wezly `exynos-fimc-is-*` bez formatow zamiast `64+`.
+
+Trzecie wydanie, 02.10.2026 (zastepuje drugie): do initramfs doszly `lib/firmware/calliope_sram.bin`
+i `calliope_sram_2.bin` z `/vendor/firmware` (`firmware-do-initramfs.py`). ABOX prosi o nie w 16,5 s,
+zanim `/vendor` jest zamontowany (18,3 s), a pod Droidianem nikt nie obsluguje zapasowego user
+helpera; bez nich kazde wybudzenie ABOX wisi i dzwiek przez HAL producenta nie ruszy. Obraz
+`D:\S10Plus-droidian\boot-fimc-abox-2026-10-02.img` (sha256 `ba2cba0d...`), na telefonie
+`~/boot-fimc-abox.img`. Po wgraniu: w dmesg brak `firmware load for calliope_sram.bin failed`,
+`pactl list sources` i nagranie z `source.primary-in` z probkami roznymi od zera.
