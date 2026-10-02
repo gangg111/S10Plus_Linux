@@ -1,3 +1,10 @@
+adaptation-samsung-beyond2lte (6) unstable; urgency=medium
+
+  * udev: no seat ACL on the secure MFC nodes; FFmpeg v4l2m2m picked the
+    secure decoder first and failed on REQBUFS.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Fri, 02 Oct 2026 22:30:00 +0200
+
 adaptation-samsung-beyond2lte (5) unstable; urgency=medium
 
   * Sound: the Samsung audio HAL is 32-bit only, so the 64-bit pulseaudio

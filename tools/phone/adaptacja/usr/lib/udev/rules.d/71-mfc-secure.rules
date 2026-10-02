@@ -1,0 +1,5 @@
+# The secure (DRM) MFC nodes take only protected buffers, but they come first among the
+# decoders, so FFmpeg's v4l2m2m picked /dev/video8 and failed on REQBUFS.  Keep them for
+# their owners (mediacodec/mediadrm) only: no seat ACL from 70-uaccess.rules.  Sorted after
+# 70-uaccess and before 73-seat-late, which turns the uaccess tag into the ACL.
+SUBSYSTEM=="video4linux", ATTR{name}=="*secure*", TAG-="uaccess"

@@ -33,3 +33,10 @@ helpera; bez nich kazde wybudzenie ABOX wisi i dzwiek przez HAL producenta nie r
 `D:\S10Plus-droidian\boot-fimc-abox-2026-10-02.img` (sha256 `ba2cba0d...`), na telefonie
 `~/boot-fimc-abox.img`. Po wgraniu: w dmesg brak `firmware load for calliope_sram.bin failed`,
 `pactl list sources` i nagranie z `source.primary-in` z probkami roznymi od zera.
+
+Czwarte wydanie, 02.10.2026 (zastepuje trzecie, DO WGRANIA): jadro z galezi `droidian` aa372ecc9
+(dekoder MFC przyjmuje bufory MMAP i zglasza `V4L2_CAP_VIDEO_M2M_MPLANE`, wiec dzialac moga
+FFmpeg `v4l2m2m` i GStreamer `v4l2h264dec`), initramfs jak w trzecim. Obraz
+`D:\S10Plus-droidian\boot-fimc-abox-mfc-2026-10-02.img` (sha256 `5915b04e...`), na telefonie
+`~/boot-fimc-abox-mfc.img`. Po restarcie `sh ~/test-po-wgraniu.sh` sprawdza jadro, firmware ABOX,
+dzwiek, wezly kamer i dekoder MFC; aparat sprawdza czlowiek.
