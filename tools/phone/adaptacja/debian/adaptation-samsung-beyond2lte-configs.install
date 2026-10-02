@@ -1,0 +1,7 @@
+usr/lib/droidian/device/*
+usr/lib/udev/rules.d/*
+usr/lib/s10plus/*
+usr/lib/systemd/user/*
+usr/share/plymouth/themes/debian-s10/*
+etc/pulse/*
+etc/xdg/autostart/*

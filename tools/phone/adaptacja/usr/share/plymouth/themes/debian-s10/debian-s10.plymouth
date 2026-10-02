@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Debian S10+
+Description=Ostatnia klatka S-Boota z logo Debiana
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/debian-s10
+ScriptFile=/usr/share/plymouth/themes/debian-s10/debian-s10.script

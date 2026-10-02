@@ -1,0 +1,40 @@
+Source: adaptation-samsung-beyond2lte
+Section: metapackages
+Priority: optional
+Maintainer: Artur Szafraniec <ganggg111@gmail.com>
+Build-Depends: debhelper-compat (= 13)
+Standards-Version: 4.6.2
+
+Package: adaptation-samsung-beyond2lte
+Architecture: all
+Depends: adaptation-samsung-beyond2lte-configs (= ${binary:Version}),
+         adaptation-samsung-beyond2lte-tools (>= ${binary:Version}),
+         linux-bootimage-samsung-beyond2lte,
+         linux-image-samsung-beyond2lte,
+         ${misc:Depends}
+Description: Droidian adaptation for the Samsung Galaxy S10+ (Exynos)
+ Pulls in the kernel, the device configuration and the device tools for
+ the Samsung Galaxy S10+ with the Exynos 9820 (SM-G975F, beyond2lte).
+
+Package: adaptation-samsung-beyond2lte-configs
+Architecture: all
+Depends: python3, python3-dbus, python3-gi, plymouth, ${misc:Depends}
+Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
+ Device specific configuration for the Samsung Galaxy S10+ with the
+ Exynos 9820 (SM-G975F, beyond2lte): device node permissions from the
+ Android ueventd files, the vibrator node, the PulseAudio droid card
+ options the Samsung audio HAL needs, the boot splash theme matching the
+ S-Boot logo, automatic screen brightness, CPU touch boost and the KDE
+ portal unit limited to Wayland sessions.
+
+Package: adaptation-samsung-beyond2lte-tools
+Architecture: arm64
+Depends: wayfire, plasma-workspace (>= 4:6.7.4), plasma-workspace (<< 4:6.7.5),
+         ${shlibs:Depends}, ${misc:Depends}
+Description: Droidian device tools for the Samsung Galaxy S10+ (Exynos)
+ Prebuilt binaries for the Samsung Galaxy S10+ (beyond2lte):
+  - plasma_session and ksplashqml from plasma-workspace 6.7.4 with the
+    Droidian KDE_NO_KWIN patches (diverted over the Debian ones), so the
+    Plasma session runs on the wayfire compositor,
+  - the podglad wayfire plugin: window thumbnails for the task switcher,
+    maximized windows kept at full size, volume keys for the camera.

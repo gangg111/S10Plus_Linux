@@ -1,0 +1,373 @@
+# Positions
+
+logo_h_alignment        = 0.5;
+logo_v_alignment        = 0.5;
+
+logo_fade_delay         = 0;
+logo_fade_duration      = 20;
+
+progress_h_alignment    = 0.5;
+progress_v_alignment    = 0.87;
+
+progress_fade_delay      = 20;
+progress_fade_duration   = 20;
+
+spinner_h_alignment     = 0.5;
+spinner_v_alignment     = 0.75;
+
+spinner_fade_delay      = 20;
+spinner_fade_duration   = 20;
+
+spinner_max_opacity     = 0.3;
+
+message_h_alignment     = 0.5;
+message_v_alignment     = 0.9;
+message_font_size       = 18; # In pixels
+
+
+
+#----------------------------------------- Ekran --------------------------------
+
+# Ten sam obraz, ktory S-Boot zostawia na panelu przed startem jadra (logo.jpg,
+# 1440x3040, rysowany od (0,0)); narysowany 1:1 w tym samym miejscu nie zmienia
+# ani jednego piksela logo przy przejsciu z S-Boota do plymouth.
+ekran.image = Image("ekran.png");
+if (ekran.image.GetWidth() != Window.GetWidth() || ekran.image.GetHeight() != Window.GetHeight())
+    ekran.image = ekran.image.Scale(Window.GetWidth(), Window.GetHeight());
+ekran.sprite = Sprite(ekran.image);
+ekran.sprite.SetPosition(0, 0, -10);
+ekran.sprite.SetOpacity(1);
+
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+
+#----------------------------------------- Dialogue --------------------------------
+
+status = "normal";
+
+fun dialog_setup()
+  {
+    local.box;
+    local.lock;
+    local.entry;
+
+    box.image = Image("box.png");
+    lock.image = Image("lock.png");
+    entry.image = Image("entry.png");
+
+    box.sprite = Sprite(box.image);
+    box.x = Window.GetWidth()  / 2 - box.image.GetWidth ()/2;
+    box.y = Window.GetHeight() / 2 - box.image.GetHeight()/2;
+    box.z = 10000;
+    box.sprite.SetPosition(box.x, box.y, box.z);
+
+    lock.sprite = Sprite(lock.image);
+    lock.x = box.x + box.image.GetWidth()/2 - (lock.image.GetWidth() + entry.image.GetWidth()) / 2;
+    lock.y = box.y + box.image.GetHeight()/2 - lock.image.GetHeight()/2;
+    lock.z = box.z + 1;
+    lock.sprite.SetPosition(lock.x, lock.y, lock.z);
+
+    entry.sprite = Sprite(entry.image);
+    entry.x = lock.x + lock.image.GetWidth();
+    entry.y = box.y + box.image.GetHeight()/2 - entry.image.GetHeight()/2;
+    entry.z = box.z + 1;
+    entry.sprite.SetPosition(entry.x, entry.y, entry.z);
+
+    global.dialog.box = box;
+    global.dialog.lock = lock;
+    global.dialog.entry = entry;
+    global.dialog.bullet_image = Image("bullet.png");
+    dialog_opacity (1);
+  }
+
+fun dialog_opacity(opacity)
+  {
+    dialog.box.sprite.SetOpacity (opacity);
+    dialog.lock.sprite.SetOpacity (opacity);
+    dialog.entry.sprite.SetOpacity (opacity);
+    for (index = 0; dialog.bullet[index]; index++)
+      {
+        dialog.bullet[index].sprite.SetOpacity(opacity);
+      }
+  }
+
+fun display_normal_callback ()
+  {
+    global.status = "normal";
+    if (global.dialog)
+      dialog_opacity (0);
+  }
+
+fun display_password_callback (prompt, bullets)
+  {
+    global.status = "password";
+    if (!global.dialog)
+	dialog_setup();
+    else
+	dialog_opacity(1);
+    for (index = 0; dialog.bullet[index] || index < bullets; index++)
+      {
+        if (!dialog.bullet[index])
+          {
+            dialog.bullet[index].sprite = Sprite(dialog.bullet_image);
+            dialog.bullet[index].x = dialog.entry.x + index * dialog.bullet_image.GetWidth();
+            dialog.bullet[index].y = dialog.entry.y + dialog.entry.image.GetHeight() / 2 - dialog.bullet_image.GetHeight() / 2;
+            dialog.bullet[index].z = dialog.entry.z + 1;
+            dialog.bullet[index].sprite.SetPosition(dialog.bullet[index].x, dialog.bullet[index].y, dialog.bullet[index].z);
+          }
+        if (index < bullets)
+          dialog.bullet[index].sprite.SetOpacity(1);
+        else
+          dialog.bullet[index].sprite.SetOpacity(0);
+      }
+  }
+
+Plymouth.SetDisplayNormalFunction(display_normal_callback);
+Plymouth.SetDisplayPasswordFunction(display_password_callback);
+
+#----------------------------------------- Progress Bar --------------------------------
+
+progress_box.image = Image("progress_box.png");
+progress_box.sprite = Sprite(progress_box.image);
+
+progress_box.x = Window.GetWidth()  * progress_h_alignment -    progress_box.image.GetWidth()  / 2;
+progress_box.y = Window.GetHeight() * progress_v_alignment -    progress_box.image.GetHeight() / 2;
+progress_box.sprite.SetPosition(progress_box.x, progress_box.y, 0);
+
+progress_bar.original_image = Image("progress_bar.png");
+progress_bar.sprite = Sprite();
+
+progress_bar.x = Window.GetWidth()  * progress_h_alignment -    progress_bar.original_image.GetWidth() / 2;
+progress_bar.y = Window.GetHeight() * progress_v_alignment -    progress_box.image.GetHeight() / 2 + (progress_box.image.GetHeight() - progress_bar.original_image.GetHeight()) / 2;
+progress_bar.sprite.SetPosition(progress_bar.x, progress_bar.y, 1);
+
+
+progress_time = 0;
+progress_opacity = 0;
+fun show_progress() {
+    if (progress_time < progress_fade_delay) {
+        progress_time ++;
+    }
+    else {
+        if (progress_opacity < 1) {
+            progress_opacity = progress_opacity + 1/progress_fade_duration;
+        }
+        progress_box.sprite.SetOpacity(progress_opacity);
+        progress_bar.sprite.SetOpacity(progress_opacity);
+    }
+}
+
+fun hide_progress() {
+    progress_time = 0;
+    progress_opacity = 0;
+
+    progress_box.sprite.SetOpacity(progress_opacity);
+    progress_bar.sprite.SetOpacity(progress_opacity);
+}
+
+
+fun system_update_callback (progress) {
+
+    progress_scale_x = progress_bar.original_image.GetWidth(progress_bar.original_image) * progress;
+
+    if (progress_bar.image.GetWidth () != Math.Int (progress_bar.original_image.GetWidth () * progress)) {
+            progress_bar.image = progress_bar.original_image.Scale(progress_scale_x, progress_bar.original_image.GetHeight());
+            progress_bar.sprite.SetImage (progress_bar.image);
+    }
+}
+
+# Requires Plymouth 0.9.5 or later
+#
+# Plymouth.SetSystemUpdateFunction(system_update_callback);
+
+
+#----------------------------------------- Boot --------------------------------
+
+# Default state
+#
+hide_progress();
+
+fun boot_callback (duration, progress) {
+
+    if (Plymouth.GetMode() == "boot") {
+        hide_progress();
+    }
+    else if (Plymouth.GetMode() == "shutdown") {
+        hide_progress();
+    }
+    else if (Plymouth.GetMode() == "updates") {
+        show_progress();
+    }
+}
+
+Plymouth.SetBootProgressFunction(boot_callback);
+
+#----------------------------------------- Message --------------------------------
+
+
+fun str_str(string, substring) {
+    start = 0;
+    while (String(string).CharAt (start)) {
+        walk = 0;
+        while (String(substring).CharAt (walk) == String(string).CharAt (start + walk) ) {
+            walk++;
+            if (!String(substring).CharAt (walk)) return start;
+        }
+        start++;
+    }
+
+    return NULL;
+}
+
+fun string_length (string) {
+    index = 0;
+    while (String(string).CharAt(index)) index++;
+    return index;
+}
+
+fun string_to_integer (string) {
+    int = -1;
+    for (i=0; i<=100; i++) {
+        if (i+"" == string) {
+            int = i;
+            break;
+        }
+    }
+    return int;
+}
+
+fun find_number (string) {
+    str_num = "";
+
+    index = 0;
+    while (String(string).CharAt(index)) {
+
+        char = String(string).CharAt(index);
+        int = -1;
+        for (i=0; i<=9; i++) {
+            if (i+"" == char) {
+                str_num = str_num + i;
+                break;
+            }
+        }
+        index++;
+    }
+    return string_to_integer(str_num);
+}
+
+fun split_in_two_lines (text) {
+    # get the length of the text and how many
+    # spaces are there (do not use string_length
+    # to avoid looping yet another time)
+    #
+    length = 0;
+    nb_spaces = 0;
+    while (String(text).CharAt(length)) {
+        if (String(text).CharAt(length) == " ") {
+            nb_spaces++;
+        }
+        length++;
+    }
+
+    # Passed the half of the string, replace the first space with a new line.
+    #
+    lines[0] = "";
+    lines[1] = "";
+
+    half = Math.Int(length / 2);
+    nb_new_lines = 0;
+    nb_found_spaces = 0;
+
+    index = 0;
+    while (String(text).CharAt(index)) {
+        char = String(text).CharAt(index);
+        if (char == " ") {
+            nb_found_spaces++;
+        }
+        if ((index > half || nb_found_spaces == nb_spaces) && nb_new_lines < 1 && char == " ") {
+            nb_new_lines++;
+        }
+        else {
+            lines[nb_new_lines] = lines[nb_new_lines] + char;
+        }
+
+        index++;
+    }
+
+    return lines;
+}
+
+fun get_text_image(text) {
+    text_image = Image.Text(text, 1, 1, 1);
+
+    # Scale to match font size.
+    #
+    scale_factor = message_font_size / text_image.GetHeight();
+    text_image = text_image.Scale(text_image.GetWidth() * scale_factor, text_image.GetHeight() * scale_factor);
+
+    return text_image;
+}
+
+first_line.sprite = Sprite();
+second_line.sprite = Sprite();
+
+fun show_text(text) {
+    first_line.image = get_text_image(text);
+
+
+    # If the text doesn't fit,
+    # we split it in 2 lines.
+    #
+    max_width = Window.GetWidth() - 40;
+    if (first_line.image.GetWidth() > max_width) {
+
+        # Insert a new line.
+        #
+        lines = split_in_two_lines(text);
+        first_line.image = get_text_image(lines[0]);
+
+        second_line.image = get_text_image(lines[1]);
+        second_line.sprite.SetImage(second_line.image);
+
+        second_line.sprite.SetX( Window.GetWidth() * message_h_alignment - second_line.image.GetWidth()  / 2);
+        second_line.sprite.SetY( Window.GetHeight() * message_v_alignment + first_line.image.GetHeight() );
+
+    } else {
+        second_line.sprite = Sprite();
+    }
+
+    first_line.sprite.SetImage(first_line.image);
+
+    first_line.sprite.SetX( Window.GetWidth() * message_h_alignment - first_line.image.GetWidth()  / 2);
+    first_line.sprite.SetY( Window.GetHeight() * message_v_alignment);
+}
+
+fun message_callback (text)
+{
+    #########################################################
+    ## HACK -   find updates progress within the message.
+    ##
+    ## TODO -   Use Plymouth.SetSystemUpdateFunction instead
+    ##          but it requires plymouth v0.9.5 or later.
+    ##
+    if (Plymouth.GetMode() == "updates") {
+        progress = find_number(text);
+        system_update_callback(progress/100);
+    }
+
+    # HACK - hide fsck message; no way to press Ctrl+C on a phone anyway
+    if (str_str(text, "fsckd-cancel-msg:") != 0) {
+        show_text(text);
+    }
+}
+
+Plymouth.SetMessageFunction(message_callback);
+
+
+#----------------------------------------- Quit --------------------------------
+
+fun quit_callback ()
+{
+}
+
+Plymouth.SetQuitFunction(quit_callback);

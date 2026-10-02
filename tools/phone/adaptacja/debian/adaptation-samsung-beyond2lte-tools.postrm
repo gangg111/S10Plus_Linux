@@ -1,0 +1,17 @@
+#!/bin/sh
+# Our binaries are gone: the Debian plasma_session and ksplashqml come back.
+set -e
+
+PKG=adaptation-samsung-beyond2lte-tools
+
+if [ "$1" = remove ] || [ "$1" = abort-install ] || [ "$1" = disappear ]; then
+	for f in /usr/bin/plasma_session /usr/bin/ksplashqml; do
+		if [ "$(dpkg-divert --listpackage "$f")" = "$PKG" ]; then
+			dpkg-divert --package "$PKG" --rename --remove "$f"
+		fi
+	done
+fi
+
+#DEBHELPER#
+
+exit 0

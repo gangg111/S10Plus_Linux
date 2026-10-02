@@ -1,0 +1,7 @@
+# Wibrator Galaxy S10+ pod Droidianem (timed_output, wlasciciel system:system 0644):
+# grupa system (1000, nalezy do niej uzytkownik droidian) dostaje zapis, zeby aplikacje
+# (np. aparat: wibracja przy spuscie) mogly wlaczac silnik bez roota.
+# Instalacja: sudo cp 70-wibrator.rules /etc/udev/rules.d/ && sudo udevadm trigger -s timed_output
+# Dowod: ls -l /sys/class/timed_output/vibrator/enable pokazuje -rw-rw-r--,
+# a "echo 40 > .../enable" jako droidian wlacza silnik bez bledu.
+ACTION=="add|change", SUBSYSTEM=="timed_output", KERNEL=="vibrator", RUN+="/bin/chmod 0664 /sys%p/enable"

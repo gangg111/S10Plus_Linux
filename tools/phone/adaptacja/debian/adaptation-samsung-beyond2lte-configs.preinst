@@ -1,0 +1,21 @@
+#!/bin/sh
+# Before the files of this package are unpacked: the same functions were
+# installed by hand on the first phone (version 1 did not carry them).  The
+# hand-made unit and autostart entry are removed here so dpkg can install the
+# packaged ones (an unowned /etc file that differs would stop on a conffile
+# prompt).
+set -e
+
+if [ "$1" = install ] || [ "$1" = upgrade ]; then
+	if [ -z "$2" ] || dpkg --compare-versions "$2" lt 2; then
+		if [ -f /etc/systemd/system/dotyk-boost.service ] && [ ! -L /etc/systemd/system/dotyk-boost.service ]; then
+			rm -f /etc/systemd/system/multi-user.target.wants/dotyk-boost.service
+			rm -f /etc/systemd/system/dotyk-boost.service
+		fi
+		rm -f /etc/xdg/autostart/autojasnosc.desktop
+	fi
+fi
+
+#DEBHELPER#
+
+exit 0

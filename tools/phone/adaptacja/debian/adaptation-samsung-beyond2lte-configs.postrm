@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = remove ] || [ "$1" = purge ]; then
+	# back to the theme of the distribution when ours goes away
+	if command -v plymouth-set-default-theme >/dev/null 2>&1 &&
+	   [ "$(plymouth-set-default-theme 2>/dev/null)" = debian-s10 ]; then
+		plymouth-set-default-theme droidian 2>/dev/null || true
+	fi
+fi
+
+#DEBHELPER#
+
+exit 0

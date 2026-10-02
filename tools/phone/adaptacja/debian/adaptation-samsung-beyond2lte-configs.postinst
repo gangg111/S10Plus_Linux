@@ -1,0 +1,33 @@
+#!/bin/sh
+set -e
+
+# copies of a packaged file left in a place that shadows or duplicates it
+drop_if_same() {
+	if [ -f "$2" ] && cmp -s "$1" "$2"; then
+		rm -f "$2"
+	fi
+}
+
+if [ "$1" = configure ]; then
+	# hand-installed copies from before version 2 (rules in /etc override
+	# the packaged ones in /usr/lib, so identical ones are dropped)
+	drop_if_same /usr/lib/udev/rules.d/70-beyond2lte.rules /etc/udev/rules.d/70-beyond2lte.rules
+	drop_if_same /usr/lib/udev/rules.d/70-wibrator.rules /etc/udev/rules.d/70-wibrator.rules
+	drop_if_same /usr/lib/s10plus/autojasnosc.py /usr/local/lib/autojasnosc/autojasnosc.py
+	drop_if_same /usr/lib/s10plus/dotyk-boost.py /usr/local/lib/dotyk-boost/dotyk-boost.py
+	rmdir /usr/local/lib/autojasnosc /usr/local/lib/dotyk-boost 2>/dev/null || true
+
+	if command -v udevadm >/dev/null 2>&1; then
+		udevadm control --reload-rules 2>/dev/null || true
+	fi
+
+	# boot splash: the frame S-Boot leaves on the panel, no jump at hand-over
+	if command -v plymouth-set-default-theme >/dev/null 2>&1 &&
+	   [ "$(plymouth-set-default-theme 2>/dev/null)" != debian-s10 ]; then
+		plymouth-set-default-theme debian-s10 || true
+	fi
+fi
+
+#DEBHELPER#
+
+exit 0

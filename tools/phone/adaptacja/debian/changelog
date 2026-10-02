@@ -1,0 +1,25 @@
+adaptation-samsung-beyond2lte (2) unstable; urgency=medium
+
+  * Package everything the port needs that was installed by hand:
+    - udev rules from the Android ueventd files (binder, ion, hwcomposer
+      nodes; without them there is no Plasma screen) and the vibrator rule,
+    - PulseAudio droid card options for the Samsung audio HAL (no
+      create_audio_patch; pulseaudio crashed at start without them),
+    - boot splash theme debian-s10, the same frame S-Boot leaves on the
+      panel, set as the default theme,
+    - automatic screen brightness and the CPU touch boost service,
+    - the KDE portal user unit only for Wayland sessions,
+    - new adaptation-samsung-beyond2lte-tools: plasma_session and
+      ksplashqml with the Droidian KDE_NO_KWIN patches (package diversion
+      replaces the earlier local one) and the podglad wayfire plugin.
+  * Files installed by hand before are taken over and the old copies
+    removed when they match the packaged ones.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Fri, 02 Oct 2026 01:00:00 +0200
+
+adaptation-samsung-beyond2lte (1) unstable; urgency=medium
+
+  * First adaptation for the Galaxy S10+ (beyond2lte): kernel dependency
+    and the preferred host name.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Mon, 28 Sep 2026 06:40:00 +0200

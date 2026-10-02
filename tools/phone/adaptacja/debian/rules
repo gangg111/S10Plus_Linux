@@ -1,0 +1,13 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+# The prebuilt binaries are shipped exactly as they were built and tested on
+# the phone (no stripping, no debug split), so their checksums stay comparable.
+override_dh_strip:
+override_dh_dwz:
+
+# debian/adaptation-samsung-beyond2lte-configs.dotyk-boost.service
+override_dh_installsystemd:
+	dh_installsystemd --name=dotyk-boost

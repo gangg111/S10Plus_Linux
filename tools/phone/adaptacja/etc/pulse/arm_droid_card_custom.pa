@@ -1,0 +1,3 @@
+# Galaxy S10+: the Samsung audio HAL has no create_audio_patch, route through
+# the legacy stream set_parameters (otherwise pulseaudio segfaults at start)
+load-module module-droid-card rate=48000 voice_virtual_stream=true use_legacy_stream_set_parameters=true

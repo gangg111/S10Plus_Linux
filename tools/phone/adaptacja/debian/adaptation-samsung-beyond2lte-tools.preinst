@@ -1,0 +1,30 @@
+#!/bin/sh
+# plasma_session and ksplashqml of plasma-workspace are replaced by builds with
+# the Droidian KDE_NO_KWIN patches.  The first phone had local diversions made
+# by hand (the Debian binaries moved to *.distrib); they become diversions of
+# this package without moving any file again.
+set -e
+
+PKG=adaptation-samsung-beyond2lte-tools
+
+if [ "$1" = install ] || [ "$1" = upgrade ]; then
+	for f in /usr/bin/plasma_session /usr/bin/ksplashqml; do
+		owner=$(dpkg-divert --listpackage "$f")
+		if [ "$owner" = "$PKG" ]; then
+			continue
+		elif [ "$owner" = LOCAL ]; then
+			# the Debian binary already sits in $f.distrib
+			dpkg-divert --local --no-rename --remove "$f"
+			dpkg-divert --package "$PKG" --divert "$f.distrib" --no-rename --add "$f"
+		elif [ -z "$owner" ]; then
+			dpkg-divert --package "$PKG" --divert "$f.distrib" --rename --add "$f"
+		else
+			echo "$f is diverted by $owner, not touching it" >&2
+			exit 1
+		fi
+	done
+fi
+
+#DEBHELPER#
+
+exit 0
