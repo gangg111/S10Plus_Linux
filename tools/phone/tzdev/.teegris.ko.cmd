@@ -1,0 +1,1 @@
+savedcmd_teegris.ko := aarch64-linux-gnu-ld -r -EL  -maarch64elf -z noexecstack --no-warn-rwx-segments --build-id=sha1 --force-group-allocation  -T /root/k7/scripts/module.lds -o teegris.ko teegris.o teegris.mod.o .module-common.o

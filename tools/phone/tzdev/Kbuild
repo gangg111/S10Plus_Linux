@@ -1,0 +1,28 @@
+# tzdev (sterownik TEEgris Samsunga, GPL) jako modul spoza drzewa dla jadra 7.2.
+# Zrodla z drivers/misc/tzdev jadra exynos9820 (Android 12), opcje jak
+# w exynos9820-beyond2lte_defconfig producenta; dodany TZLOG (dziennik
+# bezpiecznego swiata do dmesg).  Makefile.producent to oryginalny Makefile.
+obj-m := teegris.o
+
+teegris-y := teegris_modul.o sysdep.o tz_cdev.o tz_cred.o tz_iwio.o tz_iwservice.o tz_iwsock.o \
+	   tz_mem.o tz_platform.o tz_ree_time.o tz_uiwsock.o tzdev.o umem.o \
+	   tz_kthread_pool_smpboot.o tz_deploy_tzar.o tzirs.o tz_iw_boot_log.o \
+	   lib/circ_buf.o lib/circ_buf_packet.o \
+	   teec/context.o teec/misc.o teec/session.o teec/shared_memory.o
+
+# kod producenta nie deklaruje prototypow w naglowkach; to nie sa bledy
+ccflags-y += -Wno-missing-prototypes -Wno-missing-declarations
+
+ccflags-y += -I$(src)/include -I$(src) \
+	-DCONFIG_TZDEV=1 \
+	-DCONFIG_TZDEV_USE_ARM_CALLING_CONVENTION=1 \
+	-DCONFIG_TZDEV_IWI_EVENT=500 \
+	-DCONFIG_TZDEV_IWI_PANIC=501 \
+	-DCONFIG_TZDEV_SK_MULTICORE=1 \
+	-DCONFIG_TZDEV_KTHREADS_SMPBOOT=1 \
+	-DCONFIG_TZDEV_DEPLOY_TZAR=1 \
+	-DCONFIG_TZIRS=1 \
+	-DCONFIG_TZ_BOOT_LOG=1 \
+	-DCONFIG_TZ_BOOT_LOG_PG_CNT=1 \
+	-DCONFIG_TZDEV_MEMRESSZ=0x01000000 \
+	-D"_STR(s)=\#s" -D"TZAR_PLIK=_STR($(abspath $(src))/startup.tzar)"

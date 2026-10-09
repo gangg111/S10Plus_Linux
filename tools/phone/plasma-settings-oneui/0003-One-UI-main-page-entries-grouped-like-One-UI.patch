@@ -1,0 +1,447 @@
+From 4c17266fe0064f16dc1de08a2a9ef203b9b8ba56 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Fri, 2 Oct 2026 23:47:18 +0200
+Subject: [PATCH 3/3] One UI main page: entries grouped like One UI
+
+The main page lists the One UI entries instead of the KDE modules:
+Connections (Wi-Fi, Bluetooth, mobile network, hotspot, wired), Sounds and
+vibration, Notifications, Display, Battery, Wallpaper and style, Home screen,
+Security and privacy, Accounts, Apps, General management, About phone,
+grouped into cards in the One UI order (oneui.js groups). An entry with one
+module opens it, several open the entry page (OneUiGroupPage) with the
+modules in cards, one card per KDE category. KDE categories are expanded to
+their modules; entries without installed modules are hidden and unlisted
+modules go to "Inne ustawienia". Modules open by plugin id on top of the
+current page, so back returns to the entry page. Search is unchanged.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ src/CMakeLists.txt                |   1 +
+ src/qml/Main.qml                  |  28 +++++++
+ src/qml/OneUiDelegate.qml         |   7 +-
+ src/qml/OneUiGroupPage.qml        | 122 ++++++++++++++++++++++++++++++
+ src/qml/SidebarCategoriesPage.qml |  62 +++++++++++----
+ src/qml/oneui.js                  |  96 +++++++++++++++++++++++
+ 6 files changed, 300 insertions(+), 16 deletions(-)
+ create mode 100755 src/qml/OneUiGroupPage.qml
+
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 1dfa0d8b..136a9ab8 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -20,6 +20,7 @@ qt_target_qml_sources(plasma-settings
+         qml/Sidebar.qml
+         qml/SidebarCategoriesPage.qml
+         qml/SidebarDelegate.qml
++        qml/OneUiGroupPage.qml
+         qml/OneUiDelegate.qml
+         qml/oneui.js
+         qml/SidebarSubCategoryPage.qml
+diff --git a/src/qml/Main.qml b/src/qml/Main.qml
+index 66c0f608..64c514b4 100644
+--- a/src/qml/Main.qml
++++ b/src/qml/Main.qml
+@@ -137,6 +137,34 @@ Kirigami.AbstractApplicationWindow {
+         loadActiveKCMPage();
+     }
+ 
++    // One UI pages: open a module by its plugin id on top of whatever is shown
++    // (the main list or the page of a One UI entry), without popping that page
++    function openModuleById(id) {
++        SettingsApp.activeModule.path = id;
++        if (!SettingsApp.activeModule.valid) {
++            console.warn("One UI: no module", id);
++            return;
++        }
++        if (loadedKCMPage) {
++            loadedKCMPage.destroy();
++        }
++        loadedKCMPage = kcmContainer.createObject(
++            pageStack,
++            {"kcm": SettingsApp.activeModule.kcm, "internalPage": SettingsApp.activeModule.kcm.mainUi}
++        );
++        loadedKCMPage.loadKCM();
++        pageStack.push(loadedKCMPage);
++    }
++
++    function openOneUiGroup(group) {
++        pageStack.push(oneUiGroupPage.createObject(pageStack, {"group": group}));
++    }
++
++    Component {
++        id: oneUiGroupPage
++        OneUiGroupPage {}
++    }
++
+     function clearKCMPages() {
+         while (pageStack.depth > root.popKCMDepth()) {
+             if (pageStack.depth === 1) {
+diff --git a/src/qml/OneUiDelegate.qml b/src/qml/OneUiDelegate.qml
+index ca40a62a..35503f56 100755
+--- a/src/qml/OneUiDelegate.qml
++++ b/src/qml/OneUiDelegate.qml
+@@ -16,6 +16,9 @@ QQC2.ItemDelegate {
+ 
+     property string moduleId
+     property string moduleIcon
++    // explicit circle colour and glyph (One UI entries); otherwise from the module map
++    property string circleColour
++    property string glyphName
+     property string subtitle
+     property bool first: true
+     property bool showIcon: true
+@@ -65,13 +68,13 @@ QQC2.ItemDelegate {
+             width: OneUi.iconSize
+             height: OneUi.iconSize
+             radius: width / 2
+-            color: OneUi.colour(root.moduleId, root.moduleIcon)
++            color: root.circleColour.length > 0 ? root.circleColour : OneUi.colour(root.moduleId, root.moduleIcon)
+ 
+             Kirigami.Icon {
+                 anchors.centerIn: parent
+                 width: OneUi.glyphSize
+                 height: OneUi.glyphSize
+-                source: OneUi.glyph(root.moduleId, root.moduleIcon)
++                source: root.glyphName.length > 0 ? root.glyphName : OneUi.glyph(root.moduleId, root.moduleIcon)
+                 isMask: true
+                 color: "white"
+             }
+diff --git a/src/qml/OneUiGroupPage.qml b/src/qml/OneUiGroupPage.qml
+new file mode 100755
+index 00000000..6b58992a
+--- /dev/null
++++ b/src/qml/OneUiGroupPage.qml
+@@ -0,0 +1,122 @@
++// SPDX-FileCopyrightText: 2026 Artur <ganggg111@gmail.com>
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// Page of a One UI entry (e.g. Połączenia): compact header with a back arrow and
++// the title, the modules of the entry as text rows in rounded cards; modules taken
++// from one KDE category share a card.
++
++import QtQuick
++import QtQuick.Controls as QQC2
++import org.kde.kirigami as Kirigami
++
++import org.kde.plasma.settings
++import "oneui.js" as OneUi
++
++Kirigami.Page {
++    id: root
++
++    // {title, modules: [{id, name, icon, section}]} from OneUi.buildGroups
++    property var group
++    title: group ? group.title : ""
++    titleDelegate: null
++
++    leftPadding: 0
++    rightPadding: 0
++    topPadding: 0
++    bottomPadding: 0
++    clip: true
++
++    background: Rectangle {
++        color: OneUi.bg
++    }
++
++    ListModel {
++        id: modulesModel
++    }
++
++    Component.onCompleted: {
++        for (const m of group.modules) {
++            modulesModel.append({ kcmId: m.id, kcmName: m.name, kcmIcon: m.icon, section: m.section.length > 0 ? m.section : "-" });
++        }
++    }
++
++    ListView {
++        id: listView
++        anchors.fill: parent
++        model: modulesModel
++        reuseItems: false
++        currentIndex: -1
++        highlightFollowsCurrentItem: false
++        boundsBehavior: Flickable.StopAtBounds
++
++        header: Item {
++            width: listView.width
++            height: topBar.height + 12
++        }
++
++        section {
++            property: "section"
++            delegate: Item {
++                required property string section
++                width: ListView.view.width
++                height: OneUi.sectionGap
++            }
++        }
++
++        delegate: OneUiDelegate {
++            required property int index
++            // role names differ from the delegate's own properties (icon, moduleId)
++            required property string kcmId
++            required property string kcmName
++            required property string kcmIcon
++
++            width: ListView.view.width
++            text: kcmName
++            moduleId: kcmId
++            moduleIcon: kcmIcon
++            showIcon: false
++            first: ListView.previousSection !== ListView.section
++            last: ListView.nextSection !== ListView.section
++
++            onClicked: applicationWindow().openModuleById(kcmId)
++        }
++
++        footer: Item {
++            width: listView.width
++            height: 2 * OneUi.sectionGap
++        }
++    }
++
++    Rectangle {
++        id: topBar
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.top: parent.top
++        height: 56
++        color: OneUi.bg
++
++        QQC2.ToolButton {
++            id: backButton
++            anchors.left: parent.left
++            anchors.leftMargin: 6
++            anchors.verticalCenter: parent.verticalCenter
++            icon.name: "go-previous-symbolic"
++            icon.color: OneUi.text
++            Accessible.name: i18n("Navigate Back")
++            onClicked: applicationWindow().pageStack.pop()
++        }
++
++        QQC2.Label {
++            anchors.left: backButton.right
++            anchors.leftMargin: 4
++            anchors.right: parent.right
++            anchors.rightMargin: OneUi.cardMargin
++            anchors.verticalCenter: parent.verticalCenter
++            text: root.title
++            color: OneUi.text
++            font.pixelSize: 22
++            font.weight: Font.Bold
++            elide: Text.ElideRight
++        }
++    }
++}
+diff --git a/src/qml/SidebarCategoriesPage.qml b/src/qml/SidebarCategoriesPage.qml
+index 73824758..cbff9ae7 100644
+--- a/src/qml/SidebarCategoriesPage.qml
++++ b/src/qml/SidebarCategoriesPage.qml
+@@ -32,6 +32,37 @@ Kirigami.Page {
+ 
+     signal delegateClicked(index: var, pluginId: string, isCategory: bool)
+ 
++    // One UI entries (oneui.js groups) built from the modules installed here
++    property var oneUiGroups: []
++    function rebuildGroups() {
++        oneUiGroups = OneUi.buildGroups(SettingsApp.categoryModel);
++        groupsModel.clear();
++        for (let g = 0; g < oneUiGroups.length; g++) {
++            const e = oneUiGroups[g];
++            groupsModel.append({ title: e.title, colour: e.colour, glyph: e.glyph, card: "" + e.card, gi: g });
++        }
++    }
++    Component.onCompleted: rebuildGroups()
++    Connections {
++        target: SettingsApp.categoryModel
++        function onModelReset() { root.rebuildGroups(); }
++        function onRowsInserted() { root.rebuildGroups(); }
++        function onRowsRemoved() { root.rebuildGroups(); }
++    }
++    ListModel {
++        id: groupsModel
++    }
++
++    // one module: open it; several: the One UI page of the entry
++    function openGroup(gi) {
++        const e = oneUiGroups[gi];
++        if (e.modules.length === 1) {
++            applicationWindow().openModuleById(e.modules[0].id);
++        } else {
++            applicationWindow().openOneUiGroup(e);
++        }
++    }
++
+     background: Rectangle {
+         color: OneUi.bg
+     }
+@@ -70,7 +101,7 @@ Kirigami.Page {
+         cacheBuffer: 4000
+         currentIndex: -1
+         highlightFollowsCurrentItem: false
+-        model: root.searching ? SettingsApp.searchModel : SettingsApp.categoryModel
++        model: root.searching ? SettingsApp.searchModel : groupsModel
+ 
+         activeFocusOnTab: true
+         boundsBehavior: Flickable.StopAtBounds
+@@ -158,12 +189,13 @@ Kirigami.Page {
+                     }
+                 }
+ 
+-                onClicked: root.delegateClicked(usersIdx, "kcm_users", false)
++                onClicked: applicationWindow().openModuleById("kcm_users")
+             }
+         }
+ 
+         section {
+-            property: "categoryDisplayRole"
++            // One UI cards on the main page, KDE categories while searching
++            property: root.searching ? "categoryDisplayRole" : "card"
+             delegate: Item {
+                 required property string section
+                 width: ListView.view.width
+@@ -175,23 +207,25 @@ Kirigami.Page {
+             id: delegate
+ 
+             required property int index
+-            required property string pluginId
+-            required property string name
+-            required property string iconName
+-            required property bool isCategory
+-            required property bool isKCM
+-            property string categoryDisplayRole
++            required property var model
++            // One UI entry, or a module found by the search
++            readonly property bool isEntry: !root.searching
+ 
+             width: ListView.view.width
+-            text: name
+-            moduleId: pluginId
+-            moduleIcon: iconName
++            text: isEntry ? model.title : model.name
++            moduleId: isEntry ? "" : model.pluginId
++            moduleIcon: isEntry ? "" : model.iconName
++            circleColour: isEntry ? model.colour : ""
++            glyphName: isEntry ? model.glyph : ""
+             first: ListView.previousSection !== ListView.section
+             last: ListView.nextSection !== ListView.section
+ 
+-
+             onClicked: {
+-                root.delegateClicked(delegate.ListView.view.model.index(index, 0), pluginId, isCategory);
++                if (isEntry) {
++                    root.openGroup(model.gi);
++                } else {
++                    root.delegateClicked(delegate.ListView.view.model.index(index, 0), model.pluginId, model.isCategory);
++                }
+             }
+ 
+             Keys.onEnterPressed: clicked();
+diff --git a/src/qml/oneui.js b/src/qml/oneui.js
+index 229f0b12..71d27702 100755
+--- a/src/qml/oneui.js
++++ b/src/qml/oneui.js
+@@ -89,3 +89,99 @@ function glyph(pluginId, iconName) {
+     var e = entry(pluginId, iconName);
+     return e ? e[1] : iconName;
+ }
++
++// One UI main page: top level entries in the One UI order, grouped into cards.
++// A module is a plugin id; "@<icon>" means all the modules of the KDE category with
++// that icon (categories have no plugin id). Entries without any installed module are
++// hidden; modules not listed anywhere end up in "Inne ustawienia".
++var groups = [
++    { card: 1, title: "Połączenia", colour: blue, glyph: "network-wireless-symbolic",
++      modules: ["kcm_mobile_wifi", "kcm_bluetooth", "kcm_cellular_network", "kcm_mobile_hotspot", "kcm_mobile_wired"] },
++    { card: 1, title: "Podłączone urządzenia", colour: blue, glyph: "smartphone-symbolic",
++      modules: ["kcm_kdeconnect"] },
++    { card: 2, title: "Dźwięki i wibracja", colour: violet, glyph: "audio-volume-high",
++      modules: ["kcm_pulseaudio"] },
++    { card: 2, title: "Powiadomienia", colour: orange, glyph: "notifications",
++      modules: ["kcm_notifications"] },
++    { card: 3, title: "Wyświetlacz", colour: lime, glyph: "monitor-symbolic",
++      modules: ["@preferences-desktop-display", "kcm_nighttime", "kcm_animations", "@preferences-desktop-font"] },
++    { card: 3, title: "Bateria", colour: green, glyph: "battery-100",
++      modules: ["kcm_mobile_power"] },
++    { card: 4, title: "Tapeta i styl", colour: pink, glyph: "preferences-desktop-theme-global-symbolic",
++      modules: ["@preferences-desktop-theme-global"] },
++    { card: 4, title: "Ekran startowy", colour: blue, glyph: "go-home",
++      modules: ["kcm_mobileshell", "kcm_navigation"] },
++    { card: 5, title: "Bezpieczeństwo i prywatność", colour: violet, glyph: "security-high-symbolic",
++      modules: ["kcm_feedback"] },
++    { card: 6, title: "Konta", colour: blue, glyph: "user-symbolic",
++      modules: ["kcm_users"] },
++    { card: 7, title: "Aplikacje", colour: blue, glyph: "view-grid-symbolic",
++      modules: ["@preferences-desktop-default-applications", "kcm_autostart", "kcm_waydroidintegration"] },
++    { card: 8, title: "Zarządzanie ogólne", colour: slate, glyph: "adjustlevels",
++      modules: ["kcm_regionandlang", "kcm_mobile_time", "@preferences-desktop-keyboard", "kcm_mobile_onscreenkeyboard"] },
++    { card: 9, title: "Informacje o telefonie", colour: slate, glyph: "info-symbolic",
++      modules: ["kcm_mobile_info"] }
++]
++var otherGroup = { card: 9, title: "Inne ustawienia", colour: slate, glyph: "preferences-other", modules: [] }
++
++// Walks the settings model (top level rows, categories one level deep) and returns
++// { "<plugin id>": {id, name, icon}, "@<category icon>": {name, children: [...]} }.
++function collectModules(model) {
++    var found = {};
++    for (var r = 0; r < model.rowCount(); r++) {
++        var idx = model.index(r, 0);
++        var id = model.data(idx, Qt.UserRole + 2);
++        var name = model.data(idx, Qt.DisplayRole);
++        var icon = model.data(idx, Qt.DecorationRole);
++        if (model.data(idx, Qt.UserRole + 3)) {
++            var children = [];
++            for (var c = 0; c < model.rowCount(idx); c++) {
++                var cidx = model.index(c, 0, idx);
++                children.push({ id: model.data(cidx, Qt.UserRole + 2), name: model.data(cidx, Qt.DisplayRole),
++                                icon: model.data(cidx, Qt.DecorationRole) });
++            }
++            found["@" + icon] = { name: name, children: children };
++        } else if (id) {
++            found[id] = { id: id, name: name, icon: icon };
++        }
++    }
++    return found;
++}
++
++// The One UI entries with the modules installed here: [{card, title, colour, glyph,
++// modules: [{id, name, icon, section}]}]; section is the KDE category name for
++// modules taken from a category, so a group page can split them into cards.
++function buildGroups(model) {
++    var found = collectModules(model);
++    var used = {};
++    var result = [];
++    var all = groups.concat([otherGroup]);
++    for (var g = 0; g < all.length; g++) {
++        var mods = [];
++        if (all[g] === otherGroup) {
++            for (var key in found) {
++                if (used[key]) continue;
++                if (key[0] === "@") {
++                    found[key].children.forEach(function (m) { mods.push({ id: m.id, name: m.name, icon: m.icon, section: found[key].name }); });
++                } else {
++                    mods.push({ id: found[key].id, name: found[key].name, icon: found[key].icon, section: "" });
++                }
++            }
++        } else {
++            all[g].modules.forEach(function (key) {
++                var f = found[key];
++                if (!f) return;
++                used[key] = true;
++                if (key[0] === "@") {
++                    f.children.forEach(function (m) { mods.push({ id: m.id, name: m.name, icon: m.icon, section: f.name }); });
++                } else {
++                    mods.push({ id: f.id, name: f.name, icon: f.icon, section: "" });
++                }
++            });
++        }
++        if (mods.length > 0) {
++            result.push({ card: all[g].card, title: all[g].title, colour: all[g].colour, glyph: all[g].glyph, modules: mods });
++        }
++    }
++    return result;
++}
+-- 
+2.47.3
+

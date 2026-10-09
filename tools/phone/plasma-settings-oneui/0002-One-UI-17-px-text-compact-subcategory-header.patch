@@ -1,0 +1,110 @@
+From 6bdc5fc0664f23ce763c46009025926c51fdfed6 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Fri, 2 Oct 2026 22:46:06 +0200
+Subject: [PATCH 2/3] One UI: 17 px text, compact subcategory header
+
+One UI list text is 17 px: the application font is set to it, so the module
+pages (FormCard rows take their height from the font) match the One UI rows.
+Subcategory pages get the compact One UI header (back arrow and the title)
+instead of the large title, as the One UI subpages (Connections, Display).
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ src/main.cpp                       |  5 +++++
+ src/qml/SidebarSubCategoryPage.qml | 35 +++++-------------------------
+ 2 files changed, 11 insertions(+), 29 deletions(-)
+
+diff --git a/src/main.cpp b/src/main.cpp
+index 95efa1fd..ff43e2eb 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -30,6 +30,7 @@
+ #include <KColorScheme>
+ #include <KCrash>
+ #include <KSharedConfig>
++#include <QFont>
+ #include <QStandardPaths>
+ #include <KLocalizedQmlContext>
+ #include <KLocalizedString>
+@@ -55,6 +56,10 @@ int main(int argc, char **argv)
+         app.setProperty("KDE_COLOR_SCHEME_PATH", oneUiScheme);
+         app.setPalette(KColorScheme::createApplicationPalette(KSharedConfig::openConfig(oneUiScheme)));
+     }
++    // One UI list text is 17 px; module pages (FormCard) take their row height from it
++    QFont oneUiFont = app.font();
++    oneUiFont.setPixelSize(17);
++    app.setFont(oneUiFont);
+ 
+     // About data
+     KAboutData aboutData(u"plasma-settings"_s,
+diff --git a/src/qml/SidebarSubCategoryPage.qml b/src/qml/SidebarSubCategoryPage.qml
+index 9a377ae9..72c8dc56 100644
+--- a/src/qml/SidebarSubCategoryPage.qml
++++ b/src/qml/SidebarSubCategoryPage.qml
+@@ -5,8 +5,8 @@
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
+-// Subcategory list in the One UI style: large title with a back arrow, the
+-// modules in one rounded card, text rows without icons as in One UI subpages.
++// Subcategory list in the One UI style: compact header with a back arrow and
++// the title, the modules in one rounded card, text rows without icons.
+ 
+ import QtQuick
+ import QtQuick.Layouts
+@@ -65,21 +65,7 @@ Kirigami.Page {
+ 
+         header: Item {
+             width: listView.width
+-            height: Math.round(root.height * 0.30)
+-
+-            QQC2.Label {
+-                anchors.horizontalCenter: parent.horizontalCenter
+-                width: parent.width - 2 * OneUi.cardMargin - 40
+-                horizontalAlignment: Text.AlignHCenter
+-                y: Math.round(parent.height * 0.40 - height / 2)
+-                text: root.title
+-                color: OneUi.text
+-                font.pixelSize: 32
+-                font.weight: Font.DemiBold
+-                wrapMode: Text.WordWrap
+-                maximumLineCount: 2
+-                elide: Text.ElideRight
+-            }
++            height: topBar.height + 12
+         }
+ 
+         delegate: OneUiDelegate {
+@@ -122,15 +108,7 @@ Kirigami.Page {
+         anchors.right: parent.right
+         anchors.top: parent.top
+         height: 56
+-        color: "transparent"
+-        readonly property real fade: Math.max(0, Math.min(1,
+-                (listView.contentY - listView.originY - root.height * 0.18) / (root.height * 0.08)))
+-
+-        Rectangle {
+-            anchors.fill: parent
+-            color: OneUi.bg
+-            opacity: topBar.fade
+-        }
++        color: OneUi.bg
+ 
+         QQC2.ToolButton {
+             id: backButton
+@@ -151,10 +129,9 @@ Kirigami.Page {
+             anchors.verticalCenter: parent.verticalCenter
+             text: root.title
+             color: OneUi.text
+-            font.pixelSize: 21
+-            font.weight: Font.DemiBold
++            font.pixelSize: 22
++            font.weight: Font.Bold
+             elide: Text.ElideRight
+-            opacity: topBar.fade
+         }
+     }
+ }
+-- 
+2.47.3
+

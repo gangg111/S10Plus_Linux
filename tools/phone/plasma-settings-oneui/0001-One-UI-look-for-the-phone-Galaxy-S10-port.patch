@@ -1,0 +1,1018 @@
+From 7df2071efb28a829ad9416565507541f073d459f Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Fri, 2 Oct 2026 21:09:02 +0200
+Subject: [PATCH 1/3] One UI look for the phone (Galaxy S10+ port)
+
+Main list: large centred title that gives way to a small bar on scroll,
+account card (KUser) opening the users module, one rounded card per
+category on a black page, coloured circles with white Breeze glyphs mapped
+by module, separators inset to the label, floating search pill with the
+list fading out under it. Subcategory pages: large title with a back
+arrow, text rows in one card. Module pages: black header without a line.
+
+The application loads the One UI Dark colour scheme (color-schemes/
+OneUiDark.colors) for itself only, through KDE_COLOR_SCHEME_PATH and the
+palette, so the module pages get the black page and #171719 cards.
+
+Polish strings for "Search", "Clear", "User account".
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ CMakeLists.txt                       |   1 +
+ po/pl/mobile.plasmasettings.po       |  10 +
+ src/CMakeLists.txt                   |   3 +
+ src/main.cpp                         |  12 +
+ src/qml/OneUiDelegate.qml            | 104 ++++++++
+ src/qml/SidebarCategoriesPage.qml    | 352 ++++++++++++++++++++-------
+ src/qml/SidebarSubCategoryPage.qml   | 150 +++++++-----
+ src/qml/components/PageContainer.qml |   8 +
+ src/qml/components/PageHeader.qml    |   7 +
+ src/qml/oneui.js                     |  91 +++++++
+ 10 files changed, 597 insertions(+), 141 deletions(-)
+ create mode 100755 src/qml/OneUiDelegate.qml
+ create mode 100755 src/qml/oneui.js
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 46078213..b6afa9e2 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -52,6 +52,7 @@ find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS
+     Service
+     ItemViews
+     ItemModels
++    ColorScheme
+ )
+ 
+ ecm_set_disabled_deprecation_versions(QT 6.7.2  KF 6.5.0)
+diff --git a/po/pl/mobile.plasmasettings.po b/po/pl/mobile.plasmasettings.po
+index a63c2a7d..216a80d4 100644
+--- a/po/pl/mobile.plasmasettings.po
++++ b/po/pl/mobile.plasmasettings.po
+@@ -172,3 +172,13 @@ msgstr "O KDE"
+ #~| msgid "Copyright 2011-2015, Sebastian Kügler"
+ #~ msgid "Copyright 2011-2025"
+ #~ msgstr "Copyright 2011-2015, Sebastian Kügler"
++
++#. One UI look (S10+ port)
++msgid "Search"
++msgstr "Szukaj"
++
++msgid "Clear"
++msgstr "Wyczyść"
++
++msgid "User account"
++msgstr "Konto użytkownika"
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 23a039e0..1dfa0d8b 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -20,6 +20,8 @@ qt_target_qml_sources(plasma-settings
+         qml/Sidebar.qml
+         qml/SidebarCategoriesPage.qml
+         qml/SidebarDelegate.qml
++        qml/OneUiDelegate.qml
++        qml/oneui.js
+         qml/SidebarSubCategoryPage.qml
+         qml/Main.qml
+         qml/components/PageContainer.qml
+@@ -41,6 +43,7 @@ target_link_libraries(plasma-settings PRIVATE
+     KF6::Service
+     KF6::ItemViews
+     KF6::ItemModels
++    KF6::ColorScheme
+     KF6::I18nQml
+ )
+ 
+diff --git a/src/main.cpp b/src/main.cpp
+index eaddd397..95efa1fd 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -27,7 +27,10 @@
+ 
+ // Frameworks
+ #include <KAboutData>
++#include <KColorScheme>
+ #include <KCrash>
++#include <KSharedConfig>
++#include <QStandardPaths>
+ #include <KLocalizedQmlContext>
+ #include <KLocalizedString>
+ #include <KPluginMetaData>
+@@ -44,6 +47,15 @@ int main(int argc, char **argv)
+ 
+     KLocalizedString::setApplicationDomain("mobile.plasmasettings");
+ 
++    // One UI look: this application only gets the One UI Dark colour scheme
++    // (black page, #171719 cards); the Kirigami platform theme follows
++    // KDE_COLOR_SCHEME_PATH, like with KColorSchemeManager.
++    const QString oneUiScheme = QStandardPaths::locate(QStandardPaths::GenericDataLocation, u"color-schemes/OneUiDark.colors"_s);
++    if (!oneUiScheme.isEmpty()) {
++        app.setProperty("KDE_COLOR_SCHEME_PATH", oneUiScheme);
++        app.setPalette(KColorScheme::createApplicationPalette(KSharedConfig::openConfig(oneUiScheme)));
++    }
++
+     // About data
+     KAboutData aboutData(u"plasma-settings"_s,
+                          i18n("Settings"),
+diff --git a/src/qml/OneUiDelegate.qml b/src/qml/OneUiDelegate.qml
+new file mode 100755
+index 00000000..ca40a62a
+--- /dev/null
++++ b/src/qml/OneUiDelegate.qml
+@@ -0,0 +1,104 @@
++// SPDX-FileCopyrightText: 2026 Artur <ganggg111@gmail.com>
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// One row of a One UI style card: coloured circle with a white glyph, label,
++// separator inset to the label. The card is drawn by its rows: the first row
++// of a section rounds the top corners, the last one the bottom corners.
++
++import QtQuick
++import QtQuick.Controls as QQC2
++import org.kde.kirigami as Kirigami
++
++import "oneui.js" as OneUi
++
++QQC2.ItemDelegate {
++    id: root
++
++    property string moduleId
++    property string moduleIcon
++    property string subtitle
++    property bool first: true
++    property bool showIcon: true
++    // label start from the screen edge: after the circle, or where the circle would be
++    readonly property real textX: showIcon ? OneUi.textX : OneUi.iconX
++    property bool last: true
++
++    readonly property real cardWidth: Math.min(width - 2 * OneUi.cardMargin, OneUi.maxCardWidth)
++    readonly property real cardX: (width - cardWidth) / 2
++
++    implicitWidth: 300
++    implicitHeight: OneUi.rowHeight
++    padding: 0
++    leftInset: cardX
++    rightInset: cardX
++    topInset: 0
++    bottomInset: 0
++    hoverEnabled: false
++
++    Accessible.name: text
++
++    background: Rectangle {
++        color: root.down ? OneUi.cardPressed : OneUi.card
++        topLeftRadius: root.first ? OneUi.radius : 0
++        topRightRadius: root.first ? OneUi.radius : 0
++        bottomLeftRadius: root.last ? OneUi.radius : 0
++        bottomRightRadius: root.last ? OneUi.radius : 0
++
++        Rectangle {
++            visible: !root.last
++            height: 1
++            color: OneUi.separator
++            anchors.bottom: parent.bottom
++            anchors.left: parent.left
++            anchors.leftMargin: root.textX - OneUi.cardMargin
++            anchors.right: parent.right
++            anchors.rightMargin: OneUi.separatorEnd
++        }
++    }
++
++    contentItem: Item {
++        Rectangle {
++            id: circle
++            visible: root.showIcon
++            x: root.cardX + OneUi.iconX - OneUi.cardMargin
++            anchors.verticalCenter: parent.verticalCenter
++            width: OneUi.iconSize
++            height: OneUi.iconSize
++            radius: width / 2
++            color: OneUi.colour(root.moduleId, root.moduleIcon)
++
++            Kirigami.Icon {
++                anchors.centerIn: parent
++                width: OneUi.glyphSize
++                height: OneUi.glyphSize
++                source: OneUi.glyph(root.moduleId, root.moduleIcon)
++                isMask: true
++                color: "white"
++            }
++        }
++
++        Column {
++            x: root.cardX + root.textX - OneUi.cardMargin
++            width: root.cardWidth - x + root.cardX - OneUi.separatorEnd
++            anchors.verticalCenter: parent.verticalCenter
++            spacing: 2
++
++            QQC2.Label {
++                width: parent.width
++                text: root.text
++                color: OneUi.text
++                font.pixelSize: OneUi.fontSize
++                elide: Text.ElideRight
++            }
++
++            QQC2.Label {
++                width: parent.width
++                visible: text.length > 0
++                text: root.subtitle
++                color: OneUi.subtitle
++                font.pixelSize: OneUi.fontSize - 3
++                elide: Text.ElideRight
++            }
++        }
++    }
++}
+diff --git a/src/qml/SidebarCategoriesPage.qml b/src/qml/SidebarCategoriesPage.qml
+index c8a19acf..73824758 100644
+--- a/src/qml/SidebarCategoriesPage.qml
++++ b/src/qml/SidebarCategoriesPage.qml
+@@ -1,24 +1,29 @@
+ /*
+  * SPDX-FileCopyrightText: 2021-2025 Devin Lin <espidev@gmail.com>
++ * SPDX-FileCopyrightText: 2026 Artur <ganggg111@gmail.com>
+  *
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
++// Main list in the One UI style: large title that gives way to a small bar on
++// scroll, account card, one rounded card per category, floating search pill.
++
+ import QtQuick
+ import QtQuick.Layouts
+ import QtQuick.Controls as QQC2
+ import org.kde.kirigami as Kirigami
++import org.kde.coreaddons as KCoreAddons
++import org.kde.kirigamiaddons.components as Components
+ 
+ import org.kde.plasma.settings
++import "oneui.js" as OneUi
+ 
+-Kirigami.ScrollablePage {
++Kirigami.Page {
+     id: root
+     titleDelegate: null
+ 
+-    Kirigami.Theme.colorSet: Kirigami.Theme.View
+-    Kirigami.Theme.inherit: false
+-
+     property bool searchMode: false
++    readonly property bool searching: SettingsApp.filterString.length > 0
+ 
+     leftPadding: 0
+     rightPadding: 0
+@@ -27,74 +32,24 @@ Kirigami.ScrollablePage {
+ 
+     signal delegateClicked(index: var, pluginId: string, isCategory: bool)
+ 
+-    header: QQC2.ToolBar {
+-        Layout.fillWidth: true
+-        position: QQC2.ToolBar.Header
+-
+-        RowLayout {
+-            spacing: Kirigami.Units.smallSpacing
+-            anchors.fill: parent
+-
+-            Item {
+-                id: heightMetrics
+-                implicitHeight: applicationWindow().pageHeaderTextHeight
+-            }
+-
+-            Kirigami.SearchField {
+-                id: searchField
+-                Layout.fillWidth: true
+-                autoAccept: true
+-                placeholderText: i18n("Search…")
+-                onAccepted: SettingsApp.filterString = searchField.text
+-
+-                Kirigami.Theme.inherit: false
+-                Kirigami.Theme.colorSet: Kirigami.Theme.View
+-            }
+-
+-            QQC2.ToolButton {
+-                icon.name: 'application-menu'
+-
+-                Accessible.role: Accessible.ButtonMenu
+-                Accessible.name: i18n("Show menu")
+-                QQC2.ToolTip.text: Accessible.name
+-                QQC2.ToolTip.visible: hovered && !pressed
+-                QQC2.ToolTip.delay: Kirigami.Units.toolTipDelay
+-
+-                onClicked: {
+-                    if (!menu.visible) {
+-                        menu.open()
+-                    }
+-                }
+-
+-                QQC2.Menu {
+-                    id: menu
+-                    y: parent.height
+-
+-                    QQC2.MenuItem {
+-                        text: i18n("Show Modules for All Platforms")
+-                        icon.name: 'show-all-effects'
+-                        checkable: true
+-                        onTriggered: {
+-                            SettingsApp.showAllModules = checked;
+-                        }
++    background: Rectangle {
++        color: OneUi.bg
++    }
+ 
+-                        Binding on checked {
+-                            value: SettingsApp.showAllModules
+-                        }
+-                    }
+-                    QQC2.MenuItem {
+-                        text: i18n("About Plasma Settings")
+-                        icon.name: 'org.kde.mobile.plasmasettings'
+-                        onTriggered: applicationWindow().pageStack.push(Qt.createComponent("org.kde.kirigamiaddons.formcard", "AboutPage"))
+-                    }
+-                    QQC2.MenuItem {
+-                        text: i18n("About KDE")
+-                        icon.name: 'kde'
+-                        onTriggered: applicationWindow().pageStack.push(Qt.createComponent("org.kde.kirigamiaddons.formcard", "AboutKDEPage"))
+-                    }
+-                }
++    // index of the users module for the account card, invalid if there is none
++    function usersIndex() {
++        const m = SettingsApp.categoryModel;
++        for (let r = 0; r < m.rowCount(); r++) {
++            const idx = m.index(r, 0);
++            if (m.data(idx, Qt.UserRole + 2) === "kcm_users") {
++                return idx;
+             }
+         }
++        return null;
++    }
++
++    KCoreAddons.KUser {
++        id: user
+     }
+ 
+     // Bind active index of listview
+@@ -108,25 +63,115 @@ Kirigami.ScrollablePage {
+ 
+     ListView {
+         id: listView
+-        reuseItems: true
+-        model: (SettingsApp.filterString.length > 0) ? SettingsApp.searchModel : SettingsApp.categoryModel
++        anchors.fill: parent
++        // first/last row of a card come from the section attached properties;
++        // recycled delegates would keep the corners of their previous row
++        reuseItems: false
++        cacheBuffer: 4000
++        currentIndex: -1
++        highlightFollowsCurrentItem: false
++        model: root.searching ? SettingsApp.searchModel : SettingsApp.categoryModel
+ 
+         activeFocusOnTab: true
+         boundsBehavior: Flickable.StopAtBounds
+ 
++        // The large title is sized from the page height, which is still 0 when
++        // the header is created; the view then keeps the first row in place and
++        // the header grows above the top. Start at the top until the user scrolls.
++        property bool userMoved: false
++        onMovementStarted: userMoved = true
++        onOriginYChanged: if (!userMoved) positionViewAtBeginning()
++
+         Accessible.role: Accessible.List
+ 
++        header: Column {
++            width: listView.width
++
++            // large title, the space One UI leaves above the content
++            Item {
++                id: bigTitle
++                width: parent.width
++                height: root.searching ? topBar.height : Math.round(root.height * 0.30)
++
++                QQC2.Label {
++                    // One UI: the title sits in the upper third of the space above the cards
++                    anchors.horizontalCenter: parent.horizontalCenter
++                    y: Math.round(parent.height * 0.34 - height / 2)
++                    visible: !root.searching
++                    text: i18n("Settings")
++                    color: OneUi.text
++                    font.pixelSize: 36
++                    font.weight: Font.DemiBold
++                }
++            }
++
++            // account card
++            QQC2.ItemDelegate {
++                id: account
++                visible: !root.searching
++                implicitWidth: 300
++                width: parent.width
++                height: visible ? 99 + OneUi.sectionGap : 0
++                padding: 0
++                hoverEnabled: false
++                readonly property var usersIdx: root.usersIndex()
++                enabled: usersIdx !== null
++                readonly property real cardWidth: Math.min(width - 2 * OneUi.cardMargin, OneUi.maxCardWidth)
++                leftInset: (width - cardWidth) / 2
++                rightInset: (width - cardWidth) / 2
++                bottomInset: OneUi.sectionGap
++
++                background: Rectangle {
++                    color: account.down ? OneUi.cardPressed : OneUi.card
++                    radius: OneUi.radius
++                }
++
++                contentItem: Item {
++                    Column {
++                        x: account.leftInset + 22
++                        anchors.verticalCenter: parent.verticalCenter
++                        anchors.verticalCenterOffset: -OneUi.sectionGap / 2
++                        spacing: 4
++
++                        QQC2.Label {
++                            text: user.fullName.length > 0 ? user.fullName : user.loginName
++                            color: OneUi.text
++                            font.pixelSize: 19
++                            font.weight: Font.DemiBold
++                        }
++                        QQC2.Label {
++                            text: i18n("User account")
++                            color: OneUi.subtitle
++                            font.pixelSize: 15
++                        }
++                    }
++
++                    Components.Avatar {
++                        width: 66
++                        height: 66
++                        anchors.right: parent.right
++                        anchors.rightMargin: account.rightInset + 16
++                        anchors.verticalCenter: parent.verticalCenter
++                        anchors.verticalCenterOffset: -OneUi.sectionGap / 2
++                        source: user.faceIconUrl
++                        name: user.fullName.length > 0 ? user.fullName : user.loginName
++                    }
++                }
++
++                onClicked: root.delegateClicked(usersIdx, "kcm_users", false)
++            }
++        }
++
+         section {
+             property: "categoryDisplayRole"
+-            delegate: Kirigami.ListSectionHeader {
++            delegate: Item {
+                 required property string section
+-
+                 width: ListView.view.width
+-                label: section
++                height: OneUi.sectionGap
+             }
+         }
+ 
+-        delegate: SidebarDelegate {
++        delegate: OneUiDelegate {
+             id: delegate
+ 
+             required property int index
+@@ -137,12 +182,13 @@ Kirigami.ScrollablePage {
+             required property bool isKCM
+             property string categoryDisplayRole
+ 
++            width: ListView.view.width
+             text: name
+-            icon.name: iconName
+-
+-            highlighted: ListView.isCurrentItem
++            moduleId: pluginId
++            moduleIcon: iconName
++            first: ListView.previousSection !== ListView.section
++            last: ListView.nextSection !== ListView.section
+ 
+-            showArrow: isCategory;
+ 
+             onClicked: {
+                 root.delegateClicked(delegate.ListView.view.model.index(index, 0), pluginId, isCategory);
+@@ -150,17 +196,153 @@ Kirigami.ScrollablePage {
+ 
+             Keys.onEnterPressed: clicked();
+             Keys.onReturnPressed: clicked();
++        }
+ 
+-            Keys.onLeftPressed: {
+-                if (LayoutMirroring.enabled) {
+-                    clicked();
++        // room for the floating search pill
++        footer: Item {
++            width: listView.width
++            height: searchPill.height + 2 * OneUi.sectionGap
++        }
++    }
++
++    // small bar that takes over from the large title once it scrolls away
++    Rectangle {
++        id: topBar
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.top: parent.top
++        height: 56
++        readonly property real fade: root.searching ? 1
++                : Math.max(0, Math.min(1, (listView.contentY - listView.originY - root.height * 0.18) / (root.height * 0.08)))
++        opacity: 1
++
++        Rectangle {
++            anchors.fill: parent
++            color: OneUi.bg
++            opacity: topBar.fade
++        }
++        // transparent over the large title, solid once the list runs under it
++        color: "transparent"
++
++        QQC2.Label {
++            anchors.left: parent.left
++            anchors.leftMargin: OneUi.cardMargin + 12
++            anchors.verticalCenter: parent.verticalCenter
++            text: i18n("Settings")
++            color: OneUi.text
++            font.pixelSize: 21
++            font.weight: Font.DemiBold
++            opacity: topBar.fade
++        }
++
++        QQC2.ToolButton {
++            anchors.right: parent.right
++            anchors.rightMargin: 6
++            anchors.verticalCenter: parent.verticalCenter
++            icon.name: "overflow-menu"
++            icon.color: OneUi.text
++
++            Accessible.role: Accessible.ButtonMenu
++            Accessible.name: i18n("Show menu")
++
++            onClicked: {
++                if (!menu.visible) {
++                    menu.open()
+                 }
+             }
+-            Keys.onRightPressed: {
+-                if (!LayoutMirroring.enabled) {
+-                    clicked();
++
++            QQC2.Menu {
++                id: menu
++                y: parent.height
++
++                QQC2.MenuItem {
++                    text: i18n("Show Modules for All Platforms")
++                    icon.name: 'show-all-effects'
++                    checkable: true
++                    onTriggered: {
++                        SettingsApp.showAllModules = checked;
++                    }
++
++                    Binding on checked {
++                        value: SettingsApp.showAllModules
++                    }
++                }
++                QQC2.MenuItem {
++                    text: i18n("About Plasma Settings")
++                    icon.name: 'org.kde.mobile.plasmasettings'
++                    onTriggered: applicationWindow().pageStack.push(Qt.createComponent("org.kde.kirigamiaddons.formcard", "AboutPage"))
++                }
++                QQC2.MenuItem {
++                    text: i18n("About KDE")
++                    icon.name: 'kde'
++                    onTriggered: applicationWindow().pageStack.push(Qt.createComponent("org.kde.kirigamiaddons.formcard", "AboutKDEPage"))
+                 }
+             }
+         }
+     }
++
++    // the list fades out under the pill
++    Rectangle {
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.bottom: parent.bottom
++        height: searchPill.height + 2 * 14 + 24
++        gradient: Gradient {
++            GradientStop { position: 0.0; color: "transparent" }
++            GradientStop { position: 0.55; color: OneUi.bg }
++        }
++    }
++
++    // floating search pill; above the on-screen keyboard while typing
++    QQC2.TextField {
++        id: searchPill
++        width: Math.min(300, root.width - 2 * OneUi.cardMargin - 40)
++        height: 54
++        anchors.horizontalCenter: parent.horizontalCenter
++        anchors.bottom: parent.bottom
++        anchors.bottomMargin: 14 + (activeFocus && Qt.inputMethod.visible ? Qt.inputMethod.keyboardRectangle.height / Screen.devicePixelRatio : 0)
++
++        leftPadding: 56
++        rightPadding: text.length > 0 ? 48 : 20
++        verticalAlignment: TextInput.AlignVCenter
++        placeholderText: i18n("Search")
++        placeholderTextColor: OneUi.pillText
++        color: OneUi.text
++        font.pixelSize: 19
++        font.weight: Font.DemiBold
++
++        onTextChanged: SettingsApp.filterString = text
++        Keys.onEscapePressed: {
++            text = "";
++            focus = false;
++        }
++
++        background: Rectangle {
++            radius: height / 2
++            color: OneUi.pill
++            border.width: 1
++            border.color: "#2e2e31"
++        }
++
++        Kirigami.Icon {
++            x: 20
++            anchors.verticalCenter: parent.verticalCenter
++            width: 24
++            height: 24
++            source: "search"
++            isMask: true
++            color: OneUi.pillText
++        }
++
++        QQC2.ToolButton {
++            visible: searchPill.text.length > 0
++            anchors.right: parent.right
++            anchors.rightMargin: 6
++            anchors.verticalCenter: parent.verticalCenter
++            icon.name: "edit-clear"
++            icon.color: OneUi.pillText
++            Accessible.name: i18n("Clear")
++            onClicked: searchPill.text = ""
++        }
++    }
+ }
+diff --git a/src/qml/SidebarSubCategoryPage.qml b/src/qml/SidebarSubCategoryPage.qml
+index 35803312..9a377ae9 100644
+--- a/src/qml/SidebarSubCategoryPage.qml
++++ b/src/qml/SidebarSubCategoryPage.qml
+@@ -1,24 +1,26 @@
+ /*
+  * SPDX-FileCopyrightText: 2021-2025 Devin Lin <espidev@gmail.com>
++ * SPDX-FileCopyrightText: 2026 Artur <ganggg111@gmail.com>
+  *
+  * SPDX-License-Identifier: GPL-2.0-or-later
+  */
+ 
++// Subcategory list in the One UI style: large title with a back arrow, the
++// modules in one rounded card, text rows without icons as in One UI subpages.
++
+ import QtQuick
+ import QtQuick.Layouts
+ import QtQuick.Controls as QQC2
+ import org.kde.kirigami as Kirigami
+ 
+ import org.kde.plasma.settings
++import "oneui.js" as OneUi
+ 
+-Kirigami.ScrollablePage {
++Kirigami.Page {
+     id: root
+     title: SettingsApp.subCategoryModel.title
+     titleDelegate: null
+ 
+-    Kirigami.Theme.colorSet: Kirigami.Theme.View
+-    Kirigami.Theme.inherit: false
+-
+     leftPadding: 0
+     rightPadding: 0
+     topPadding: 0
+@@ -26,43 +28,12 @@ Kirigami.ScrollablePage {
+ 
+     signal popPage()
+ 
+-    header: QQC2.ToolBar {
+-        Layout.fillWidth: true
+-        position: QQC2.ToolBar.Header
+-
+-        QQC2.ToolButton {
+-            id: backButton
+-            implicitHeight: applicationWindow().pageHeaderTextHeight
+-
+-            anchors.left: parent.left
+-            anchors.top: parent.top
+-            anchors.bottom: parent.bottom
+-            anchors.right: parent.right
++    // the Loader keeps this page alive at 0x0 under the main list; without the
++    // clip its back arrow shows over the main page
++    clip: true
+ 
+-            padding: 0
+-
+-            contentItem: RowLayout {
+-                Kirigami.Icon {
+-                    source: 'go-previous'
+-                    implicitWidth: Kirigami.Units.iconSizes.smallMedium
+-                    implicitHeight: Kirigami.Units.iconSizes.smallMedium
+-                    Layout.alignment: Qt.AlignVCenter
+-                    Layout.leftMargin: Kirigami.Units.largeSpacing
+-                    Layout.rightMargin: Kirigami.Units.largeSpacing
+-                }
+-                Kirigami.Heading {
+-                    level: 1
+-                    text: root.title
+-                    elide: Text.ElideRight
+-                    Layout.alignment: Qt.AlignVCenter
+-                    Layout.fillWidth: true
+-                }
+-            }
+-
+-            onClicked: {
+-                root.popPage();
+-            }
+-        }
++    background: Rectangle {
++        color: OneUi.bg
+     }
+ 
+     // Bind active index of listview
+@@ -75,14 +46,43 @@ Kirigami.ScrollablePage {
+ 
+     ListView {
+         id: listView
++        anchors.fill: parent
+         model: SettingsApp.subCategoryModel
++        reuseItems: false
++        currentIndex: -1
++        highlightFollowsCurrentItem: false
++        boundsBehavior: Flickable.StopAtBounds
+ 
+         activeFocusOnTab: true
+         keyNavigationWraps: true
+ 
+         Accessible.role: Accessible.List
+ 
+-        delegate: SidebarDelegate {
++        // same reason as on the main list: the header grows after creation
++        property bool userMoved: false
++        onMovementStarted: userMoved = true
++        onOriginYChanged: if (!userMoved) positionViewAtBeginning()
++
++        header: Item {
++            width: listView.width
++            height: Math.round(root.height * 0.30)
++
++            QQC2.Label {
++                anchors.horizontalCenter: parent.horizontalCenter
++                width: parent.width - 2 * OneUi.cardMargin - 40
++                horizontalAlignment: Text.AlignHCenter
++                y: Math.round(parent.height * 0.40 - height / 2)
++                text: root.title
++                color: OneUi.text
++                font.pixelSize: 32
++                font.weight: Font.DemiBold
++                wrapMode: Text.WordWrap
++                maximumLineCount: 2
++                elide: Text.ElideRight
++            }
++        }
++
++        delegate: OneUiDelegate {
+             id: delegate
+ 
+             required property int index
+@@ -90,12 +90,13 @@ Kirigami.ScrollablePage {
+             required property var name
+             required property string iconName
+ 
++            width: ListView.view.width
+             text: name
+-            icon.name: iconName
+-
+-            highlighted: ListView.isCurrentItem
+-
+-            showArrow: false
++            moduleId: pluginId
++            moduleIcon: iconName
++            showIcon: false
++            first: index === 0
++            last: index === ListView.view.count - 1
+ 
+             property bool pageInView: pluginId === applicationWindow().currentModuleName
+             onClicked: {
+@@ -106,17 +107,54 @@ Kirigami.ScrollablePage {
+ 
+             Keys.onEnterPressed: clicked();
+             Keys.onReturnPressed: clicked();
++        }
+ 
+-            Keys.onLeftPressed: {
+-                if (LayoutMirroring.enabled) {
+-                    clicked();
+-                }
+-            }
+-            Keys.onRightPressed: {
+-                if (!LayoutMirroring.enabled) {
+-                    clicked();
+-                }
+-            }
++        footer: Item {
++            width: listView.width
++            height: 2 * OneUi.sectionGap
++        }
++    }
++
++    // back arrow and the small title once the large one scrolls away
++    Rectangle {
++        id: topBar
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.top: parent.top
++        height: 56
++        color: "transparent"
++        readonly property real fade: Math.max(0, Math.min(1,
++                (listView.contentY - listView.originY - root.height * 0.18) / (root.height * 0.08)))
++
++        Rectangle {
++            anchors.fill: parent
++            color: OneUi.bg
++            opacity: topBar.fade
++        }
++
++        QQC2.ToolButton {
++            id: backButton
++            anchors.left: parent.left
++            anchors.leftMargin: 6
++            anchors.verticalCenter: parent.verticalCenter
++            icon.name: "go-previous-symbolic"
++            icon.color: OneUi.text
++            Accessible.name: i18n("Navigate Back")
++            onClicked: root.popPage()
++        }
++
++        QQC2.Label {
++            anchors.left: backButton.right
++            anchors.leftMargin: 4
++            anchors.right: parent.right
++            anchors.rightMargin: OneUi.cardMargin
++            anchors.verticalCenter: parent.verticalCenter
++            text: root.title
++            color: OneUi.text
++            font.pixelSize: 21
++            font.weight: Font.DemiBold
++            elide: Text.ElideRight
++            opacity: topBar.fade
+         }
+     }
+ }
+diff --git a/src/qml/components/PageContainer.qml b/src/qml/components/PageContainer.qml
+index c5fe04f6..33fdcba0 100644
+--- a/src/qml/components/PageContainer.qml
++++ b/src/qml/components/PageContainer.qml
+@@ -7,6 +7,8 @@ import QtQuick.Templates as T
+ import QtQuick.Layouts
+ import org.kde.kirigami as Kirigami
+ 
++import "../oneui.js" as OneUi
++
+ Item {
+     id: root
+ 
+@@ -54,6 +56,12 @@ Item {
+             id: pageParent
+             Layout.fillWidth: true
+             Layout.fillHeight: true
++
++            // One UI colours for the module pages: black page, dark grey cards
++            Kirigami.Theme.inherit: false
++            Kirigami.Theme.colorSet: Kirigami.Theme.View
++            Kirigami.Theme.backgroundColor: OneUi.card
++            Kirigami.Theme.alternateBackgroundColor: OneUi.card
+         }
+     }
+ }
+diff --git a/src/qml/components/PageHeader.qml b/src/qml/components/PageHeader.qml
+index 486942e0..e51bb6cf 100644
+--- a/src/qml/components/PageHeader.qml
++++ b/src/qml/components/PageHeader.qml
+@@ -8,6 +8,8 @@ import QtQuick.Templates as T
+ 
+ import org.kde.kirigami as Kirigami
+ 
++import "../oneui.js" as OneUi
++
+ ToolBar {
+     id: root
+ 
+@@ -22,6 +24,11 @@ ToolBar {
+     position: ToolBar.Header
+     Layout.fillWidth: true
+ 
++    // One UI: the header is part of the black page, no bar and no line
++    background: Rectangle {
++        color: OneUi.bg
++    }
++
+     onTitleDelegateChanged: {
+         if (!titleDelegate) {
+             return;
+diff --git a/src/qml/oneui.js b/src/qml/oneui.js
+new file mode 100755
+index 00000000..229f0b12
+--- /dev/null
++++ b/src/qml/oneui.js
+@@ -0,0 +1,91 @@
++// SPDX-FileCopyrightText: 2026 Artur <ganggg111@gmail.com>
++// SPDX-License-Identifier: GPL-2.0-or-later
++//
++// One UI look for the settings list: colours and sizes measured on a Galaxy
++// One UI 7 settings screenshot (1080 px wide, scaled to 480 logical px).
++.pragma library
++
++var bg = "#010101"
++var card = "#171719"
++var cardPressed = "#2a2a2e"
++var separator = "#3a3a3c"
++var text = "#fafafa"
++var subtitle = "#a3a2a7"
++var pill = "#232325"
++var pillText = "#a1a0a5"
++
++var cardMargin = 13      // card edge from the screen edge
++var radius = 28
++var rowHeight = 65
++var iconX = 32           // icon circle left edge, from the screen edge
++var iconSize = 32
++var glyphSize = 22       // the 22 px Breeze glyphs (16 px ones are other drawings)
++var textX = 88           // label left edge, from the screen edge
++var separatorEnd = 19    // separator end, from the card edge
++var sectionGap = 24
++var fontSize = 17
++var maxCardWidth = 640
++
++var blue = "#377aff"
++var indigo = "#5164fe"
++var violet = "#715aff"
++var orange = "#e65b18"
++var lime = "#a4d925"
++var green = "#65c33b"
++var darkGreen = "#5aae35"
++var pink = "#ed5882"
++var red = "#d83e36"
++var yellow = "#fdbe4d"
++var slate = "#6869a2"
++
++// pluginId (or the icon name for categories, which have no plugin id) ->
++// [circle colour, monochrome Breeze glyph]; colours follow the One UI groups
++var icons = {
++    // connections
++    "kcm_mobile_wifi": [blue, "network-wireless-symbolic"],
++    "kcm_mobile_wired": [blue, "network-wired-symbolic"],
++    "kcm_cellular_network": [blue, "network-mobile-100"],
++    "kcm_mobile_hotspot": [blue, "network-wireless-hotspot"],
++    "kcm_bluetooth": [blue, "network-bluetooth"],
++    // sounds, notifications
++    "kcm_pulseaudio": [violet, "audio-volume-high"],
++    "kcm_notifications": [orange, "notifications"],
++    // display, battery
++    "preferences-desktop-display": [lime, "monitor-symbolic"],
++    "kcm_nighttime": [lime, "redshift-status-on"],
++    "kcm_mobile_power": [green, "battery-100"],
++    // wallpaper and style
++    "preferences-desktop-theme-global": [pink, "preferences-desktop-theme-global-symbolic"],
++    "preferences-desktop-font": [pink, "font"],
++    "kcm_animations": [pink, "animation-stage"],
++    // home screen
++    "kcm_mobileshell": [blue, "go-home"],
++    "kcm_navigation": [blue, "input-touchscreen-symbolic"],
++    // privacy
++    "kcm_feedback": [violet, "dialog-messages"],
++    // accounts, apps
++    "kcm_users": [blue, "user-symbolic"],
++    "kcm_autostart": [blue, "system-run"],
++    "preferences-desktop-default-applications": [blue, "starred-symbolic"],
++    "kcm_waydroidintegration": [darkGreen, "folder-android-symbolic"],
++    // general management, about
++    "preferences-desktop-keyboard": [slate, "input-keyboard"],
++    "kcm_mobile_onscreenkeyboard": [slate, "input-keyboard-virtual"],
++    "kcm_regionandlang": [slate, "globe"],
++    "kcm_mobile_time": [slate, "clock"],
++    "kcm_mobile_info": [slate, "help-about"]
++}
++
++function entry(pluginId, iconName) {
++    return icons[pluginId] || icons[iconName];
++}
++
++function colour(pluginId, iconName) {
++    var e = entry(pluginId, iconName);
++    return e ? e[0] : slate;
++}
++
++function glyph(pluginId, iconName) {
++    var e = entry(pluginId, iconName);
++    return e ? e[1] : iconName;
++}
+-- 
+2.47.3
+

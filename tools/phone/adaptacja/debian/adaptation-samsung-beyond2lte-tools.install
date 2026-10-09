@@ -2,3 +2,7 @@ tools/plasma-workspace/plasma_session usr/bin
 tools/plasma-workspace/ksplashqml usr/bin
 tools/wayfire/libpodglad.so usr/lib/aarch64-linux-gnu/wayfire
 tools/plasma-mobile-wf/wayfire.ini usr/share/plasma-mobile-wf
+tools/plasma-settings/plasma-settings usr/bin
+tools/plasma-settings/mobile.plasmasettings.mo usr/share/locale/pl/LC_MESSAGES
+tools/plasma-settings/categories/* usr/share/plasma-settings/categories
+tools/kirigami-addons/formcard/* usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard

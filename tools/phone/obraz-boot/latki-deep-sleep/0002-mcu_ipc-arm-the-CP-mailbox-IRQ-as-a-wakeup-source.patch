@@ -1,0 +1,75 @@
+From 369e8e06ecaf57a0cb4250885a004f117bf0ff02 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 9 Oct 2026 13:20:06 +0200
+Subject: [PATCH 2/2] mcu_ipc: arm the CP mailbox IRQ as a wakeup source
+
+Store the mailbox IRQ and call device_init_wakeup in probe, then enable_irq_wake/disable_irq_wake in the PM suspend/resume callbacks so the CP (modem) can wake the AP from system suspend via the CP2AP mailbox (incoming call/SMS paging).
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/misc/mcu_ipc/mcu_ipc.c | 24 ++++++++++++++++++++++--
+ drivers/misc/mcu_ipc/mcu_ipc.h |  1 +
+ 2 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/misc/mcu_ipc/mcu_ipc.c b/drivers/misc/mcu_ipc/mcu_ipc.c
+index a95ac3f0d..f187df451 100644
+--- a/drivers/misc/mcu_ipc/mcu_ipc.c
++++ b/drivers/misc/mcu_ipc/mcu_ipc.c
+@@ -476,6 +476,12 @@ static int mcu_ipc_probe(struct platform_device *pdev)
+ 		return err;
+ 	}
+ 
++	/* Keep the IRQ so the PM callbacks can arm it as a wakeup source,
++	 * allowing the CP (modem) to wake the AP from system suspend via the
++	 * CP2AP mailbox (e.g. incoming call/SMS paging). */
++	mcu_dat[id].irq = mcu_ipc_irq;
++	device_init_wakeup(&pdev->dev, true);
++
+ 	mcu_ipc_clear_all_interrupt(id);
+ 
+ 	/* set argos irq affinity */
+@@ -504,13 +510,27 @@ static int __exit mcu_ipc_remove(struct platform_device *pdev)
+ #ifdef CONFIG_PM
+ static int mcu_ipc_suspend(struct device *dev)
+ {
+-	/* TODO */
++	int i;
++
++	if (device_may_wakeup(dev)) {
++		for (i = 0; i < MCU_MAX; i++) {
++			if (mcu_dat[i].mcu_ipc_dev == dev && mcu_dat[i].irq > 0)
++				enable_irq_wake(mcu_dat[i].irq);
++		}
++	}
+ 	return 0;
+ }
+ 
+ static int mcu_ipc_resume(struct device *dev)
+ {
+-	/* TODO */
++	int i;
++
++	if (device_may_wakeup(dev)) {
++		for (i = 0; i < MCU_MAX; i++) {
++			if (mcu_dat[i].mcu_ipc_dev == dev && mcu_dat[i].irq > 0)
++				disable_irq_wake(mcu_dat[i].irq);
++		}
++	}
+ #ifdef CONFIG_ARGOS
+ 	set_irq_affinity(dev);
+ #endif
+diff --git a/drivers/misc/mcu_ipc/mcu_ipc.h b/drivers/misc/mcu_ipc/mcu_ipc.h
+index 08ddbe6f4..36f3503d3 100644
+--- a/drivers/misc/mcu_ipc/mcu_ipc.h
++++ b/drivers/misc/mcu_ipc/mcu_ipc.h
+@@ -31,6 +31,7 @@ struct mcu_ipc_ipc_handler {
+ struct mcu_ipc_drv_data {
+ 	char *name;
+ 	u32 id;
++	int irq;
+ 
+ 	void __iomem *ioaddr;
+ 	u32 registered_irq;
+-- 
+2.47.3
+

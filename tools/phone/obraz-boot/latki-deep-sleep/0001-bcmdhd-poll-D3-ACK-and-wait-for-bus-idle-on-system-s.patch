@@ -1,0 +1,108 @@
+From d56436da19e331d56297e2c517ca9be4cf48b972 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Fri, 9 Oct 2026 13:20:06 +0200
+Subject: [PATCH 1/2] bcmdhd: poll D3 ACK and wait for bus idle on system
+ suspend
+
+In system suspend the DPC that consumes the D2H D3 ACK mailbox is frozen, so after dhd_os_d3ack_wait times out, poll the mailbox synchronously (bus->api.handle_mb_data) to pick up the ACK the dongle already posted. Also wait up to 100ms for the bus to become idle in dhdpcie_pm_suspend instead of returning EBUSY immediately when WiFi runtime PM is mid-cycle.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../broadcom/bcmdhd_101_16/dhd_pcie.c         | 30 ++++++++++++++++++
+ .../broadcom/bcmdhd_101_16/dhd_pcie_linux.c   | 31 ++++++++++++++++++-
+ 2 files changed, 60 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie.c b/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie.c
+index 969765bb6..b6247060a 100644
+--- a/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie.c
++++ b/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie.c
+@@ -7102,6 +7102,36 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
+ 		/* Wait for D3 ACK for D3_ACK_RESP_TIMEOUT seconds */
+ 
+ 		timeleft = dhd_os_d3ack_wait(bus->dhd, &bus->wait_for_d3_ack);
++
++		/*
++		 * WAR for system suspend (echo mem). In the system PM suspend path
++		 * the DPC/workqueue that normally consumes the D2H D3 ACK mailbox is
++		 * frozen, so dhd_os_d3ack_wait() times out even though the dongle has
++		 * already posted the D3 ACK into shared memory. Poll and process the
++		 * mailbox synchronously here (same mechanism as the native runtimepm
++		 * !byint path) before treating this as a real D3 ACK timeout and
++		 * triggering a coredump/hang that would reset the SoC during suspend.
++		 */
++		if (bus->wait_for_d3_ack == 0 && !bus->is_linkdown) {
++			/* up to ~100-150ms total at 1-1.5ms per poll */
++			const int d3_sync_max = 100;
++			int d3_sync_retry = 0;
++			while (!bus->wait_for_d3_ack &&
++				d3_sync_retry < d3_sync_max) {
++				/* Use the configured mailbox handler (INB-aware in our
++				 * build) so that a concurrent DS_ENTER_REQ after D3 ACK is
++				 * dropped instead of acked, avoiding a PCIe link race.
++				 */
++				bus->api.handle_mb_data(bus);
++				usleep_range(1000, 1500);
++				d3_sync_retry++;
++			}
++			if (bus->wait_for_d3_ack) {
++				DHD_ERROR(("%s: Got D3 Ack via sync mailbox poll "
++					"(retry %d) after wait timeout\n",
++					__FUNCTION__, d3_sync_retry));
++			}
++		}
+ #ifdef DHD_RECOVER_TIMEOUT
+ 		/* XXX: WAR for missing D3 ACK MB interrupt */
+ 		if (bus->wait_for_d3_ack == 0) {
+diff --git a/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie_linux.c b/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie_linux.c
+index acf1af81d..ec1189cd5 100644
+--- a/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie_linux.c
++++ b/drivers/net/wireless/broadcom/bcmdhd_101_16/dhd_pcie_linux.c
+@@ -642,6 +642,7 @@ dhd_bus_aer_config(dhd_bus_t *bus)
+ static int dhdpcie_pm_suspend(struct device *dev)
+ {
+ 	int ret = 0;
++	int i = 0;
+ 	struct pci_dev *pdev = to_pci_dev(dev);
+ 	dhdpcie_info_t *pch = pci_get_drvdata(pdev);
+ 	dhd_bus_t *bus = NULL;
+@@ -658,8 +659,36 @@ static int dhdpcie_pm_suspend(struct device *dev)
+ 	if (!DHD_BUS_BUSY_CHECK_IDLE(bus->dhd)) {
+ 		DHD_ERROR(("%s: Bus not IDLE!! dhd_bus_busy_state = 0x%x\n",
+ 			__FUNCTION__, bus->dhd->dhd_bus_busy_state));
++
+ 		DHD_GENERAL_UNLOCK(bus->dhd, flags);
+-		return -EBUSY;
++		OSL_DELAY(1000);
++		/* WAR: WiFi runtime PM may be mid-cycle when system suspend
++		 * (echo mem) starts, which left the bus non-IDLE and made this
++		 * callback reject the suspend outright with -EBUSY. Wait for the
++		 * transaction to complete (same retry as the native runtimepm
++		 * path) before giving up.
++		 */
++		while (i < 100) {
++			OSL_DELAY(1000);
++			i++;
++
++			DHD_GENERAL_LOCK(bus->dhd, flags);
++			if (DHD_BUS_BUSY_CHECK_IDLE(bus->dhd)) {
++				DHD_ERROR(("%s: Bus enter IDLE!! after %d ms\n",
++					__FUNCTION__, i));
++				break;
++			}
++			if (i != 100) {
++				DHD_GENERAL_UNLOCK(bus->dhd, flags);
++			}
++		}
++		if (!DHD_BUS_BUSY_CHECK_IDLE(bus->dhd)) {
++			DHD_GENERAL_UNLOCK(bus->dhd, flags);
++			DHD_ERROR(("%s: Bus not IDLE!! Failed after %d ms, "
++				"dhd_bus_busy_state = 0x%x\n",
++				__FUNCTION__, i, bus->dhd->dhd_bus_busy_state));
++			return -EBUSY;
++		}
+ 	}
+ 	DHD_BUS_BUSY_SET_SUSPEND_IN_PROGRESS(bus->dhd);
+ 	DHD_GENERAL_UNLOCK(bus->dhd, flags);
+-- 
+2.47.3
+

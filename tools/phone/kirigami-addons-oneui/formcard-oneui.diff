@@ -1,0 +1,198 @@
+--- orig/qmldir	2026-10-02 22:22:36.163302500 +0200
++++ x/qmldir	2026-10-02 22:22:36.244575400 +0200
+@@ -8,7 +8,6 @@
+ depends org.kde.kirigamiaddons.components
+ depends org.kde.kirigamiaddons.dateandtime
+ depends org.kde.kirigamiaddons.delegates
+-prefer :/qt/qml/org/kde/kirigamiaddons/formcard/
+ AboutKDE 1.0 AboutKDE.qml
+ AboutKDEPage 1.0 AboutKDEPage.qml
+ AboutPage 1.0 AboutPage.qml
+--- orig/FormCard.qml	2026-10-02 22:22:36.145040800 +0200
++++ x/FormCard.qml	2026-10-02 22:22:36.243553000 +0200
+@@ -83,6 +83,11 @@
+      */
+     readonly property bool cardWidthRestricted: root.width > root.maximumWidth
+ 
++    // Galaxy S10+ port, One UI look: on a narrow screen the card keeps a margin and
++    // rounded corners instead of running from edge to edge
++    readonly property real _narrowMargin: 13
++    readonly property real _narrowRadius: 28
++
+     Kirigami.Theme.colorSet: Kirigami.Theme.View
+     Kirigami.Theme.inherit: false
+ 
+@@ -100,7 +105,7 @@
+         }
+ 
+         // only have card radius if it isn't filling the entire width
+-        radius: root.cardWidthRestricted ? Kirigami.Units.cornerRadius : 0
++        radius: root.cardWidthRestricted ? Kirigami.Units.cornerRadius : root._narrowRadius
+         color: Kirigami.Theme.backgroundColor
+ 
+         function getDarkness(background: color): real {
+@@ -117,8 +122,8 @@
+             left: parent.left
+             right: parent.right
+ 
+-            leftMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : -1
+-            rightMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : -1
++            leftMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : root._narrowMargin
++            rightMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : root._narrowMargin
+         }
+ 
+         border {
+@@ -135,7 +140,8 @@
+             id: internalColumn
+ 
+             // used in FormDelegateBackground to determine whether to round corners of the background
+-            readonly property bool _roundCorners: root.cardWidthRestricted
++            readonly property bool _roundCorners: true
++            readonly property real _cornerRadius: root.cardWidthRestricted ? Kirigami.Units.smallSpacing : rectangle.radius
+ 
+             spacing: 0
+ 
+--- orig/FormDelegateBackground.qml	2026-10-02 22:22:36.148147800 +0200
++++ x/FormDelegateBackground.qml	2026-10-02 22:22:36.244064100 +0200
+@@ -36,6 +36,8 @@
+     readonly property list<Item> _visibleItems: control.parent.visibleChildren.filter(child => child.height !== 0)
+     readonly property bool _isFirst: _roundCorners && _visibleItems[0] === control
+     readonly property bool _isLast: _roundCorners && _visibleItems[_visibleItems.length - 1] === control
++    // the pressed highlight follows the card corners (One UI cards on the phone)
++    readonly property real _radius: control?.parent?._cornerRadius ?? Kirigami.Units.smallSpacing
+ 
+     color: {
+         let colorOpacity = 0;
+@@ -54,10 +56,10 @@
+     }
+ 
+     corners {
+-        topLeftRadius: _isFirst ? Kirigami.Units.smallSpacing : 0
+-        topRightRadius: _isFirst ? Kirigami.Units.smallSpacing : 0
+-        bottomLeftRadius: _isLast ? Kirigami.Units.smallSpacing : 0
+-        bottomRightRadius: _isLast ? Kirigami.Units.smallSpacing : 0
++        topLeftRadius: _isFirst ? _radius : 0
++        topRightRadius: _isFirst ? _radius : 0
++        bottomLeftRadius: _isLast ? _radius : 0
++        bottomRightRadius: _isLast ? _radius : 0
+     }
+ 
+     Behavior on color {
+--- orig/FormHeader.qml	2026-10-02 22:22:36.152389200 +0200
++++ x/FormHeader.qml	2026-10-02 22:41:46.160149100 +0200
+@@ -55,7 +55,8 @@
+      */
+     property real topPadding: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
+     property real bottomPadding: Kirigami.Units.smallSpacing
+-    property real leftPadding: cardWidthRestricted ? Kirigami.Units.smallSpacing : Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
++    // narrow: the row text inset of FormCardUnits.horizontalPadding (One UI)
++    property real leftPadding: cardWidthRestricted ? Kirigami.Units.smallSpacing : 20
+     property real rightPadding: cardWidthRestricted ? Kirigami.Units.smallSpacing : Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
+ 
+     /*!
+@@ -78,8 +79,10 @@
+ 
+         anchors {
+             fill: parent
+-            leftMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : 0
+-            rightMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : 0
++            // Galaxy S10+ port, One UI look: on a narrow screen the header keeps the card
++            // margin (FormCard._narrowMargin), so its text lines up with the card text
++            leftMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : 13
++            rightMargin: root.cardWidthRestricted ? Math.round((root.width - root.maximumWidth) / 2) : 13
+         }
+ 
+         QQC2.Label {
+@@ -90,7 +93,14 @@
+             leftPadding: root.leftPadding
+             rightPadding: root.rightPadding
+ 
+-            font.weight: Font.DemiBold
++            // One UI section captions on the phone: small, regular weight, grey
++            font.weight: root.cardWidthRestricted ? Font.DemiBold : Font.Normal
++            opacity: root.cardWidthRestricted ? 1 : 0.6
++
++            Binding on font.pixelSize {
++                when: !root.cardWidthRestricted
++                value: 13
++            }
+             wrapMode: Text.WordWrap
+             Accessible.role: Accessible.Heading
+             Layout.fillWidth: true
+--- orig/FormTextDelegate.qml	2026-10-02 22:44:47.181405700 +0200
++++ x/FormTextDelegate.qml	2026-10-02 22:44:47.290358500 +0200
+@@ -126,6 +126,15 @@
+                 Layout.fillWidth: true
+                 text: root.description
+                 color: Kirigami.Theme.disabledTextColor
++                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
++                Binding on font.pixelSize {
++                    when: root.font.pixelSize > 0
++                    value: Math.round(root.font.pixelSize * 0.8)
++                }
++                Binding on font.pointSize {
++                    when: root.font.pixelSize <= 0
++                    value: root.font.pointSize * 0.8
++                }
+                 visible: root.description !== ""
+                 onLinkActivated: root.linkActivated(link)
+                 wrapMode: Text.Wrap
+--- orig/FormSwitchDelegate.qml	2026-10-02 22:44:47.209850600 +0200
++++ x/FormSwitchDelegate.qml	2026-10-02 22:44:47.291872300 +0200
+@@ -132,6 +132,15 @@
+                 text: root.description
+                 wrapMode: Text.Wrap
+                 color: Kirigami.Theme.disabledTextColor
++                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
++                Binding on font.pixelSize {
++                    when: root.font.pixelSize > 0
++                    value: Math.round(root.font.pixelSize * 0.8)
++                }
++                Binding on font.pointSize {
++                    when: root.font.pixelSize <= 0
++                    value: root.font.pointSize * 0.8
++                }
+                 Accessible.ignored: true
+             }
+         }
+--- orig/FormButtonDelegate.qml	2026-10-02 22:44:47.229300600 +0200
++++ x/FormButtonDelegate.qml	2026-10-02 22:44:47.291872300 +0200
+@@ -133,6 +133,15 @@
+                 Layout.fillWidth: true
+                 text: root.description
+                 color: Kirigami.Theme.disabledTextColor
++                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
++                Binding on font.pixelSize {
++                    when: root.font.pixelSize > 0
++                    value: Math.round(root.font.pixelSize * 0.8)
++                }
++                Binding on font.pointSize {
++                    when: root.font.pixelSize <= 0
++                    value: root.font.pointSize * 0.8
++                }
+                 elide: Text.ElideRight
+                 visible: root.description !== ""
+                 wrapMode: Text.Wrap
+--- orig/private/FormCardUnits.qml	2026-10-02 22:22:36.163302500 +0200
++++ x/private/FormCardUnits.qml	2026-10-02 22:43:19.142918400 +0200
+@@ -4,11 +4,18 @@
+ pragma Singleton
+ 
+ import QtQml
++import QtQuick
+ import org.kde.kirigami as Kirigami
+ 
+ QtObject {
+-    readonly property int horizontalPadding: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
+-    readonly property int verticalPadding: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
++    // Galaxy S10+ port, One UI look: rows as tall as One UI ones (65 px with 17 px text),
++    // the vertical padding follows the application font, so smaller fonts get lower rows
++    readonly property FontMetrics _fontMetrics: FontMetrics {
++        font: Qt.application.font
++    }
++    readonly property int horizontalPadding: 20
++    readonly property int verticalPadding: Math.max(Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing,
++                                                    Math.round(_fontMetrics.height * 0.85))
+ 
+     readonly property int verticalSpacing: Kirigami.Units.smallSpacing
+     readonly property int horizontalSpacing: Kirigami.Units.largeSpacing

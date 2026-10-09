@@ -1,3 +1,39 @@
+adaptation-samsung-beyond2lte (10) unstable; urgency=medium
+
+  * Settings: main page with the One UI entries (Connections with Wi-Fi and
+    Bluetooth, Sounds, Notifications, Display, Battery, ...) in cards, each
+    opening its One UI page with the modules.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 03 Oct 2026 03:00:00 +0200
+
+adaptation-samsung-beyond2lte (9) unstable; urgency=medium
+
+  * One UI rows in FormCard: 20 px side padding, vertical padding from the
+    application font (65 px rows with 17 px text), subtitles at 0.8 of the
+    title, section captions small and grey (FormCardUnits, FormTextDelegate,
+    FormSwitchDelegate, FormButtonDelegate diverted too).
+  * Settings: 17 px text, compact header on subcategory pages.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 03 Oct 2026 02:00:00 +0200
+
+adaptation-samsung-beyond2lte (8) unstable; urgency=medium
+
+  * Rounded cards everywhere: FormCard of kirigami-addons 1.12.0 keeps a
+    margin and rounded corners on a narrow screen (One UI) instead of
+    running edge to edge; section headers line up with the card text and are
+    dimmed. Diverted qmldir without "prefer", so the QML on disk is used.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 03 Oct 2026 00:30:00 +0200
+
+adaptation-samsung-beyond2lte (7) unstable; urgency=medium
+
+  * Settings in the One UI style: plasma-settings 26.04.0 rebuilt with the
+    patch in tools/phone/plasma-settings-oneui (diverted, pinned to the
+    Debian version), Polish strings, top level categories in One UI order,
+    and the One UI Dark colour scheme the application loads for itself.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Fri, 02 Oct 2026 23:30:00 +0200
+
 adaptation-samsung-beyond2lte (6) unstable; urgency=medium
 
   * udev: no seat ACL on the secure MFC nodes; FFmpeg v4l2m2m picked the

@@ -7,3 +7,4 @@ etc/pulse/*
 etc/xdg/autostart/*
 usr/lib/droid-system-overlay/etc/init/*
 etc/systemd/system/android-mount.service.d/*
+usr/share/color-schemes/*
