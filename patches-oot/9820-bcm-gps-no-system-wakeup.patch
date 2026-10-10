@@ -1,0 +1,41 @@
+From: Artur <ganggg111@gmail.com>
+Subject: [PATCH] sensorhub: bcm_gps_spi: do not arm GPS host-wake as system wakeup
+
+Po naprawie WDT deep sleep wchodzi i wychodzi czysto, ale telefon budzil
+sie po ~0.4s. Zrodlo: IRQ ttyBCM (host-wake GPS BCM47752). Stos GNSS
+(lhd/gpsd/gnss HAL) trzyma chip aktywny, host_req sypie ~6/s. open() robil
+enable_irq_wake, wiec GPS wyrywal SoC z deep sleep w kolko.
+
+Fix: nie uzbrajamy host-wake GPS jako SYSTEMOWEGO zrodla wybudzenia.
+GPS dziala normalnie na jawie (zwykly enable_irq), tylko nie budzi AP ze
+snu. Tradeoff: brak wake-on-GNSS w suspendzie (akceptowalne dla baterii).
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+diff --git a/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c b/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c
+index 8bda37bbd..4b79e5ae6 100644
+--- a/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c
++++ b/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c
+@@ -241,7 +241,11 @@ static int bcm_spi_open(struct inode *inode, struct file *filp)
+ 
+ 	spin_unlock_irqrestore(&priv->irq_lock, flags);
+ 
+-	enable_irq_wake(priv->spi->irq);
++	/* S10+/Droidian: GPS host-wake NIE jest systemowym zrodlem wybudzenia.
++	 * Chip GNSS (BCM47752) streamuje host_req ~6/s, co budzilo AP z deep
++	 * sleep co ~0.4s. GPS dziala normalnie na jawie (zwykly enable_irq),
++	 * tylko nie wyrywa SoC ze snu. */
++	/* enable_irq_wake(priv->spi->irq); */
+ 
+ 	filp->private_data = priv;
+ #ifdef DEBUG_1HZ_STAT
+@@ -355,7 +359,8 @@ static int bcm_spi_release(struct inode *inode, struct file *filp)
+ 
+ 	spin_unlock_irqrestore(&priv->irq_lock, flags);
+ 
+-	disable_irq_wake(priv->spi->irq);
++	/* S10+/Droidian: patrz enable_irq_wake wyzej - wake nie uzbrajany */
++	/* disable_irq_wake(priv->spi->irq); */
+ 
+ 	pr_info("%s--\n", __func__);
+ 	return 0;

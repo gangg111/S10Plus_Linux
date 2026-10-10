@@ -1,0 +1,87 @@
+From: Artur <ganggg111@gmail.com>
+Subject: [PATCH] watchdog: s3c2410_wdt: disable cluster0 WDT across suspend-to-mem
+
+Deep sleep (SYS_SLEEP) na S10+/Droidian resetowal telefon: sec_debug RST_STAT
+bit 24 = CLUSTER0_WDTRESET (nie panic). s3c2410wdt_syscore_suspend() zapisywal
+stan WDT ale go nie zatrzymywal; w glebokim snie zamrozony keepalive wygasal.
+Dodatkowo przy WOLNYM suspendzie urzadzen (WiFi/bcmdhd/PCIe) WDT strzelal
+ZANIM doszlo do syscore - dlatego drugi hak: notyfikator PM wylacza WDT juz
+na PM_SUSPEND_PREPARE (przed suspendem urzadzen), re-arm na PM_POST_SUSPEND.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+diff --git a/drivers/watchdog/s3c2410_wdt.c b/drivers/watchdog/s3c2410_wdt.c
+index 0c885c52d..54051c075 100644
+--- a/drivers/watchdog/s3c2410_wdt.c
++++ b/drivers/watchdog/s3c2410_wdt.c
+@@ -38,6 +38,7 @@
+ #include <linux/delay.h>
+ #include <linux/rtc.h>
+ #include <linux/syscore_ops.h>
++#include <linux/suspend.h>
+ #include <linux/soc/samsung/exynos-soc.h>
+ #include <soc/samsung/exynos-pmu.h>
+ 
+@@ -1169,6 +1170,17 @@ static int s3c2410wdt_syscore_suspend(void)
+ 	wdt->wtcon_save = readl(wdt->reg_base + S3C2410_WTCON);
+ 	wdt->wtdat_save = readl(wdt->reg_base + S3C2410_WTDAT);
+ 
++
++	/*
++	 * S10+/Droidian deep-sleep fix: stock kod zapisywal stan WDT klastra 0,
++	 * ale nigdy nie zatrzymywal timera. W suspend-to-mem keepalive jest
++	 * zamrozony, licznik dochodzil do zera i PMU podnosil CLUSTER0_WDTRESET
++	 * (RST_STAT bit 24). Maskujemy reset i zatrzymujemy timer; resume
++	 * przywraca wtcon_save/wtdat_save.
++	 */
++	if (wdt->drv_data->auto_disable_func)
++		wdt->drv_data->auto_disable_func(wdt, true);
++	__s3c2410wdt_stop(wdt);
+ 	return 0;
+ }
+ 
+@@ -1220,6 +1232,36 @@ static struct syscore_ops s3c2410wdt_syscore_ops = {
+ 	.resume		= s3c2410wdt_syscore_resume,
+ };
+ 
++/* S10+/Droidian: wylacz cluster0 WDT na CALY czas suspendu. Powolny suspend
++ * urzadzen (WiFi/bcmdhd/PCIe) pozwalal zamrozonemu keepalive wygasnac i PMU
++ * podnosil CLUSTER0_WDTRESET zanim doszlo do syscore_suspend. */
++static int s3c2410wdt_pm_notifier(struct notifier_block *nb,
++				  unsigned long event, void *dummy)
++{
++	struct s3c2410_wdt *wdt = s3c_wdt[LITTLE_CLUSTER];
++
++	if (!wdt)
++		return NOTIFY_DONE;
++
++	switch (event) {
++	case PM_SUSPEND_PREPARE:
++		if (wdt->drv_data->auto_disable_func)
++			wdt->drv_data->auto_disable_func(wdt, true);
++		s3c2410wdt_stop(&wdt->wdt_device);
++		break;
++	case PM_POST_SUSPEND:
++		if (wdt->drv_data->auto_disable_func)
++			wdt->drv_data->auto_disable_func(wdt, false);
++		s3c2410wdt_start(&wdt->wdt_device);
++		break;
++	}
++	return NOTIFY_DONE;
++}
++
++static struct notifier_block s3c2410wdt_pm_nb = {
++	.notifier_call = s3c2410wdt_pm_notifier,
++};
++
+ static int s3c2410wdt_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -1430,6 +1472,7 @@ static int s3c2410wdt_probe(struct platform_device *pdev)
+ 	wtcon = readl(wdt->reg_base + S3C2410_WTCON);
+ 	if (cluster_index == LITTLE_CLUSTER) {
+ 		register_syscore_ops(&s3c2410wdt_syscore_ops);
++		register_pm_notifier(&s3c2410wdt_pm_nb);
+ #ifdef CONFIG_DEBUG_SNAPSHOT_WATCHDOG_RESET
+ 	/* register panic handler for watchdog reset */
+ 		wdt_block.nb_panic_block.notifier_call = s3c2410wdt_panic_handler;
