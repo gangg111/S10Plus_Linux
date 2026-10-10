@@ -49,11 +49,15 @@ autor używa na co dzień.
 - Komputer z Windowsem z **Odinem 3.14+** i zainstalowanymi **sterownikami USB Samsunga**
   (na Linuksie możesz użyć **Heimdalla**).
 - Kabel USB.
-- Dwa pliki z [najnowszego release](https://github.com/gangg111/S10Plus_Linux/releases/latest):
-  - `uboot-s10plus.tar.md5` — nasz U-Boot, idzie na partycję **boot**.
-  - `pmos-s10plus-userdata.tar.md5` — rootfs pmOS, idzie na **userdata**.
-  - Pełny obraz **Droidiana** dojdzie do tego samego release, gdy opublikuję jego czysty
-    build; do tego czasu zbuduj go sam (patrz **Budowanie ze źródeł**).
+- Pliki dla wybranego wariantu, z [najnowszego release](https://github.com/gangg111/S10Plus_Linux/releases/latest):
+  - **Droidian (pełny):** `droidian-boot-s10plus.tar.md5` (własne jądro, idzie na **boot**)
+    oraz `droidian-userdata.tar.md5.xz` (rootfs, skompresowany; rozpakuj przez `unxz` do
+    `droidian-userdata.tar.md5`, idzie na **userdata**).
+  - **pmOS (szybki start):** `uboot-s10plus.tar.md5` (nasz U-Boot, idzie na **boot**) oraz
+    `pmos-s10plus-userdata.tar.md5` (rootfs, idzie na **userdata**).
+
+> Obraz Droidiana to migawka: części urządzenia (jądro z deep-sleep, adaptacja One UI) są
+> aktualne, pakiety bazowe dystrybucji pochodzą z niedawnego buildu Droidiana.
 
 ### Wgrywanie przez Odina (Windows)
 
@@ -63,14 +67,16 @@ autor używa na co dzień.
    ostrzeżenia; naciśnij **Volume Up**, żeby kontynuować. Jeśli bootloader jest jeszcze
    zablokowany, **przytrzymaj Volume Up** dłużej, żeby go odblokować (to wyczyści telefon).
 3. Otwórz **Odina**. Telefon pojawi się jako niebieskie pole **Added!!** w logu.
-4. Wrzuć `uboot-s10plus.tar.md5` w slot **AP** i naciśnij **Start**. To podmienia partycję
-   boot na nasz U-Boot. (Plik w środku archiwum nazywa się `boot.img`, więc Odin sam celuje
-   w partycję boot.)
-5. Telefon zrestartuje się do U-Boota. Wejdź znów w tryb Download (krok 2), wrzuć
-   `pmos-s10plus-userdata.tar.md5` w **AP**, naciśnij **Start**. To zapisuje rootfs Linuksa
-   na userdata i **kasuje Androida**. (W środku jest `userdata.img`.)
-6. Zrestartuj. U-Boot wstaje, znajduje partycję systemową EFI wewnątrz userdata i uruchamia
-   Linuksa.
+4. **Wgraj obraz boot.** Wrzuć plik boot swojego wariantu w slot **AP** i naciśnij
+   **Start**: `droidian-boot-s10plus.tar.md5` dla Droidiana albo `uboot-s10plus.tar.md5`
+   dla pmOS. (Plik w środku archiwum nazywa się `boot.img`, więc Odin sam celuje w boot.)
+5. **Wgraj rootfs.** Wejdź znów w tryb Download, wrzuć plik userdata w **AP**, naciśnij
+   **Start**. To zapisuje rootfs na userdata i **kasuje Androida**.
+   - Droidian: najpierw raz rozpakuj `unxz droidian-userdata.tar.md5.xz`, co daje
+     `droidian-userdata.tar.md5`; ten wgraj.
+   - pmOS: wgraj `pmos-s10plus-userdata.tar.md5` wprost.
+6. Zrestartuj. Droidian wstaje prosto do Plasma Mobile. pmOS wstaje przez nasz U-Boot, który
+   znajduje partycję systemową EFI wewnątrz userdata i uruchamia jądro mainline.
 
 Sloty **BL**, **CP** i **CSC** w Odinie zostaw puste, a **Re-Partition** wyłączony. Odin
 czyta tylko archiwa `ustar` z dopisaną sumą MD5; powyższe pliki są spakowane dokładnie tak.
