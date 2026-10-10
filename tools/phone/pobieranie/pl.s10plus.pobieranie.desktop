@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=JDownloader 2
+GenericName=Download manager
+Comment=JDownloader 2
+Exec=pobieranie %U
+Icon=jdownloader
+Terminal=false
+Categories=Network;FileTransfer;
+StartupWMClass=pobieranie

@@ -1,0 +1,15 @@
+[Unit]
+Description=Unix socket for the JDownloader 2 local API (Pobieranie)
+After=network.target
+
+[Service]
+# the phone user, with the group the firewall lets through to 127.0.0.1:3128
+User=droidian
+Group=jdapi
+RuntimeDirectory=jdapi
+RuntimeDirectoryMode=0700
+ExecStart=/usr/lib/s10plus/jdapi-proxy.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

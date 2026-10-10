@@ -1,0 +1,21 @@
+<RCC>
+    <qresource prefix="/">
+        <file>qml/Main.qml</file>
+        <file>qml/oneui.js</file>
+        <file>qml/Card.qml</file>
+        <file>qml/PackageCard.qml</file>
+        <file>qml/DownloadsPage.qml</file>
+        <file>qml/AddPage.qml</file>
+        <file>qml/SettingsPage.qml</file>
+        <file>qml/HostsPage.qml</file>
+        <file>qml/ProgressLine.qml</file>
+        <file>qml/ActionSheet.qml</file>
+        <file>qml/PromptSheet.qml</file>
+        <file>qml/ItemActions.qml</file>
+        <file>qml/GrabberPage.qml</file>
+        <file>qml/AdvancedPage.qml</file>
+        <file>qml/AskOverlay.qml</file>
+        <file>qml/PillButton.qml</file>
+        <file>qml/OptionRow.qml</file>
+    </qresource>
+</RCC>

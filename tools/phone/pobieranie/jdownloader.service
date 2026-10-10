@@ -1,0 +1,14 @@
+[Unit]
+Description=JDownloader 2 without its window (driven by the Pobieranie app)
+
+[Service]
+WorkingDirectory=%h/jd2
+# -norestart: JD2 exits after installing an update, systemd starts it again.
+# Serial GC and a heap cap keep the idle phone quiet and the RAM in check.
+ExecStart=/opt/java/bin/java -Xmx384m -XX:+UseSerialGC -Djava.awt.headless=true -jar %h/jd2/JDownloader.jar -norestart
+Restart=always
+RestartSec=3
+Nice=5
+
+[Install]
+WantedBy=default.target

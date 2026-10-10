@@ -1,0 +1,16 @@
+[Unit]
+Description=Only the group jdapi may reach the JDownloader 2 API on 127.0.0.1:3128
+# before anything could start JDownloader
+Before=network-pre.target
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/sbin/iptables -I OUTPUT -o lo -p tcp --dport 3128 -m owner ! --gid-owner jdapi -j REJECT --reject-with tcp-reset
+ExecStart=/usr/sbin/ip6tables -I OUTPUT -o lo -p tcp --dport 3128 -m owner ! --gid-owner jdapi -j REJECT --reject-with tcp-reset
+ExecStop=/usr/sbin/iptables -D OUTPUT -o lo -p tcp --dport 3128 -m owner ! --gid-owner jdapi -j REJECT --reject-with tcp-reset
+ExecStop=/usr/sbin/ip6tables -D OUTPUT -o lo -p tcp --dport 3128 -m owner ! --gid-owner jdapi -j REJECT --reject-with tcp-reset
+
+[Install]
+WantedBy=multi-user.target
