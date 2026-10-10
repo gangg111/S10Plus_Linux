@@ -1,0 +1,118 @@
+From aa372ecc94c56a7b2c3f26bea506b0a6493b5db1 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Fri, 2 Oct 2026 20:40:15 +0200
+Subject: [PATCH 2/9] media: exynos-mfc: let the decoder work with MMAP buffers
+
+The decoder only accepted USERPTR and DMABUF buffers (Android hands it ION
+buffers) and did not report itself as a mem2mem device, so neither generic
+V4L2 client could use it: FFmpeg's v4l2m2m wrapper only allocates MMAP
+buffers ("Not supported memory type (1)"), and the GStreamer v4l2 plugin
+picks single-planar queue types without V4L2_CAP_VIDEO_M2M_MPLANE and then
+skips the device as unsupported.
+
+The allocator already supports MMAP: vb2_dma_sg_alloc() maps the pages
+through iovmm and vb2_dma_sg_plane_dma_addr() returns that address.  So:
+- report V4L2_CAP_VIDEO_M2M_MPLANE,
+- add VB2_MMAP to both decoder queues and drop the MMAP refusal in reqbufs,
+- offset the capture planes by DST_QUEUE_OFF_BASE in querybuf, which
+  mfc_mmap() uses to tell the queues apart (as upstream s5p-mfc does),
+- in buf_queue, take the stream mapping and mark all DPBs queued for MMAP
+  too, not only for DMABUF/USERPTR.
+
+mfc_get_iovmm(), the one place that would dma_buf_get() an MMAP offset, has
+no callers.  The encoder is unchanged.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/platform/exynos/mfc/mfc.c          |  4 ++--
+ drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c | 14 ++++++++------
+ drivers/media/platform/exynos/mfc/mfc_dec_vb2.c  |  5 ++---
+ 3 files changed, 12 insertions(+), 11 deletions(-)
+
+diff --git a/drivers/media/platform/exynos/mfc/mfc.c b/drivers/media/platform/exynos/mfc/mfc.c
+index 45ec17e38..cc10a993f 100644
+--- a/drivers/media/platform/exynos/mfc/mfc.c
++++ b/drivers/media/platform/exynos/mfc/mfc.c
+@@ -193,7 +193,7 @@ static int __mfc_init_dec_ctx(struct mfc_ctx *ctx)
+ 	ctx->vq_src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+ 	ctx->vq_src.drv_priv = ctx;
+ 	ctx->vq_src.buf_struct_size = sizeof(struct mfc_buf);
+-	ctx->vq_src.io_modes = VB2_USERPTR | VB2_DMABUF;
++	ctx->vq_src.io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
+ 	ctx->vq_src.ops = &mfc_dec_qops;
+ 	ctx->vq_src.mem_ops = mfc_mem_ops();
+ 	ctx->vq_src.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
+@@ -206,7 +206,7 @@ static int __mfc_init_dec_ctx(struct mfc_ctx *ctx)
+ 	ctx->vq_dst.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+ 	ctx->vq_dst.drv_priv = ctx;
+ 	ctx->vq_dst.buf_struct_size = sizeof(struct mfc_buf);
+-	ctx->vq_dst.io_modes = VB2_USERPTR | VB2_DMABUF;
++	ctx->vq_dst.io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
+ 	ctx->vq_dst.ops = &mfc_dec_qops;
+ 	ctx->vq_dst.mem_ops = mfc_mem_ops();
+ 	ctx->vq_dst.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
+diff --git a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+index 646507773..49a7a166f 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
++++ b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+@@ -92,7 +92,8 @@ static int mfc_dec_querycap(struct file *file, void *priv,
+ 	strncpy(cap->card, "decoder", sizeof(cap->card) - 1);
+ 	cap->bus_info[0] = 0;
+ 	cap->version = KERNEL_VERSION(1, 0, 0);
+-	cap->device_caps = V4L2_CAP_VIDEO_CAPTURE
++	cap->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE
++			| V4L2_CAP_VIDEO_CAPTURE
+ 			| V4L2_CAP_VIDEO_OUTPUT
+ 			| V4L2_CAP_VIDEO_CAPTURE_MPLANE
+ 			| V4L2_CAP_VIDEO_OUTPUT_MPLANE
+@@ -586,11 +587,6 @@ static int mfc_dec_reqbufs(struct file *file, void *priv,
+ 
+ 	mfc_debug_enter();
+ 
+-	if (reqbufs->memory == V4L2_MEMORY_MMAP) {
+-		mfc_err_ctx("Not supported memory type (%d)\n", reqbufs->memory);
+-		return -EINVAL;
+-	}
+-
+ 	if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+ 		mfc_debug(4, "dec src reqbuf(%d)\n", reqbufs->count);
+ 		/* Can only request buffers after
+@@ -686,6 +682,12 @@ static int mfc_dec_querybuf(struct file *file, void *priv,
+ 			mfc_err_dev("dec dst: error in vb2_querybuf()\n");
+ 			return ret;
+ 		}
++		if (buf->memory == V4L2_MEMORY_MMAP) {
++			unsigned int i;
++
++			for (i = 0; i < buf->length; i++)
++				buf->m.planes[i].m.mem_offset += DST_QUEUE_OFF_BASE;
++		}
+ 	} else if (buf->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+ 		mfc_debug(4, "dec src querybuf, state: %d\n", ctx->state);
+ 		ret = vb2_querybuf(&ctx->vq_src, buf);
+diff --git a/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c b/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c
+index bbd1defa4..500e16b9d 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c
++++ b/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c
+@@ -455,7 +455,7 @@ static void mfc_dec_buf_queue(struct vb2_buffer *vb)
+ 	if (vq->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+ 		mfc_debug(2, "[BUFINFO] ctx[%d] add src index:%d, addr: 0x%08llx\n",
+ 				ctx->num, vb->index, buf->addr[0][0]);
+-		if (vb->memory == V4L2_MEMORY_DMABUF &&
++		if (vb->memory != V4L2_MEMORY_USERPTR &&
+ 				ctx->state < MFCINST_HEAD_PARSED && !ctx->is_drm)
+ 			stream_vir = vb2_plane_vaddr(vb, 0);
+ 
+@@ -473,8 +473,7 @@ static void mfc_dec_buf_queue(struct vb2_buffer *vb)
+ 					ctx->num, vb->index, i, buf->addr[0][i]);
+ 		mfc_store_dpb(ctx, vb);
+ 
+-		if ((vb->memory == V4L2_MEMORY_USERPTR || vb->memory == V4L2_MEMORY_DMABUF) &&
+-				mfc_is_queue_count_same(&ctx->buf_queue_lock,
++		if (mfc_is_queue_count_same(&ctx->buf_queue_lock,
+ 					&ctx->dst_buf_queue, dec->total_dpb_count))
+ 			ctx->capture_state = QUEUE_BUFS_MMAPED;
+ 
+-- 
+2.47.3
+

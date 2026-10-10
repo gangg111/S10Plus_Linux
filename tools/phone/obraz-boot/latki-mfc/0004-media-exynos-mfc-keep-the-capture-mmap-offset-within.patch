@@ -1,0 +1,37 @@
+From 76dd73e915e404a209a55289f51cdd1ee6487a55 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 03:05:40 +0200
+Subject: [PATCH 4/9] media: exynos-mfc: keep the capture mmap offset within 32
+ bits
+
+DST_QUEUE_OFF_BASE was TASK_SIZE / 2 (2^38 with 39-bit VAs), but querybuf
+adds it to v4l2_plane.m.mem_offset, a __u32: the capture offset was cut
+back to its plain value and mfc_mmap() sent the capture planes to the
+output queue. FFmpeg h264_v4l2m2m failed with capture buffer[0]
+initialization (Cannot allocate memory).
+
+Use 1 << 30 like s5p-mfc and v4l2-mem2mem. Only the decoder MMAP path
+uses this value.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/platform/exynos/mfc/mfc_mem.h | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/media/platform/exynos/mfc/mfc_mem.h b/drivers/media/platform/exynos/mfc/mfc_mem.h
+index fb27b03c5..418aff43e 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_mem.h
++++ b/drivers/media/platform/exynos/mfc/mfc_mem.h
+@@ -17,7 +17,8 @@
+ 
+ /* Offset base used to differentiate between CAPTURE and OUTPUT
+ *  while mmaping */
+-#define DST_QUEUE_OFF_BASE      (TASK_SIZE / 2)
++/* within the 32-bit v4l2_plane.m.mem_offset, as in s5p-mfc and v4l2-mem2mem */
++#define DST_QUEUE_OFF_BASE      (1 << 30)
+ 
+ static inline dma_addr_t mfc_mem_get_daddr_vb(
+ 	struct vb2_buffer *vb, unsigned int n)
+-- 
+2.47.3
+

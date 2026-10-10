@@ -1,0 +1,374 @@
+From 15ac51bc9ca237d53a6129b15c68e0908c00e72d Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Fri, 2 Oct 2026 18:20:27 +0200
+Subject: [PATCH 1/9] media: fimc-is2: end the format enumeration of the camera
+ nodes
+
+The VIDIOC_ENUM_FMT handlers of the fimc-is video nodes are stubs that
+return 0 for every index without filling anything in.  A V4L2 client that
+enumerates formats until EINVAL never gets there: FFmpeg's v4l2m2m wrapper
+scans every /dev/video* node and spins on the first fimc-is one (with a
+kernel warning about an unknown pixel format on each call), and so would
+any program listing cameras.
+
+The stubs now return -EINVAL, which is "no formats" for the caller.  The
+vendor camera HAL cannot have relied on a successful enumeration, since a
+loop over it never ended.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aa.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aac.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aaf.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aag.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aap.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcp.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcpc.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcps.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-dis.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-disc.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-isp.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispc.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispp.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcs.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcsp.c    | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-mec.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-pafrdma.c | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-scc.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-scp.c     | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-sensor.c  | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc0.c   | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc1.c   | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc2.c   | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc3.c   | 2 +-
+ drivers/media/platform/exynos/fimc-is2/fimc-is-video-vra.c     | 2 +-
+ 25 files changed, 25 insertions(+), 25 deletions(-)
+
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aa.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aa.c
+index 7c5ab2ca7..c66ec8ae8 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aa.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aa.c
+@@ -318,7 +318,7 @@ static int fimc_is_3aa_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	/* Todo : add to enumerate format code */
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_3aa_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aac.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aac.c
+index 84b8b0aa9..3f5775590 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aac.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aac.c
+@@ -278,7 +278,7 @@ static int fimc_is_3xc_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_3xc_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aaf.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aaf.c
+index 4966fba7c..2c1a064a0 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aaf.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aaf.c
+@@ -278,7 +278,7 @@ static int fimc_is_3xf_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_3xf_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aag.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aag.c
+index 6cb92d2c9..1f2cbba68 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aag.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aag.c
+@@ -278,7 +278,7 @@ static int fimc_is_3xg_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_3xg_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aap.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aap.c
+index 244a8a8c0..f7836a1a1 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aap.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-3aap.c
+@@ -311,7 +311,7 @@ static int fimc_is_3xp_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_3xp_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcp.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcp.c
+index 804a51ea2..7d87636fc 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcp.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcp.c
+@@ -253,7 +253,7 @@ static int fimc_is_dcpxs_video_enum_fmt_mplane(struct file *file, void *priv,
+ 
+ 	mdbgv_isp("%s\n", vctx, __func__);
+ 
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_dcpxs_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcpc.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcpc.c
+index f1b0dc0d4..54c4ad7ac 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcpc.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcpc.c
+@@ -378,7 +378,7 @@ static int fimc_is_dcpxc_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_dcpxc_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcps.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcps.c
+index 9868f277a..7078b9c76 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcps.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dcps.c
+@@ -247,7 +247,7 @@ static int fimc_is_dcp1s_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_dcp1s_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dis.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dis.c
+index 886433af1..da67ed93d 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dis.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-dis.c
+@@ -287,7 +287,7 @@ static int fimc_is_dxs_video_enum_fmt_mplane(struct file *file, void *priv,
+ 
+ 	mdbgv_isp("%s\n", vctx, __func__);
+ 
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_dxs_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-disc.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-disc.c
+index 797ac75aa..c104b78dc 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-disc.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-disc.c
+@@ -278,7 +278,7 @@ static int fimc_is_dxc_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_dxc_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-isp.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-isp.c
+index 670bb60e4..d22b0b217 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-isp.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-isp.c
+@@ -285,7 +285,7 @@ static int fimc_is_ixs_video_enum_fmt_mplane(struct file *file, void *priv,
+ 
+ 	mdbgv_isp("%s\n", vctx, __func__);
+ 
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ixs_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispc.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispc.c
+index fccf1df95..f86a77b7c 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispc.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispc.c
+@@ -278,7 +278,7 @@ static int fimc_is_ixc_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ixc_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispp.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispp.c
+index db423e1f2..c4d1bc340 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispp.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ispp.c
+@@ -278,7 +278,7 @@ static int fimc_is_ixp_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ixp_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcs.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcs.c
+index 58b385b1e..8fdd777e5 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcs.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcs.c
+@@ -285,7 +285,7 @@ static int fimc_is_mcs_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	/* Todo : add to enumerate format code */
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_mcs_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcsp.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcsp.c
+index a96de59d8..883478bf9 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcsp.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mcsp.c
+@@ -408,7 +408,7 @@ static int fimc_is_mxp_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_mxp_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mec.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mec.c
+index b18a736db..0034d82e4 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mec.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-mec.c
+@@ -278,7 +278,7 @@ static int fimc_is_mexc_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_mexc_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-pafrdma.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-pafrdma.c
+index 574316099..5d5f97761 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-pafrdma.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-pafrdma.c
+@@ -285,7 +285,7 @@ static int fimc_is_paf_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	/* Todo : add to enumerate format code */
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_paf_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scc.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scc.c
+index d75619e82..55cdf74c5 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scc.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scc.c
+@@ -245,7 +245,7 @@ static int fimc_is_scc_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_scc_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scp.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scp.c
+index 590907f0c..6f1250fdc 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scp.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-scp.c
+@@ -244,7 +244,7 @@ static int fimc_is_scp_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_scp_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-sensor.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-sensor.c
+index 5776cb640..cd53830cc 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-sensor.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-sensor.c
+@@ -266,7 +266,7 @@ static int fimc_is_ssx_video_enum_fmt_mplane(struct file *file, void *priv,
+ 				    struct v4l2_fmtdesc *f)
+ {
+ 	/* Todo : add to enumerate format code */
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ssx_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc0.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc0.c
+index 574a053f7..19747398a 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc0.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc0.c
+@@ -296,7 +296,7 @@ static int fimc_is_ssxvc0_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ssxvc0_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc1.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc1.c
+index 15712e42b..02c9e16fb 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc1.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc1.c
+@@ -288,7 +288,7 @@ static int fimc_is_ssxvc1_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ssxvc1_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc2.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc2.c
+index fa2f6eae8..f6b7f3dbd 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc2.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc2.c
+@@ -288,7 +288,7 @@ static int fimc_is_ssxvc2_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ssxvc2_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc3.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc3.c
+index caf965049..bf423888c 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc3.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-ssvc3.c
+@@ -288,7 +288,7 @@ static int fimc_is_ssxvc3_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	dbg("%s\n", __func__);
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_ssxvc3_video_get_format_mplane(struct file *file, void *fh,
+diff --git a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-vra.c b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-vra.c
+index 2a2a62771..e8371023c 100644
+--- a/drivers/media/platform/exynos/fimc-is2/fimc-is-video-vra.c
++++ b/drivers/media/platform/exynos/fimc-is2/fimc-is-video-vra.c
+@@ -237,7 +237,7 @@ static int fimc_is_vra_video_enum_fmt_mplane(struct file *file, void *priv,
+ 	struct v4l2_fmtdesc *f)
+ {
+ 	/* Todo: add enum format control code */
+-	return 0;
++	return -EINVAL;
+ }
+ 
+ static int fimc_is_vra_video_get_format_mplane(struct file *file, void *fh,
+-- 
+2.47.3
+

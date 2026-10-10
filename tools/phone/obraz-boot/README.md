@@ -40,3 +40,42 @@ FFmpeg `v4l2m2m` i GStreamer `v4l2h264dec`), initramfs jak w trzecim. Obraz
 `D:\S10Plus-droidian\boot-fimc-abox-mfc-2026-10-02.img` (sha256 `5915b04e...`), na telefonie
 `~/boot-fimc-abox-mfc.img`. Po restarcie `sh ~/test-po-wgraniu.sh` sprawdza jadro, firmware ABOX,
 dzwiek, wezly kamer i dekoder MFC; aparat sprawdza czlowiek.
+
+Piate wydanie, 03.10.2026 (zastepuje czwarte; wgrane, firmware dziala, ale HAL sie zakleszczal): firmware ABOX wbudowany w jadro
+(`CONFIG_EXTRA_FIRMWARE` z czterema plikami `calliope_*` z `/vendor/firmware`, 2,58 MB,
+`firmware-w-jadrze.sh`). Trzecie i czwarte wydanie nie dzialaly: to jadro nie rozpakowuje
+initramfs (Droidian robi to w przestrzeni uzytkownika), a ABOX laduje firmware bez zapasowego
+user helpera (w logu robi to tylko VTS), wiec ani pliki w initramfs, ani obsluga
+`/sys/class/firmware` przez `audio-hidl-compat.sh` nie mialy szans. Initramfs wziety z drugiego
+wydania (bez zbednych kopii firmware), jadro z galezi `droidian` jak w czwartym. Obraz
+`D:\S10Plus-droidian\boot-abox-wbudowany-2026-10-03.img` (sha256 `605bf829...`), na telefonie
+`~/boot-abox-wbudowany.img`, zajete 57 451 220 z 57 671 680 B. Po wgraniu `audio-hidl-compat`
+w dzienniku melduje `built into the kernel: calliope_sram.bin calliope_dram.bin`, a
+`sh ~/test-po-wgraniu.sh` ma pokazac `audio.hidl_compat` w pulseaudio i probki mikrofonu rozne od zera.
+
+Szoste wydanie, 03.10.2026 (zastepuje piate, WGRANE, dzwiek dziala): jak piate plus galaz `droidian`
+244bf3095 (`0001-ASoC-abox-register-extra-firmware-controls-from-work.patch`). Pierwsze wybudzenie
+ABOX po resecie rejestrowalo kontrolki dodatkowego firmware (`snd_ctl_add`, blokada `controls_rwsem`
+do zapisu) wprost w `abox_runtime_resume`; gdy to wybudzenie wywolal odczyt kontrolki przez HAL
+(`abox_ctl_get` trzyma ta sama blokade do odczytu i czeka w `pm_runtime_get_sync`), oba watki czekaly
+na siebie: HAL w stanie D, pulseaudio zawieszony. Wybudzenie z `audio-hidl-compat.sh` przed startem
+HAL-u (adaptacja 12) wygrywalo wyscig tylko czasem (1 z 2 rozruchow), teraz rejestracje robi
+`register_component_work`. Obraz `D:\S10Plus-droidian\boot-abox-bez-zakleszczenia-2026-10-03.img`
+(sha256 `78598177...`), na telefonie `~/boot-abox-bez-zakleszczenia.img`. Dowod z dwoch kolejnych
+rozruchow: `calliope_version MUL0`, HAL w stanie `Sl`, mikrofon 349 440 z 364 800 probek niezerowych
+(RMS 15), przy odtwarzaniu dzialaja `pcmC0D0p`, `pcmC0D7p` i VDMA `pcmC1D0p`. Glosnik sprawdza ucho.
+
+Siodme wydanie, 03.10.2026 (zastepuje szoste, WGRANE): jak szoste plus dekoder MFC dzialajacy dla
+FFmpeg, GStreamera i mpv. Latki galezi `droidian` od fimc-is do konca serii MFC sa w `latki-mfc/`
+(0001-0009). Kazda naprawia blad zmierzony na telefonie: panika przy pierwszym QBUF (vb2-dma-sg nie
+ustawial `dma_address` buforom MMAP), `mmap` bufora wyjsciowego trafial w kolejke wejsciowa
+(przesuniecie 2^38 w 32-bitowym `mem_offset`), `poll` nie zglaszal gotowych klatek przy masce
+POLLIN|POLLOUT, brak konca strumienia (`DECODER_CMD STOP`, `V4L2_BUF_FLAG_LAST`), za malo buforow
+i zerowy rozmiar DPB bez `S_FMT` (GStreamer), oraz `debug_mode` z DT producenta, przez ktory kazdy
+blad MFC (osiagalny z przestrzeni uzytkownika) restartowal telefon (teraz tylko z
+`exynos_mfc.panic_on_error=1`). Parametry debugowania w `/sys/module/exynos_mfc/parameters/`
+(debugfs w tym jadrze nie ma). Obraz `D:\S10Plus-droidian\boot-mfc-2026-10-03.img` (sha256
+`49d42aa6...`), na telefonie `~/boot-mfc.img`. Dowod (20 s 1080p, 600 klatek): FFmpeg H.264 84 kl/s
+przy 0,66 s CPU (programowo 1,3 s czasu, ale 6 s CPU), HEVC 115 kl/s przy 0,57 s CPU (programowo
+10,9 s CPU), klatka sprzetowa identyczna z programowa (PSNR inf), GStreamer `v4l2h264dec` kod 0
+w 6,8 s, mpv `--hwdec=v4l2m2m-copy` uzywa dekodera sprzetowego, zero bledow MFC w dmesg.

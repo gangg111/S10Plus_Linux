@@ -1,0 +1,44 @@
+From f3ba9ab782f77e0221e38ff45373ba59f536b7d8 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 03:15:04 +0200
+Subject: [PATCH 5/9] media: exynos-mfc: debug knobs as module parameters
+
+The driver only exposes debug_level, nal_q_disable, nal_q_dump and
+sfr_dump through debugfs, which this kernel is built without. Make them
+module parameters too: /sys/module/exynos_mfc/parameters/.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/platform/exynos/mfc/mfc_debugfs.c | 9 +++++++++
+ 1 file changed, 9 insertions(+)
+
+diff --git a/drivers/media/platform/exynos/mfc/mfc_debugfs.c b/drivers/media/platform/exynos/mfc/mfc_debugfs.c
+index 685d2f4db..d0b7f7de3 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_debugfs.c
++++ b/drivers/media/platform/exynos/mfc/mfc_debugfs.c
+@@ -11,6 +11,7 @@
+  */
+ 
+ #include <linux/debugfs.h>
++#include <linux/module.h>
+ #include <linux/seq_file.h>
+ 
+ #include "mfc_debugfs.h"
+@@ -34,6 +35,14 @@ unsigned int mmcache_disable;
+ unsigned int perf_boost_mode;
+ unsigned int reg_test;
+ 
++/* the same knobs without debugfs (CONFIG_DEBUG_FS is off on Droidian):
++ * /sys/module/exynos_mfc/parameters/
++ */
++module_param(debug_level, uint, 0644);
++module_param(nal_q_disable, uint, 0644);
++module_param(nal_q_dump, uint, 0644);
++module_param(sfr_dump, uint, 0644);
++
+ static int __mfc_info_show(struct seq_file *s, void *unused)
+ {
+ 	struct mfc_dev *dev = s->private;
+-- 
+2.47.3
+

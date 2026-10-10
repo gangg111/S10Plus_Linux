@@ -1,0 +1,69 @@
+From d9c1975979b25b74fa6d92b0c99545e3fbd0d64f Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 03:19:30 +0200
+Subject: [PATCH 6/9] media: exynos-mfc: poll both queues, no dma-buf mapping
+ for MMAP DPBs
+
+mfc_poll() answered for the source queue whenever POLLOUT was in the
+mask and only otherwise for the capture queue. FFmpeg h264_v4l2m2m waits
+for a decoded frame with POLLIN and POLLOUT together, so it was only ever
+told about free source buffers: the decoder filled all 20 capture buffers
+(Found in dst queue) and stopped, FFmpeg never dequeued a frame. Report
+both queues like v4l2-mem2mem does.
+
+mfc_store_dpb() also maps every capture buffer once more from its dma-buf
+fd. An MMAP buffer has no fd (EBADF for each one) and already has its
+iova from vb2_dma_sg_alloc(), so skip that for MMAP.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/platform/exynos/mfc/mfc.c       | 14 +++++++++++---
+ drivers/media/platform/exynos/mfc/mfc_queue.c |  4 ++++
+ 2 files changed, 15 insertions(+), 3 deletions(-)
+
+diff --git a/drivers/media/platform/exynos/mfc/mfc.c b/drivers/media/platform/exynos/mfc/mfc.c
+index cc10a993f..f702b9016 100644
+--- a/drivers/media/platform/exynos/mfc/mfc.c
++++ b/drivers/media/platform/exynos/mfc/mfc.c
+@@ -846,12 +846,20 @@ static unsigned int mfc_poll(struct file *file,
+ 
+ 	mfc_debug_enter();
+ 
++	/*
++	 * Both queues when both are asked for: FFmpeg's v4l2m2m waits for a
++	 * decoded frame with POLLIN and POLLOUT in one mask, and an answer
++	 * for the source queue alone never reported the frames.
++	 */
+ 	if (req_events & (POLLOUT | POLLWRNORM)) {
+ 		mfc_debug(2, "wait source buffer\n");
+-		ret = vb2_poll(&ctx->vq_src, file, wait);
+-	} else if (req_events & (POLLIN | POLLRDNORM)) {
++		ret |= vb2_poll(&ctx->vq_src, file, wait) &
++			(POLLOUT | POLLWRNORM | POLLPRI | POLLERR);
++	}
++	if (req_events & (POLLIN | POLLRDNORM)) {
+ 		mfc_debug(2, "wait destination buffer\n");
+-		ret = vb2_poll(&ctx->vq_dst, file, wait);
++		ret |= vb2_poll(&ctx->vq_dst, file, wait) &
++			(POLLIN | POLLRDNORM | POLLPRI | POLLERR);
+ 	}
+ 
+ 	mfc_debug_leave();
+diff --git a/drivers/media/platform/exynos/mfc/mfc_queue.c b/drivers/media/platform/exynos/mfc/mfc_queue.c
+index 656fe42dc..6745a56d5 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_queue.c
++++ b/drivers/media/platform/exynos/mfc/mfc_queue.c
+@@ -889,6 +889,10 @@ void mfc_store_dpb(struct mfc_ctx *ctx, struct vb2_buffer *vb)
+ 
+ 	spin_unlock_irqrestore(&ctx->buf_queue_lock, flags);
+ 
++	/* MMAP: the vb2 allocator already holds the iova, there is no dma-buf */
++	if (vb->memory == V4L2_MEMORY_MMAP)
++		return;
++
+ 	mutex_lock(&dec->dpb_mutex);
+ 	if (!dec->assigned_refcnt[index]) {
+ 		mfc_debug(2, "[IOVMM] map the new DPB[%d] %#llx\n", index, mfc_buf->addr[0][0]);
+-- 
+2.47.3
+
