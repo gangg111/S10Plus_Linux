@@ -208,9 +208,13 @@ class wayfire_podglad : public wf::plugin_interface_t
 
     void unfit(wayfire_view view)
     {
-        if (fitted.erase(view->get_id()))
+        fitted.erase(view->get_id());
+        // by name, not by the set: a fit left by an earlier copy of this
+        // plugin (reloaded under a new name) must come off as well
+        auto node = view->get_transformed_node();
+        if (node->get_transformer<wf::scene::view_2d_transformer_t>(FIT))
         {
-            view->get_transformed_node()->rem_transformer(FIT);
+            node->rem_transformer(FIT);
             view->damage();
         }
     }
@@ -235,16 +239,28 @@ class wayfire_podglad : public wf::plugin_interface_t
             return;
         }
 
+        // Called again on every geometry change (rotation gives the view a new
+        // workarea long after it mapped): the entry is reused, never replaced,
+        // because this can run from inside its own commit callback.
         const uint32_t id = view->get_id();
         auto& w = watches[id];
-        w = std::make_unique<commit_watch>();
-        w->on_commit.set_callback([=] (void*)
+        if (!w)
         {
-            update_fit(wf::toplevel_cast(wf::ipc::find_view_by_id(id)));
-        });
-        w->on_commit.connect(&surface->events.commit);
+            w = std::make_unique<commit_watch>();
+            w->on_commit.set_callback([=] (void*)
+            {
+                update_fit(wf::toplevel_cast(wf::ipc::find_view_by_id(id)));
+            });
+        }
+
+        if (!w->on_commit.is_connected())
+        {
+            w->on_commit.connect(&surface->events.commit);
+        }
+
         // the entry itself goes on unmap: a timer must not free itself
         // from its own callback
+        w->expire.disconnect();
         w->expire.set_timeout(WATCH_MS, [=] ()
         {
             auto it = watches.find(id);
@@ -341,6 +357,13 @@ class wayfire_podglad : public wf::plugin_interface_t
         [=] (wf::view_geometry_changed_signal *ev)
     {
         check_maximized(ev->view);
+        // the fit set up here has to come off once the client redraws at the
+        // new size, so follow its commits again
+        if (is_plain_toplevel(ev->view))
+        {
+            watch_commits(ev->view);
+        }
+
         update_fit(ev->view);
     };
 
