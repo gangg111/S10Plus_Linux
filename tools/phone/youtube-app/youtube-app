@@ -1,0 +1,12 @@
+#!/bin/sh
+# YouTube jako aplikacja Qt WebEngine. Firefox pada na tym urzadzeniu (TLS pliku
+# wykonywalnego koliduje z Mali/bionikiem). Qt WebEngine dziala, ale:
+#  - kompozytor GPU Chromium nie dziala na libhybris -> --disable-gpu (render CPU),
+#  - bez QT_WAYLAND_FORCE_NONBLOCKING_SWAP_SUPPORT event loop Qt zamarza na wayfire
+#    (log "Non-blocking swap buffers not supported") i strona sie nie laduje.
+export QTWEBENGINE_CHROMIUM_FLAGS="--disable-gpu --disable-gpu-compositing"
+export QT_QPA_PLATFORM=wayland
+export QT_WAYLAND_FORCE_NONBLOCKING_SWAP_SUPPORT=1
+LINK="$HOME/.local/bin/YouTube"
+[ -L "$LINK" ] || ln -sf /usr/lib/qt6/bin/qmlscene "$LINK"
+exec "$LINK" "$HOME/.local/share/youtube-app/youtube.qml" "$@"

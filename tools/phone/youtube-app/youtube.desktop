@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=YouTube
+Comment=YouTube (aplikacja webowa)
+Exec=/home/droidian/.local/bin/youtube-app
+Icon=/home/droidian/.local/share/icons/hicolor/256x256/apps/youtube.png
+Terminal=false
+Categories=AudioVideo;Video;Network;
+StartupWMClass=org.qt-project.qmlscene
