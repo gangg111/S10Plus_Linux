@@ -1,0 +1,18 @@
+/* Galaxy S10+ (Droidian): strona nowej karty Firefoksa 153 (uklad "Nova") to siatka
+ * 150 + co najmniej 334 + 150 pkt plus odstepy, czyli okolo 700 pkt bez wariantu na waski
+ * ekran: na 480 pkt logo i wyszukiwarka uciekaja w prawo poza ekran. mobile-config-firefox
+ * 4.3 tego ukladu nie zna. Ponizej 700 pkt jedna kolumna, tresc na cala szerokosc. */
+@namespace url("http://www.w3.org/1999/xhtml");
+
+@-moz-document url("about:home"), url("about:newtab"), url("about:privatebrowsing") {
+    @media (max-width: 700px) {
+        .nova-enabled.container {
+            display: block !important;
+            padding-inline: 12px !important;
+        }
+
+        .nova-enabled .content {
+            grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)) !important;
+        }
+    }
+}

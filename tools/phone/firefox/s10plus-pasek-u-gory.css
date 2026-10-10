@@ -1,0 +1,33 @@
+/* Galaxy S10+ (Droidian): pasek adresu u gory. mobile-config-firefox 4.3 nie ma
+ * przelacznika mcf.toolbar.positionOnTop i na waskim ekranie przenosi go na dol
+ * (browser.css). Ten fragment idzie na koniec userChrome.files, wiec wygrywa. */
+@media (max-width: 700px) {
+    #browser {
+        order: 0 !important;
+    }
+
+    /* strzalka listy kart znow w dol (tabmenu.css obracal ja pod dolny pasek) */
+    #alltabs-button {
+        transform: none !important;
+    }
+
+    /* powiadomienia (np. instalacja dodatku) przesuniete pod dolny pasek wracaja na miejsce (popups.css) */
+    .popup-notification-panel,
+    #notification-popup {
+        margin-top: 0 !important;
+    }
+}
+
+/* Pasek kart, adresu i przyciski o 30% wieksze, strony bez zmian. */
+#navigator-toolbox {
+    zoom: 1.3 !important;
+}
+
+/* Schowane panele (okno na cala wysokosc 1013 pkt, z paskiem stanu 946): pasek kart siega
+ * gory ekranu, a prawy gorny rog zajmuje otwor aparatu. Przyciski koncza sie przed nim:
+ * 125 pkt na ekranie, czyli 96 px wewnatrz powiekszenia 1,3. */
+@media (orientation: portrait) and (min-height: 990px) {
+    #TabsToolbar {
+        padding-right: 96px !important;
+    }
+}
