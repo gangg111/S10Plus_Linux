@@ -9,5 +9,7 @@ override_dh_strip:
 override_dh_dwz:
 
 # debian/adaptation-samsung-beyond2lte-configs.dotyk-boost.service
+# debian/adaptation-samsung-beyond2lte-configs.s10-autosleep.service
 override_dh_installsystemd:
 	dh_installsystemd --name=dotyk-boost
+	dh_installsystemd --name=s10-autosleep

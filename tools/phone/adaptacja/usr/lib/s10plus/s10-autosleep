@@ -1,0 +1,125 @@
+#!/bin/bash
+# s10-autosleep: hands-free deep sleep dla S10+ Droidian.
+# Usypia (echo mem) gdy sesja graficzna idle >= IDLE_SEC i zaden strazik nie
+# blokuje. Po KAZDYM wybudzeniu wstrzykuje KEY_POWER do wayfire (wf-ipc), bo
+# gdy telefon budzi sie przyciskiem power, KEY_POWER (wakeup-source) NIE dociera
+# do wayfire jako "zapal ekran" -> ekran slepy. feed_key omija libinput/seatd.
+#
+# WYBUDZANIE SZYBKIE (rcu_fast): po resume wayfire/libinput zamyka ~20 evdev fd,
+# a kazdy evdev_release wola synchronize_rcu; pod PREEMPT_RCU bez ekspedycji
+# jeden GP trwa ~2 s -> ~40 s slepego ekranu. Bramkujemy suspend ekspedowanym
+# RCU (rcu_expedited=1, rcu_normal=0) tylko na czas transakcji suspend/resume,
+# wiec w spoczynku ZERO kosztu. Dowod: 40 s -> <1 s (measure-resume8/9).
+
+IDLE_SEC=${IDLE_SEC:-180}
+POLL=${POLL:-30}
+NET_THRESH=${NET_THRESH:-51200}
+GRACE=${GRACE:-60}
+DRY=${DRY:-0}
+RT=/run/user/32011
+WD=wayland-0
+
+log(){ echo "$(date '+%F %T') $*"; }
+asdroid(){ sudo -u droidian env XDG_RUNTIME_DIR="$RT" WAYLAND_DISPLAY="$WD" "$@"; }
+
+seat_session(){ loginctl --no-legend 2>/dev/null | awk '$4=="seat0"{print $1; exit}'; }
+idle_sec(){
+  local s h since now
+  s=$(seat_session); [ -z "$s" ] && { echo -1; return; }
+  h=$(loginctl show-session "$s" -p IdleHint --value 2>/dev/null)
+  [ "$h" = "yes" ] || { echo -1; return; }
+  since=$(loginctl show-session "$s" -p IdleSinceHint --value 2>/dev/null)
+  [ -z "$since" ] || [ "$since" = 0 ] && { echo -1; return; }
+  now=$(date +%s%6N); echo $(( (now - since) / 1000000 ))
+}
+
+guard_power(){
+  [ "$(cat /sys/class/power_supply/usb/online 2>/dev/null)" = "1" ] && return 0
+  [ "$(cat /sys/class/power_supply/ac/online 2>/dev/null)" = "1" ] && return 0
+  return 1
+}
+guard_audio(){ grep -lq RUNNING /proc/asound/card*/pcm*/sub*/status 2>/dev/null; }
+guard_ssh(){ who 2>/dev/null | grep -q sshd; }
+guard_net(){
+  local d=/sys/class/net/wlan0/statistics r1 t1 r2 t2 rate
+  r1=$(cat "$d/rx_bytes" 2>/dev/null); t1=$(cat "$d/tx_bytes" 2>/dev/null)
+  sleep 2
+  r2=$(cat "$d/rx_bytes" 2>/dev/null); t2=$(cat "$d/tx_bytes" 2>/dev/null)
+  rate=$(( (r2 - r1 + t2 - t1) / 2 ))
+  [ "$rate" -gt "$NET_THRESH" ]
+}
+blocker(){
+  guard_power && { echo "zasilacz"; return 0; }
+  guard_audio && { echo "audio"; return 0; }
+  guard_ssh   && { echo "ssh"; return 0; }
+  guard_net   && { echo "transfer"; return 0; }
+  return 1
+}
+
+screen_on(){ [ "$(asdroid timeout 1 wlr-randr 2>/dev/null | grep -oE 'Enabled: (yes|no)' | head -1)" = "Enabled: yes" ]; }
+# po resume: wstrzyknij KEY_POWER do wayfire az ekran sie zapali.
+# Tuz po resume wayfire bywa ~kilka s nieresponsywny, wiec szybki retry
+# z krotkim (1s) sprawdzeniem stanu zamiast dlugich timeoutow.
+wake_screen(){
+  local t
+  for t in $(seq 1 40); do
+    asdroid python3 /usr/lib/s10plus/wf-ipc.py key KEY_POWER >/dev/null 2>&1
+    screen_on && { log "ekran zapalony (feed_key proba $t)"; return 0; }
+    sleep 0.3
+  done
+  log "UWAGA: ekran nie zapalil sie po 40 probach feed_key"
+  return 1
+}
+
+arm_wowlan(){ iw phy0 wowlan enable any magic-packet disconnect 2>/dev/null; }
+
+# ekspedowane RCU tylko na czas suspend/resume (patch wybudzania evdev_release)
+rcu_fast(){
+  echo 0 > /sys/kernel/rcu_normal 2>/dev/null
+  echo 1 > /sys/kernel/rcu_expedited 2>/dev/null
+}
+rcu_restore(){
+  echo 0 > /sys/kernel/rcu_expedited 2>/dev/null
+  echo 1 > /sys/kernel/rcu_normal 2>/dev/null
+}
+
+do_suspend(){
+  local s0 s1 try
+  arm_wowlan
+  rcu_fast
+  s0=$(cat /sys/power/suspend_stats/success 2>/dev/null)
+  for try in 1 2 3 4 5; do
+    sync
+    echo mem > /sys/power/state 2>/dev/null
+    s1=$(cat /sys/power/suspend_stats/success 2>/dev/null)
+    if [ "$s1" -gt "$s0" ]; then
+      log "SUSPEND ok (proba $try), obudzono - ozywiam ekran"
+      wake_screen
+      rcu_restore
+      return 0
+    fi
+    log "proba $try: busy (dt=0), retry za 3s"; sleep 3
+  done
+  rcu_restore
+  log "suspend nieudany po 5 probach"; return 1
+}
+
+log "s10-autosleep start (IDLE_SEC=$IDLE_SEC POLL=$POLL DRY=$DRY)"
+last_wake=0
+while true; do
+  now=$(date +%s)
+  idle=$(idle_sec)
+  if [ "$idle" -lt 0 ]; then :
+  elif [ $((now - last_wake)) -lt "$GRACE" ]; then log "idle ${idle}s ale grace"
+  elif [ "$idle" -lt "$IDLE_SEC" ]; then :
+  else
+    b=$(blocker)
+    if [ -n "$b" ]; then log "idle ${idle}s, blok: $b"
+    elif [ "$DRY" = "1" ]; then log "idle ${idle}s, brak blokad -> USPILBYM (DRY)"
+    else
+      log "idle ${idle}s, brak blokad -> usypiam"
+      do_suspend && last_wake=$(date +%s)
+    fi
+  fi
+  sleep "$POLL"
+done

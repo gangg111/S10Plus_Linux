@@ -1,3 +1,53 @@
+adaptation-samsung-beyond2lte (14) unstable; urgency=medium
+
+  * Deep sleep: hands-free auto-suspend daemon (s10-autosleep) with fast wake.
+    The phone suspends (echo mem) when the graphical session is idle and no
+    guard blocks (charger, audio, ssh, active transfer), and relights the
+    screen on resume by feeding KEY_POWER into wayfire over its IPC (the power
+    key is a wakeup source, so on a power-button wake it never reaches the
+    compositor as "turn the screen on").
+  * Deep sleep: the roughly 40 s blind screen after resume was wayfire closing
+    every evdev fd on resume, each evdev_release calling synchronize_rcu; under
+    preemptible non-expedited RCU one grace period took about 2 s, so about 20
+    devices cost about 40 s. The daemon brackets the suspend with expedited RCU
+    (rcu_expedited=1, rcu_normal=0) only for the suspend and resume, then
+    restores the as-found state, so idle power is unchanged. Measured wake from
+    about 40 s to 1.4 s (screen on at the first KEY_POWER inject).
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 10 Oct 2026 06:45:00 +0200
+
+adaptation-samsung-beyond2lte (13) unstable; urgency=medium
+
+  * Rotation: wayfire plugin obrot in place of autorotate-iio. The last frame
+    stays on the panel until every surface has redrawn at the new size (up to
+    1 s, measured 364 to 476 ms), then fades into the live image, instead of
+    half the screen showing old content and the rest black. The sensor is read
+    in a GLib thread that wakes the compositor on a change, not once a second.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 03 Oct 2026 02:40:00 +0200
+
+adaptation-samsung-beyond2lte (12) unstable; urgency=medium
+
+  * Sound: accept ABOX firmware built into the kernel (boot image of
+    03.10.2026, CONFIG_EXTRA_FIRMWARE); ABOX loads it without the user helper
+    fallback, so serving /sys/class/firmware could never work.
+  * Sound: wake ABOX once at android-mount, before the vendor HAL starts. The
+    first runtime resume registers the firmware's ALSA controls under the
+    card's controls_rwsem; triggered by the HAL reading a control it
+    deadlocked (HAL in D state, pulseaudio hung).
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 03 Oct 2026 01:45:00 +0200
+
+adaptation-samsung-beyond2lte (11) unstable; urgency=medium
+
+  * Sound: serve the ABOX firmware requests (calliope_*) from /vendor/firmware
+    through the firmware user helper fallback at android-mount, like ueventd
+    on Android; the kernel does not unpack the initramfs, so the copies there
+    were never seen. Bind audio.hidl_compat only when calliope_sram.bin and
+    calliope_dram.bin were served.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 03 Oct 2026 01:00:00 +0200
+
 adaptation-samsung-beyond2lte (10) unstable; urgency=medium
 
   * Settings: main page with the One UI entries (Connections with Wi-Fi and

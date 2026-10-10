@@ -1,0 +1,11 @@
+[Unit]
+Description=Hands-free deep sleep S10+ (auto-suspend z szybkim wybudzaniem)
+After=multi-user.target graphical.target
+
+[Service]
+ExecStart=/bin/bash /usr/lib/s10plus/s10-autosleep
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
