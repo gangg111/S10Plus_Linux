@@ -6,13 +6,16 @@ set -e
 PKG=adaptation-samsung-beyond2lte-tools
 C=/usr/share/plasma-settings/categories
 Q=/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard
+K=/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls
+B=/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze
 # keep in sync with preinst
 DIVERTED="/usr/bin/plasma_session /usr/bin/ksplashqml /usr/share/plasma-mobile-wf/wayfire.ini
 /usr/bin/plasma-settings /usr/share/locale/pl/LC_MESSAGES/mobile.plasmasettings.mo
 $C/settings-network.desktop $C/settings-hardware.desktop $C/settings-hardware-input.desktop
 $C/settings-applications.desktop $C/settings-appearance.desktop $C/settings-personalization.desktop
 $Q/qmldir $Q/FormCard.qml $Q/FormDelegateBackground.qml $Q/FormHeader.qml
-$Q/FormTextDelegate.qml $Q/FormSwitchDelegate.qml $Q/FormButtonDelegate.qml $Q/private/FormCardUnits.qml"
+$Q/FormTextDelegate.qml $Q/FormSwitchDelegate.qml $Q/FormButtonDelegate.qml $Q/private/FormCardUnits.qml
+$K/qmldir $K/private/globaltoolbar/ToolBarPageHeader.qml $B/qmldir $B/ToolBar.qml"
 
 if [ "$1" = remove ] || [ "$1" = abort-install ] || [ "$1" = disappear ]; then
 	for f in $DIVERTED; do

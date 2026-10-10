@@ -14,6 +14,21 @@ if [ "$1" = install ] || [ "$1" = upgrade ]; then
 		fi
 		rm -f /etc/xdg/autostart/autojasnosc.desktop
 	fi
+
+	# binder.conf: nasza wersja z signalStrengthRange dla modemu S10+ wygrywa nad
+	# ta z ofono-configs-binder-common (diversion, jak w pakiecie -tools).
+	# keep in sync with postrm
+	PKG=adaptation-samsung-beyond2lte-configs
+	BINDER=/etc/ofono/binder.conf
+	owner=$(dpkg-divert --listpackage "$BINDER")
+	if [ "$owner" = "$PKG" ]; then
+		:
+	elif [ -z "$owner" ]; then
+		dpkg-divert --package "$PKG" --divert "$BINDER.distrib" --rename --add "$BINDER"
+	else
+		echo "$BINDER is diverted by $owner, not touching it" >&2
+		exit 1
+	fi
 fi
 
 #DEBHELPER#

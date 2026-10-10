@@ -1,4 +1,5 @@
 usr/lib/droidian/device/*
+etc/ofono/*
 usr/lib/udev/rules.d/*
 usr/lib/s10plus/*
 usr/lib/systemd/user/*

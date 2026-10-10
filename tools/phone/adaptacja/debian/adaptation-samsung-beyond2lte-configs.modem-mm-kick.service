@@ -1,0 +1,11 @@
+[Unit]
+Description=Odblokowanie ModemManagera po starcie (wyscig ofono2mm na karcie SIM)
+After=ofono.service ModemManager.service
+Wants=ofono.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/s10plus/modem-mm-kick.sh
+
+[Install]
+WantedBy=multi-user.target

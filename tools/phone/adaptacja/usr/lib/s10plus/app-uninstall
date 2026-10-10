@@ -1,0 +1,74 @@
+#!/bin/sh
+# Odinstalowanie aplikacji z launchera (halcyon: przytrzymaj ikone -> Odinstaluj).
+# Argument: storageId z KService (np. "org.kde.kcalc.desktop", "deepseek-harness.desktop"
+# albo pelna sciezka do .desktop). Rozroznia dwa rodzaje:
+#   - aplikacja z pakietu APT  -> pkexec apt-get remove (polkit zapyta o haslo),
+#   - lokalna aplikacja (.desktop usera w ~/.local, Exec w ~/.local/bin) -> usun .desktop,
+#     skrypt wykonywalny i ikone.
+# Wywolywane z QML przez Plasma5Support DataSource (engine "executable").
+set -eu
+
+ID="${1:-}"
+[ -n "$ID" ] || { echo "uninstall: brak argumentu"; exit 2; }
+
+# Znajdz plik .desktop po storageId
+find_desktop() {
+    # 1) jesli to juz sciezka do istniejacego pliku
+    if [ -f "$ID" ]; then echo "$ID"; return 0; fi
+    name="$ID"
+    case "$name" in *.desktop) ;; *) name="$name.desktop";; esac
+    for d in "$HOME/.local/share/applications" /usr/share/applications \
+             /usr/local/share/applications /var/lib/flatpak/exports/share/applications; do
+        [ -f "$d/$name" ] && { echo "$d/$name"; return 0; }
+    done
+    # KService czasem robi storageId z podkatalogiem (foo-bar.desktop z kde4/)
+    hit=$(find "$HOME/.local/share/applications" /usr/share/applications -name "$name" 2>/dev/null | head -1)
+    [ -n "$hit" ] && { echo "$hit"; return 0; }
+    return 1
+}
+
+DF="$(find_desktop)" || { echo "uninstall: nie znaleziono .desktop dla '$ID'"; exit 3; }
+echo "uninstall: plik .desktop = $DF"
+
+# Czyj to pakiet APT?
+PKG=""
+if command -v dpkg >/dev/null 2>&1; then
+    PKG=$(dpkg -S "$DF" 2>/dev/null | head -1 | cut -d: -f1 || true)
+fi
+
+if [ -n "$PKG" ]; then
+    echo "uninstall: pakiet APT = $PKG, usuwam przez pkexec"
+    # --autoremove sprzata osierocone zaleznosci; polkit zapyta o haslo
+    exec pkexec /usr/bin/apt-get -y --autoremove remove "$PKG"
+fi
+
+# Lokalna aplikacja: usun plik .desktop, cel Exec (jesli w katalogu domowym) i ikone.
+echo "uninstall: aplikacja lokalna, usuwam pliki"
+EXECLINE=$(grep -m1 '^Exec=' "$DF" 2>/dev/null | cut -d= -f2- || true)
+# pierwszy token Exec bez argumentow/placeholderow (%U %f itd.)
+EXECBIN=$(printf '%s\n' "$EXECLINE" | awk '{print $1}')
+ICON=$(grep -m1 '^Icon=' "$DF" 2>/dev/null | cut -d= -f2- || true)
+
+# .desktop (tylko w katalogu domowym kasujemy bez pytania; systemowe nalezaly do pakietu)
+case "$DF" in
+    "$HOME"/*) rm -f "$DF"; echo "  usunieto $DF";;
+    *) echo "  UWAGA: $DF jest systemowy i nie nalezy do zadnego pakietu, nie ruszam"; ;;
+esac
+
+# skrypt/binarka uruchamiajaca (tylko jesli lezy w katalogu domowym)
+case "$EXECBIN" in
+    "$HOME"/*) [ -e "$EXECBIN" ] && { rm -f "$EXECBIN"; echo "  usunieto $EXECBIN"; }
+               # symlink-bliźniak tworzony przez niektore launchery (np. YouTube->qmlscene)
+               ;;
+esac
+
+# ikona (tylko sciezka bezwzgledna w katalogu domowym)
+case "$ICON" in
+    "$HOME"/*) [ -e "$ICON" ] && { rm -f "$ICON"; echo "  usunieto $ICON"; };;
+esac
+
+# odswiez baze .desktop
+command -v update-desktop-database >/dev/null 2>&1 && \
+    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
+echo "uninstall: gotowe"

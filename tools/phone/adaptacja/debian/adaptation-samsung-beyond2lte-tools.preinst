@@ -10,19 +10,24 @@
 # move to *.distrib, which the category loader does not read).  FormCard of
 # kirigami-addons gets One UI cards on the phone: margin and rounded corners
 # instead of edge to edge; its qmldir loses "prefer", so the QML files on disk
-# are used instead of the copies compiled into the plugin.
+# are used instead of the copies compiled into the plugin.  The same for the
+# Kirigami page header and the Breeze ToolBar: with the panels auto-hidden
+# they end before the front camera hole in the top right corner.
 set -e
 
 PKG=adaptation-samsung-beyond2lte-tools
 C=/usr/share/plasma-settings/categories
 Q=/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard
+K=/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls
+B=/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze
 # keep in sync with postrm
 DIVERTED="/usr/bin/plasma_session /usr/bin/ksplashqml /usr/share/plasma-mobile-wf/wayfire.ini
 /usr/bin/plasma-settings /usr/share/locale/pl/LC_MESSAGES/mobile.plasmasettings.mo
 $C/settings-network.desktop $C/settings-hardware.desktop $C/settings-hardware-input.desktop
 $C/settings-applications.desktop $C/settings-appearance.desktop $C/settings-personalization.desktop
 $Q/qmldir $Q/FormCard.qml $Q/FormDelegateBackground.qml $Q/FormHeader.qml
-$Q/FormTextDelegate.qml $Q/FormSwitchDelegate.qml $Q/FormButtonDelegate.qml $Q/private/FormCardUnits.qml"
+$Q/FormTextDelegate.qml $Q/FormSwitchDelegate.qml $Q/FormButtonDelegate.qml $Q/private/FormCardUnits.qml
+$K/qmldir $K/private/globaltoolbar/ToolBarPageHeader.qml $B/qmldir $B/ToolBar.qml"
 
 if [ "$1" = install ] || [ "$1" = upgrade ]; then
 	for f in $DIVERTED; do
