@@ -15,7 +15,16 @@ if [ "$1" = configure ]; then
 	drop_if_same /usr/lib/udev/rules.d/70-wibrator.rules /etc/udev/rules.d/70-wibrator.rules
 	drop_if_same /usr/lib/s10plus/autojasnosc.py /usr/local/lib/autojasnosc/autojasnosc.py
 	drop_if_same /usr/lib/s10plus/dotyk-boost.py /usr/local/lib/dotyk-boost/dotyk-boost.py
+	drop_if_same /usr/lib/s10plus/rndis-usb.sh /usr/local/sbin/rndis-usb.sh
 	rmdir /usr/local/lib/autojasnosc /usr/local/lib/dotyk-boost 2>/dev/null || true
+
+	# RNDIS wlaczony recznie przed wersja 15 zostaje wlaczony (znacznik z preinst)
+	M=/var/lib/adaptation-samsung-beyond2lte/rndis-usb-enabled
+	if [ -f "$M" ]; then
+		systemctl enable rndis-usb.service >/dev/null 2>&1 || true
+		rm -f "$M"
+		rmdir /var/lib/adaptation-samsung-beyond2lte 2>/dev/null || true
+	fi
 
 	if command -v udevadm >/dev/null 2>&1; then
 		udevadm control --reload-rules 2>/dev/null || true

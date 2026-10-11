@@ -8,8 +8,12 @@
 override_dh_strip:
 override_dh_dwz:
 
-# debian/adaptation-samsung-beyond2lte-configs.dotyk-boost.service
-# debian/adaptation-samsung-beyond2lte-configs.s10-autosleep.service
+# debian/adaptation-samsung-beyond2lte-configs.<name>.service
+# rndis-usb przestawia gadzet USB z NCM Droidiana na RNDIS, wiec jest tylko
+# instalowane, a wlacza je ten, kto chce kanalu serwisowego pod Windowsem.
 override_dh_installsystemd:
 	dh_installsystemd --name=dotyk-boost
 	dh_installsystemd --name=s10-autosleep
+	dh_installsystemd --name=modem-mm-kick
+	dh_installsystemd --name=modem-radio-on
+	dh_installsystemd --name=rndis-usb --no-enable --no-start

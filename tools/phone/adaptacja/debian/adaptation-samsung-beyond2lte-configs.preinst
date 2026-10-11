@@ -15,20 +15,45 @@ if [ "$1" = install ] || [ "$1" = upgrade ]; then
 		rm -f /etc/xdg/autostart/autojasnosc.desktop
 	fi
 
+	# Wersja 15 pakuje to, co na pierwszym telefonie bylo wgrane recznie: uslugi
+	# modemu i RNDIS (jednostka w /etc przeslania te z pakietu), stare ustawienia
+	# bezczynnosci logind (teraz 90-s10plus.conf) i skrypt RNDIS w /usr/local.
+	# Wlaczony recznie RNDIS zostaje wlaczony (znacznik dla postinst).
+	if [ -z "$2" ] || dpkg --compare-versions "$2" lt 15; then
+		W=/etc/systemd/system/multi-user.target.wants
+		if [ -L "$W/rndis-usb.service" ]; then
+			mkdir -p /var/lib/adaptation-samsung-beyond2lte
+			touch /var/lib/adaptation-samsung-beyond2lte/rndis-usb-enabled
+		fi
+		for u in modem-radio-on modem-mm-kick rndis-usb; do
+			if [ -f "/etc/systemd/system/$u.service" ] && [ ! -L "/etc/systemd/system/$u.service" ]; then
+				rm -f "$W/$u.service" "/etc/systemd/system/$u.service"
+			fi
+		done
+		for f in /etc/systemd/logind.conf.d/20-idle-suspend.conf /etc/systemd/logind.conf.d/50-no-idle-suspend.conf; do
+			if [ -f "$f" ] && ! dpkg -S "$f" >/dev/null 2>&1 && grep -q '^IdleAction=' "$f"; then
+				rm -f "$f"
+			fi
+		done
+	fi
+
 	# binder.conf: nasza wersja z signalStrengthRange dla modemu S10+ wygrywa nad
 	# ta z ofono-configs-binder-common (diversion, jak w pakiecie -tools).
+	# mm_modem.py: ofono2mm z bramka na PinRequired, ktorego ofono jeszcze nie
+	# wyslal zaraz po wlozeniu karty (bez niej KeyError i modem w stanie failed).
 	# keep in sync with postrm
 	PKG=adaptation-samsung-beyond2lte-configs
-	BINDER=/etc/ofono/binder.conf
-	owner=$(dpkg-divert --listpackage "$BINDER")
-	if [ "$owner" = "$PKG" ]; then
-		:
-	elif [ -z "$owner" ]; then
-		dpkg-divert --package "$PKG" --divert "$BINDER.distrib" --rename --add "$BINDER"
-	else
-		echo "$BINDER is diverted by $owner, not touching it" >&2
-		exit 1
-	fi
+	for f in /etc/ofono/binder.conf /usr/lib/ofono2mm/ofono2mm/mm_modem.py; do
+		owner=$(dpkg-divert --listpackage "$f")
+		if [ "$owner" = "$PKG" ]; then
+			:
+		elif [ -z "$owner" ]; then
+			dpkg-divert --package "$PKG" --divert "$f.distrib" --rename --add "$f"
+		else
+			echo "$f is diverted by $owner, not touching it" >&2
+			exit 1
+		fi
+	done
 fi
 
 #DEBHELPER#

@@ -10,13 +10,14 @@ if [ "$1" = remove ] || [ "$1" = purge ]; then
 fi
 
 if [ "$1" = remove ] || [ "$1" = abort-install ] || [ "$1" = disappear ]; then
-	# binder.conf wraca do wersji z ofono-configs-binder-common
+	# binder.conf i mm_modem.py wracaja do wersji z ich pakietow
 	# keep in sync with preinst
 	PKG=adaptation-samsung-beyond2lte-configs
-	BINDER=/etc/ofono/binder.conf
-	if [ "$(dpkg-divert --listpackage "$BINDER")" = "$PKG" ]; then
-		dpkg-divert --package "$PKG" --rename --remove "$BINDER"
-	fi
+	for f in /etc/ofono/binder.conf /usr/lib/ofono2mm/ofono2mm/mm_modem.py; do
+		if [ "$(dpkg-divert --listpackage "$f")" = "$PKG" ]; then
+			dpkg-divert --package "$PKG" --rename --remove "$f"
+		fi
+	done
 fi
 
 #DEBHELPER#

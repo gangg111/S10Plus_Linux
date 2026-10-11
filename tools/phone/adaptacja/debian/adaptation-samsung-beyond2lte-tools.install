@@ -11,3 +11,5 @@ tools/kirigami/controls/qmldir usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigam
 tools/kirigami/controls/private/globaltoolbar/ToolBarPageHeader.qml usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/private/globaltoolbar
 tools/breeze/qmldir usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze
 tools/breeze/ToolBar.qml usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze
+tools/rgba8888/librgba8888.so usr/lib/aarch64-linux-gnu/s10plus
+tools/maliit/maliit-keyboard usr/bin

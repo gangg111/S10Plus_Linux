@@ -15,7 +15,8 @@ $C/settings-network.desktop $C/settings-hardware.desktop $C/settings-hardware-in
 $C/settings-applications.desktop $C/settings-appearance.desktop $C/settings-personalization.desktop
 $Q/qmldir $Q/FormCard.qml $Q/FormDelegateBackground.qml $Q/FormHeader.qml
 $Q/FormTextDelegate.qml $Q/FormSwitchDelegate.qml $Q/FormButtonDelegate.qml $Q/private/FormCardUnits.qml
-$K/qmldir $K/private/globaltoolbar/ToolBarPageHeader.qml $B/qmldir $B/ToolBar.qml"
+$K/qmldir $K/private/globaltoolbar/ToolBarPageHeader.qml $B/qmldir $B/ToolBar.qml
+/usr/bin/maliit-keyboard"
 
 if [ "$1" = remove ] || [ "$1" = abort-install ] || [ "$1" = disappear ]; then
 	for f in $DIVERTED; do

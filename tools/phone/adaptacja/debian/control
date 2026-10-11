@@ -26,13 +26,17 @@ Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
  options the Samsung audio HAL needs, the boot splash theme matching the
  S-Boot logo, automatic screen brightness, screen blank inhibition for
  applications (org.freedesktop.ScreenSaver and powerdevil inhibitions
- passed to wayfire), sound through the vendor HIDL audio HAL, CPU touch
- boost and the KDE
- portal unit limited to Wayland sessions.
+ passed to wayfire), sound through the vendor HIDL audio HAL with the
+ loudspeaker routed past the protection DSP, CPU touch boost, the KDE
+ portal unit limited to Wayland sessions, hands-free deep sleep with a fast
+ wake (systemd suspend kept off, the daemon owns it), the modem radio turned
+ on at boot with the ofono2mm SIM race fixed, non-blocking buffer swaps so
+ the screen comes back after blanking, the Material dark style for Qt Quick
+ Controls and an optional RNDIS USB network (disabled by default).
 
 Package: adaptation-samsung-beyond2lte-tools
 Architecture: arm64
-Depends: wayfire, plasma-mobile-wf, plasma-settings (= 26.04.0-1),
+Depends: wayfire, plasma-mobile-wf, plasma-settings (= 26.04.0-1), maliit-keyboard,
          qml6-module-org-kde-kirigamiaddons-formcard (= 1.12.0-1), plasma-workspace (>= 4:6.7.4), plasma-workspace (<< 4:6.7.5),
          ${shlibs:Depends}, ${misc:Depends}
 Description: Droidian device tools for the Samsung Galaxy S10+ (Exynos)
@@ -47,4 +51,7 @@ Description: Droidian device tools for the Samsung Galaxy S10+ (Exynos)
   - plasma-settings 26.04.0 with the One UI look (diverted), its Polish
     strings and the categories in One UI order,
   - FormCard of kirigami-addons with One UI cards (rounded, with a margin)
-    on the phone, for every application.
+    on the phone, for every application,
+  - the obrot wayfire plugin: screen rotation from iio-sensor-proxy,
+  - maliit-keyboard wrapped with librgba8888 (diverted), so the keyboard
+    panel is transparent instead of black.

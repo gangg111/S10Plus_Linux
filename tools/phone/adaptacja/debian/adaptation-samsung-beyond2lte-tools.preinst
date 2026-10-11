@@ -13,6 +13,8 @@
 # are used instead of the copies compiled into the plugin.  The same for the
 # Kirigami page header and the Breeze ToolBar: with the panels auto-hidden
 # they end before the front camera hole in the top right corner.
+# maliit-keyboard becomes a wrapper that preloads librgba8888 (the real binary
+# moves to *.distrib), so the keyboard panel is transparent instead of black.
 set -e
 
 PKG=adaptation-samsung-beyond2lte-tools
@@ -27,7 +29,8 @@ $C/settings-network.desktop $C/settings-hardware.desktop $C/settings-hardware-in
 $C/settings-applications.desktop $C/settings-appearance.desktop $C/settings-personalization.desktop
 $Q/qmldir $Q/FormCard.qml $Q/FormDelegateBackground.qml $Q/FormHeader.qml
 $Q/FormTextDelegate.qml $Q/FormSwitchDelegate.qml $Q/FormButtonDelegate.qml $Q/private/FormCardUnits.qml
-$K/qmldir $K/private/globaltoolbar/ToolBarPageHeader.qml $B/qmldir $B/ToolBar.qml"
+$K/qmldir $K/private/globaltoolbar/ToolBarPageHeader.qml $B/qmldir $B/ToolBar.qml
+/usr/bin/maliit-keyboard"
 
 if [ "$1" = install ] || [ "$1" = upgrade ]; then
 	for f in $DIVERTED; do

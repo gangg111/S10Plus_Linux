@@ -1,3 +1,29 @@
+adaptation-samsung-beyond2lte (15) unstable; urgency=medium
+
+  * Everything the working phone had installed by hand is now packaged, so a
+    fresh image built from the sources matches it:
+    - modem-radio-on: sets the ofono modem Online at boot; without it the
+      Samsung RIL stays in RADIO_OFF and the SIM card is never read,
+    - ofono2mm mm_modem.py with a guard for PinRequired, which ofono may not
+      have sent yet right after a card is inserted (KeyError, modem stuck in
+      failed); diverted like binder.conf, re-check on ofono2mm updates,
+    - QT_WAYLAND_FORCE_NONBLOCKING_SWAP_SUPPORT=1 for the Plasma session in
+      /etc/xdg/plasma-workspace/env: libhybris waits for a frame callback
+      wayfire never sends while the output is off, so the shell froze and the
+      screen did not come back after blanking,
+    - systemd suspend and the logind idle action off, so only s10-autosleep
+      suspends the phone (a suspend through systemd has no wake path),
+    - the Material dark style for Qt Quick Controls,
+    - maliit-keyboard wrapped with librgba8888 (transparent keyboard panel),
+    - an RNDIS USB network for Windows hosts, installed but not enabled.
+  * Fix: the loudspeaker mixer_paths overlay and the modem-mm-kick unit were
+    in the source but never installed or enabled.
+  * Upgrade from a hand-installed phone: the unpackaged units, the old logind
+    idle files and /usr/local/sbin/rndis-usb.sh are removed; an enabled RNDIS
+    stays enabled.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sun, 11 Oct 2026 18:38:43 +0200
+
 adaptation-samsung-beyond2lte (14) unstable; urgency=medium
 
   * Deep sleep: hands-free auto-suspend daemon (s10-autosleep) with fast wake.

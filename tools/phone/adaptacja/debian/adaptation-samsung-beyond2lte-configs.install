@@ -6,6 +6,12 @@ usr/lib/systemd/user/*
 usr/share/plymouth/themes/debian-s10/*
 etc/pulse/*
 etc/xdg/autostart/*
+etc/xdg/plasma-workspace/*
+etc/xdg/qtquickcontrols2.conf
+etc/systemd/sleep.conf.d/*
+etc/systemd/logind.conf.d/*
 usr/lib/droid-system-overlay/etc/init/*
+usr/lib/droid-vendor-overlay/etc/*
+usr/lib/ofono2mm/ofono2mm/*
 etc/systemd/system/android-mount.service.d/*
 usr/share/color-schemes/*

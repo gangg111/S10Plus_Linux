@@ -1,0 +1,11 @@
+[Unit]
+Description=Siec RNDIS po USB (kanal serwisowy niezalezny od Wi-Fi, takze pod Windowsem)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/s10plus/rndis-usb.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

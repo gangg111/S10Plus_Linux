@@ -1,0 +1,13 @@
+[Unit]
+Description=Wlaczenie radia modemu (ofono -> RIL -> modem) po starcie
+After=ofono.service ModemManager.service
+Wants=ofono.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/s10plus/modem-radio-on.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+#!/bin/sh
+# Klawiatura ekranowa z librgba8888 (zrodlo: tools/phone/rgba8888): eglChooseConfig
+# dostaje jawnie 8 bitow na kanal z alfa. Inaczej EGL Androida daje najpierw RGB_565
+# i przezroczyste czesci okna sa czarne (czarny panel klawiatury na pol ekranu).
+# Prawdziwa binarka maliit-keyboard lezy w /usr/bin/maliit-keyboard.distrib.
+LD_PRELOAD="/usr/lib/aarch64-linux-gnu/s10plus/librgba8888.so${LD_PRELOAD:+:$LD_PRELOAD}"
+export LD_PRELOAD
+exec /usr/bin/maliit-keyboard.distrib "$@"
