@@ -2,7 +2,9 @@ Source: adaptation-samsung-beyond2lte
 Section: metapackages
 Priority: optional
 Maintainer: Artur Szafraniec <ganggg111@gmail.com>
-Build-Depends: debhelper-compat (= 13)
+Build-Depends: debhelper-compat (= 13), patch,
+# the libraries of the prebuilt binaries in -tools, for dh_shlibdeps
+               plasma-workspace, plasma-settings, wayfire
 Standards-Version: 4.6.2
 
 Package: adaptation-samsung-beyond2lte
@@ -11,6 +13,7 @@ Depends: adaptation-samsung-beyond2lte-configs (= ${binary:Version}),
          adaptation-samsung-beyond2lte-tools (>= ${binary:Version}),
          linux-bootimage-samsung-beyond2lte,
          linux-image-samsung-beyond2lte,
+         openssh-server, droidian-quirks-regenerate-ssh-keys,
          ${misc:Depends}
 Description: Droidian adaptation for the Samsung Galaxy S10+ (Exynos)
  Pulls in the kernel, the device configuration and the device tools for
@@ -32,13 +35,15 @@ Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
  wake (systemd suspend kept off, the daemon owns it), the modem radio turned
  on at boot with the ofono2mm SIM race fixed, non-blocking buffer swaps so
  the screen comes back after blanking, the Material dark style for Qt Quick
- Controls and an optional RNDIS USB network (disabled by default).
+ Controls and a network over the USB cable (RNDIS, the phone at
+ 169.254.172.1).
 
 Package: adaptation-samsung-beyond2lte-tools
 Architecture: arm64
-Depends: wayfire, plasma-mobile-wf, plasma-settings (= 26.04.0-1), maliit-keyboard,
-         qml6-module-org-kde-kirigamiaddons-formcard (= 1.12.0-1), plasma-workspace (>= 4:6.7.4), plasma-workspace (<< 4:6.7.5),
-         ${shlibs:Depends}, ${misc:Depends}
+Depends: wayfire, plasma-mobile-wf, maliit-keyboard,
+         plasma-settings (>= 26.04.0-1), plasma-settings (<< 26.04.1~),
+         plasma-workspace (>= 4:6.7.4), plasma-workspace (<< 4:6.7.5),
+         ${oneui:Depends}, ${shlibs:Depends}, ${misc:Depends}
 Description: Droidian device tools for the Samsung Galaxy S10+ (Exynos)
  Prebuilt binaries for the Samsung Galaxy S10+ (beyond2lte):
   - plasma_session and ksplashqml from plasma-workspace 6.7.4 with the

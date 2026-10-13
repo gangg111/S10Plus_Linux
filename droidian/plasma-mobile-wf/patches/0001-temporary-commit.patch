@@ -1,0 +1,273 @@
+From b4f85b5a433929273d81ddd0a0ad05adf97f7a26 Mon Sep 17 00:00:00 2001
+From: releng-build-package <releng@localhost>
+Date: Mon, 28 Sep 2026 04:51:05 +0000
+Subject: [PATCH 01/29] temporary commit
+
+---
+ debian/changelog | 253 +----------------------------------------------
+ 1 file changed, 3 insertions(+), 250 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 81d0ee54..b5db2e30 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,253 +1,6 @@
+-plasma-mobile (6.5.2-1) unstable; urgency=medium
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5) trixie; urgency=medium
+ 
+-  [ Aurélien COUDERC ]
+-  * Migrate to debian/watch version 5 syntax.
+-  * Add/update David Edmundson’s key in upstream keyring.
+-  * New upstream release (6.5.2).
+-  * Update build-deps and deps with the info from cmake.
++  * waydroidintegration: add basic Waydroid installation for Droidian
+ 
+- -- Aurélien COUDERC <coucouf@debian.org>  Tue, 04 Nov 2025 21:38:02 +0100
++ -- Alexander Rutz <alex@familyrutz.com>  Fri, 21 Nov 2025 10:10:19 -0700
+ 
+-plasma-mobile (6.5.1-1) unstable; urgency=medium
+-
+-  [ Aurélien COUDERC ]
+-  * New upstream release (6.5.1).
+-  * Update build-deps and deps with the info from cmake.
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Tue, 28 Oct 2025 23:19:13 +0100
+-
+-plasma-mobile (6.5.0-1) unstable; urgency=medium
+-
+-  [ Pino Toscano ]
+-  * Merge changes from 6.3.6-4.
+-
+-  [ Aurélien COUDERC ]
+-  * New upstream release (6.5.0).
+-  * Update build-deps and deps with the info from cmake.
+-  * Refresh copyright information.
+-  * Release to unstable.
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Thu, 16 Oct 2025 22:09:51 +0200
+-
+-plasma-mobile (6.4.91-1) experimental; urgency=medium
+-
+-  [ Aurélien COUDERC ]
+-  * New upstream release (6.4.91).
+-  * Update build-deps and deps with the info from cmake.
+-  * Add myself to the uploaders.
+-  * Drop backported commits now part of the upstream release.
+-  * Update the list of installed files.
+-  * Drop Rules-Requires-Root: no, not needed anymore since trixie.
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Sat, 11 Oct 2025 22:48:34 +0200
+-
+-plasma-mobile (6.3.6-3) unstable; urgency=medium
+-
+-  * Team upload.
+-
+-  [ Aurélien COUDERC ]
+-  * More fix incorrect backport of:
+-    - notification list: fix notification scrolling within action drawer and
+-    lockscreen. [e4323f4e]
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Tue, 29 Jul 2025 20:24:22 +0200
+-
+-plasma-mobile (6.3.6-2) unstable; urgency=medium
+-
+-  * Team upload.
+-
+-  [ Aurélien COUDERC ]
+-  * Fix incorrect backport of:
+-    - notification list: fix notification scrolling within action drawer and
+-    lockscreen. [e4323f4e]
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Tue, 29 Jul 2025 08:34:48 +0200
+-
+-plasma-mobile (6.3.6-1) unstable; urgency=medium
+-
+-  * Team upload.
+-
+-  [ Aurélien COUDERC ]
+-  * New upstream release (6.3.6).
+-    - Envmanager: Use BorderlessMaximizedWindows option.
+-    - Shell: Fix Compact applet display popup when fullRepresentation is null.
+-    - Homescreens/folio: Block propagation if edit mode is active to avoid
+-    widget to trigger event.
+-    - Load minimized Quicksettings as Async.
+-    - Paginatemodel: Avoid to disconnect if model is the same because it's not
+-    reconnected after.
+-    - Fix mistake on paginatemodel.
+-    - Quicksettings: Use synchrone component loading instead of asynchrone to
+-    avoid concurrent bug.
+-    - Envmanager: Write options as immutable, and add kdeglobals.
+-    - Envmanager: Add overlay configs through XDG_CONFIG_DIRS.
+-    - Taskswitcher: Fix task close icon colour in light mode.
+-    - Folio: Ensure y anim signals don't get emitted if value didn't change.
+-    - Notifications: Fix do-not-disturb.
+-    - Notifications: Don't factor action drawer state in expiry.
+-    - Notifications: do not expire notificationa after invoking action.
+-  * Backport upstream commits:
+-    - bin: Don't force QT_QPA_PLATFORM=wayland so apps that prefer x11 can use
+-    it similar to what the desktop session does. [8b8c9585]
+-    - applicationlistmodel: Space out application list refreshes to avoid log
+-    spam and freezes. [7d9054f7]
+-    - Disables unexpected gesture navigation activating the task switcher when
+-    Action Drawer, Notification Popup Drawer, or VolumeOSD are visible
+-    [013d0345]
+-    - GestureNavigation: Fix Action Drawer State being out of Sync on First
+-    Start. [9707f503] 
+-    - folio: Fix recurring AppDelegate null errors in the logs. [c5f0d15b]
+-    - notification list: fix notification scrolling within action drawer and
+-    lockscreen. [e4323f4e]
+-    - statusbar: Don't show internet icon and network loading indicator at
+-    same time. [23797660]
+-    - modem manager plugin: Make calls nonblocking to not freeze UI when
+-    called. [6e0dca97]
+-    - Folio: Fix Settings Component drawer bug where it can end up displayed
+-    at the same time as the application drawer. [a452bc30]
+-  * Relax inter-plasma versioned dependency constraint so we can upload
+-    only 6.3.6 packages that have actual code changes.
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Tue, 22 Jul 2025 17:56:43 +0200
+-
+-plasma-mobile (6.3.5-1) unstable; urgency=medium
+-
+-  * Team upload.
+-
+-  [ Aurélien COUDERC ]
+-  * New upstream release (6.3.5).
+-    - Wallpaperselector: Fix delegate dimensions and icon color.
+-    - Taskpanel: Fix rotate button showing with autorotate.
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Mon, 19 May 2025 01:24:48 +0200
+-
+-plasma-mobile (6.3.4-1) unstable; urgency=medium
+-
+-  * New upstream release (6.3.4).
+-  * Update build-deps and deps with the info from cmake.
+-  * Bump Standards-Version to 4.7.2 (No changes needed).
+-  * Add kde-config-mobile-networking to Replaces. (Closes: #1100380)
+-  * Add/update Jonathan Esk-Riddell’s key in upstream keyring.
+-  * Update d/plasma-mobile.install after upstream changes.
+-  * Fix d/copyright after lintian warnings.
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Sat, 05 Apr 2025 20:54:41 +0200
+-
+-plasma-mobile (6.3.2-1) unstable; urgency=medium
+-
+-  [ Aurélien COUDERC ]
+-  * Recommend iio-sensor-proxy. (Closes: #1098304)
+-  * New upstream release (6.3.2).
+-  * Update build-deps and deps with the info from cmake.
+-
+- -- Aurélien COUDERC <coucouf@debian.org>  Sat, 01 Mar 2025 21:50:50 +0100
+-
+-plasma-mobile (6.3.0-1) unstable; urgency=medium
+-
+-  * New upstream release (6.3.0).
+-  * d/watch: set pgpsigurlmangle option for uscan to check upstream signatures.
+-  * Update build-deps and deps with the info from cmake.
+-
+-  [ Aurélien COUDERC ]
+-  * Review copyright information.
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Sat, 15 Feb 2025 23:02:06 +0100
+-
+-plasma-mobile (6.2.5-1) unstable; urgency=medium
+-
+-  * New upstream release (6.2.5).
+-  * Change maintainer to the Qt/KDE Team.
+-  * Update Vcs-* URLs to the new location in the Qt/KDE team’s GitLab
+-    group.
+-  * Drop gbp.conf.
+-  * Simplify packaging by using dh-* build-deps.
+-  * Replaces+Breaks plasma-settings 24.02.0 (Closes: #1092569).
+-  * Update build-deps and deps with the info from cmake.
+-
+-  [ Aurélien COUDERC ]
+-  * Remove upstream source from the packaging repo.
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Sat, 11 Jan 2025 17:55:53 +0100
+-
+-plasma-mobile (6.2.4-1) unstable; urgency=medium
+-
+-  * New upstream release
+-  * Update d/control after upstream changes
+-  * Update d/copyright after upstream changes
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Tue, 10 Dec 2024 21:56:10 +0100
+-
+-plasma-mobile (6.2.3-1) unstable; urgency=medium
+-
+-  * New upstream release (Closes: #1035655)
+-  * Update d/control after upstream (Closes: #1079477, #1079559, #1079662)
+-  * Std-ver 4.7.0 (no changes needed)
+-  * Update d/rules for building based on KF6 instead of KF5
+-  * Update plasma-mobile-tweaks after upstream changes
+-  * Update d/plasma-mobile.install after upstream changes
+-  * Add qt6-declarative-private-dev to build-deps as workaround to #1087385
+-  * Remove plasma-mobile-tweaks conffiles dropped upstream
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Tue, 26 Nov 2024 20:40:10 +0100
+-
+-plasma-mobile (5.27.10-1) unstable; urgency=medium
+-
+-  * New upstream release (Closes: #1060264)
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Tue, 09 Jan 2024 21:16:34 +0100
+-
+-plasma-mobile (5.27.9-1) unstable; urgency=medium
+-
+-  * New upstream release
+-  * Update d/copyright after upstream changes
+-  * Drop open-source from short description in d/control (Closes: #1052401)
+-  * Assign flashes' control to users in the plugdev group
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Sat, 28 Oct 2023 23:28:10 +0200
+-
+-plasma-mobile (5.27.8-1) unstable; urgency=medium
+-
+-  * New upstream release
+-  * Update d/copyright after upstream changes
+-  * Use same d/upstream/signing-key.asc as other Plasma mobile packages
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Thu, 14 Sep 2023 19:31:22 +0200
+-
+-plasma-mobile (5.27.6-1) unstable; urgency=medium
+-
+-  * New upstream release
+-  * Update d/copyright after upstream changes
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Sat, 15 Jul 2023 09:04:21 +0200
+-
+-plasma-mobile (5.27.2-1) unstable; urgency=medium
+-
+-  * New upstream release
+-  * Update d/copyright after upstream changes
+-  * Drop no more needed patch
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Tue, 28 Feb 2023 19:37:29 +0100
+-
+-plasma-mobile (5.27.0-1) unstable; urgency=medium
+-
+-  * New upstream release
+-  * Update d/control after upstream CMakeLists.txt
+-  * Update d/copyright after upstream changes
+-  * Cherry-pick upstream commit for fixing crash on unlocking
+-  * Plasma-mobile-tweaks set as multi-arch:foreign
+-  * Lintian-override on library-not-linked-against-libc for s390x arch
+-
+- -- Marco Mattiolo <marco.mattiolo@hotmail.it>  Fri, 17 Feb 2023 12:44:20 +0100
+-
+-plasma-mobile (5.26.90-2) unstable; urgency=medium
+-
+-  * Source-only upload
+-
+- -- Arnaud Ferraris <aferraris@debian.org>  Sat, 04 Feb 2023 03:11:08 +0100
+-
+-plasma-mobile (5.26.90-1) unstable; urgency=medium
+-
+-  [ Marco Mattiolo ]
+-  * Initial release. Closes: #1023236
+-
+- -- Arnaud Ferraris <aferraris@debian.org>  Fri, 03 Feb 2023 12:59:56 +0100
+-- 
+2.47.3
+

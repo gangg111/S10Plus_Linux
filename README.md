@@ -96,15 +96,16 @@ only `ustar` archives with an appended MD5; the files above are packed exactly t
 
 ### Build from source
 
-Everything here is reproducible; nothing is a vendor blob you cannot rebuild.
-
+- **Droidian**: [`droidian/`](droidian/README.md) has every change of the port as patch
+  series against pinned upstream commits (kernel, shell, settings, camera, device
+  adaptation, image recipe) and scripts that build the packages, the image and the two Odin
+  files, on Linux or in WSL2. Applying the series gives the same source trees the working
+  phone was built from. The only file you bring yourself is Samsung's audio DSP firmware.
 - **U-Boot**: upstream U-Boot plus `patches-uboot/` (see `patches-uboot/README.md`), packed
   for Odin by `scripts/pack-uboot-odin.sh`.
 - **pmOS rootfs**: packed for Odin by `scripts/pack-pmos-odin.sh`.
-- **Kernel and the mainline patch series**: `patches/`, `scripts/`, `SOURCES.md`; see
+- **Mainline kernel series** (pmOS path): `patches/`, `scripts/`, `SOURCES.md`; see
   `docs/mainline-submission.md` for the developer and upstreaming notes.
-- **Droidian device adaptation** (the `.deb` with the One UI look, modem, audio, sensors,
-  deep-sleep daemon, and the rest): `tools/phone/adaptacja/`.
 
 ### Credits and license
 

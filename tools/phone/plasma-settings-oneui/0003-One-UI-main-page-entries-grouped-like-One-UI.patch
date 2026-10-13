@@ -1,7 +1,7 @@
 From 4c17266fe0064f16dc1de08a2a9ef203b9b8ba56 Mon Sep 17 00:00:00 2001
 From: Artur <ganggg111@gmail.com>
 Date: Fri, 2 Oct 2026 23:47:18 +0200
-Subject: [PATCH 3/3] One UI main page: entries grouped like One UI
+Subject: [PATCH 3/4] One UI main page: entries grouped like One UI
 
 The main page lists the One UI entries instead of the KDE modules:
 Connections (Wi-Fi, Bluetooth, mobile network, hotspot, wired), Sounds and

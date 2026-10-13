@@ -1,0 +1,51 @@
+From 3dec1c3f20255169e24e6d715e3ce8e68e6314ca Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 03:01:34 +0200
+Subject: [PATCH 15/29] media: vb2-dma-sg: set dma_address for MMAP buffers
+
+prepare and finish do the cache maintenance through sg->dma_address.
+The userptr path fills it with sg_phys(), the MMAP path (vb2_dma_sg_alloc)
+did not, as Samsung only used DMABUF and USERPTR. With MMAP enabled in the
+MFC decoder the first QBUF cleaned physical address 0: Unable to handle
+kernel paging request at ffffffff80000000 in __clean_dcache_area_poc,
+from vb2_dma_sg_prepare < mfc_dec_qbuf, and the phone rebooted.
+
+Fill dma_address the same way as for userptr.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/v4l2-core/videobuf2-dma-sg.c | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+
+diff --git a/drivers/media/v4l2-core/videobuf2-dma-sg.c b/drivers/media/v4l2-core/videobuf2-dma-sg.c
+index a3f6eaeb3..c0b1dc41f 100644
+--- a/drivers/media/v4l2-core/videobuf2-dma-sg.c
++++ b/drivers/media/v4l2-core/videobuf2-dma-sg.c
+@@ -112,6 +112,8 @@ static void *vb2_dma_sg_alloc(struct device *dev, unsigned long dma_attrs,
+ {
+ 	struct vb2_dma_sg_buf *buf;
+ 	struct sg_table *sgt;
++	struct scatterlist *s;
++	int i;
+ 	int ret;
+ 	int num_pages;
+ 	int ioprot = IOMMU_READ	| IOMMU_WRITE;
+@@ -150,6 +152,15 @@ static void *vb2_dma_sg_alloc(struct device *dev, unsigned long dma_attrs,
+ 
+ 	sgt = &buf->sg_table;
+ 
++	/*
++	 * As for userptr: prepare and finish do the cache maintenance through
++	 * sg->dma_address, which nothing else sets for an MMAP buffer. Left at 0
++	 * it is cleaned as physical address 0 and the first QBUF oopses.
++	 */
++	sgt->nents = sgt->orig_nents;
++	for_each_sg(sgt->sgl, s, sgt->orig_nents, i)
++		s->dma_address = sg_phys(s);
++
+ 	if (!(memflags & VB2_DMA_SG_MEMFLAG_IOMMU_UNCACHED) &&
+ 	    (device_get_dma_attr(dev) == DEV_DMA_COHERENT))
+ 		ioprot |= IOMMU_CACHE;
+-- 
+2.47.3
+

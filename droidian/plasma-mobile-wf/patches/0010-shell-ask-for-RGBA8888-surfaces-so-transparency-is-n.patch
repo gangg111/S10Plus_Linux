@@ -1,0 +1,131 @@
+From 7babe8267033f82dbfedcb890a7c33a843fdbdfa Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 04:16:09 +0200
+Subject: [PATCH 10/29] shell: ask for RGBA8888 surfaces so transparency is not
+ black
+
+With the colour sizes left unset, Qt on libhybris reallocates the first
+RGBA_8888 buffers of a window as RGB_565 before the first commit, so the
+transparent status bar over the home screen showed black.  Set the default
+surface format to 8/8/8/8 from the panel containment and the mobileshell
+plugin, both loaded before the shell creates those windows.  ScreenGrab
+reports the requested format (format() reads back zeros here) and draws in
+physical pixels.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ components/mobileshell/shellutil.cpp | 32 ++++++++++++++++++++++++++--
+ containments/panel/CMakeLists.txt    |  1 +
+ containments/panel/phonepanel.cpp    | 22 +++++++++++++++++++
+ 3 files changed, 53 insertions(+), 2 deletions(-)
+
+diff --git a/components/mobileshell/shellutil.cpp b/components/mobileshell/shellutil.cpp
+index 6b6c6ee2..4eff955a 100644
+--- a/components/mobileshell/shellutil.cpp
++++ b/components/mobileshell/shellutil.cpp
+@@ -20,6 +20,7 @@
+ #include <QImage>
+ #include <QPainter>
+ #include <QScreen>
++#include <QSurfaceFormat>
+ 
+ #include <QDBusConnection>
+ #include <QDBusMessage>
+@@ -38,6 +39,24 @@
+ 
+ #define FORMAT24H "HH:mm:ss"
+ 
++namespace
++{
++// Windows made from QML (action drawer, popups) need 8 bits per channel too;
++// with the sizes unset libhybris ends up with opaque RGB_565 buffers and
++// transparency is black (see the panel containment).
++struct DefaultFormat8888 {
++    DefaultFormat8888()
++    {
++        auto format = QSurfaceFormat::defaultFormat();
++        format.setRedBufferSize(8);
++        format.setGreenBufferSize(8);
++        format.setBlueBufferSize(8);
++        format.setAlphaBufferSize(8);
++        QSurfaceFormat::setDefaultFormat(format);
++    }
++} defaultFormat8888;
++}
++
+ 
+ ShellUtil::ShellUtil(QObject *parent) : QObject{parent}, m_localeConfig {
+     KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::SimpleConfig) } {
+@@ -71,13 +90,22 @@ QString ScreenGrab::grab(const QString &prefix)
+         if (!quickWindow || !quickWindow->isVisible()) {
+             continue;
+         }
+-        const QImage image = quickWindow->grabWindow();
++        QImage image = quickWindow->grabWindow();
+         if (image.isNull()) {
+             continue;
+         }
++        // draw in physical pixels, whatever ratio the grab carries
++        image.setDevicePixelRatio(1);
+         const QString file = prefix + QStringLiteral("-%1.png").arg(written.size());
+         image.save(file);
+-        written << file;
++        // format() reports zeros on this platform, the request is what counts
++        const QSurfaceFormat requested = window->requestedFormat();
++        written << file + QStringLiteral(" requested=%1/%2/%3/%4 color=%5")
++                              .arg(requested.redBufferSize())
++                              .arg(requested.greenBufferSize())
++                              .arg(requested.blueBufferSize())
++                              .arg(requested.alphaBufferSize())
++                              .arg(quickWindow->color().name(QColor::HexArgb));
+ 
+         // do not create a layer-shell object for windows that have none
+         int layer = LayerShellQt::Window::LayerTop;
+diff --git a/containments/panel/CMakeLists.txt b/containments/panel/CMakeLists.txt
+index 47fe3a93..d0d8febd 100644
+--- a/containments/panel/CMakeLists.txt
++++ b/containments/panel/CMakeLists.txt
+@@ -16,6 +16,7 @@ plasma_add_applet(org.kde.plasma.mobile.panel
+ 
+ target_link_libraries(org.kde.plasma.mobile.panel PRIVATE
+                       Qt::Gui
++                      Qt::Quick
+                       Qt::DBus
+                       Plasma::Plasma
+                       KF6::I18n
+diff --git a/containments/panel/phonepanel.cpp b/containments/panel/phonepanel.cpp
+index 6b2e0b3a..ae954ca4 100644
+--- a/containments/panel/phonepanel.cpp
++++ b/containments/panel/phonepanel.cpp
+@@ -7,6 +7,28 @@
+ 
+ #include "phonepanel.h"
+ 
++#include <QSurfaceFormat>
++
++namespace
++{
++// Through libhybris a window whose colour sizes are left unset ends up with
++// RGB_565 buffers (the first RGBA_8888 ones are reallocated before the first
++// commit), so a transparent status bar shows black.  Asking for 8 bits per
++// channel keeps RGBA_8888.  This plugin is loaded when the panel containment
++// is created, before the shell makes the panel window.
++struct DefaultFormat8888 {
++    DefaultFormat8888()
++    {
++        auto format = QSurfaceFormat::defaultFormat();
++        format.setRedBufferSize(8);
++        format.setGreenBufferSize(8);
++        format.setBlueBufferSize(8);
++        format.setAlphaBufferSize(8);
++        QSurfaceFormat::setDefaultFormat(format);
++    }
++} defaultFormat8888;
++}
++
+ K_PLUGIN_CLASS_WITH_JSON(PhonePanel, "metadata.json")
+ 
+ PhonePanel::PhonePanel(QObject *parent, const KPluginMetaData &data, const QVariantList &args)
+-- 
+2.47.3
+

@@ -1,0 +1,107 @@
+From 6580632b093ea8980d3948916ffa762573dbaeab Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 16:06:04 +0200
+Subject: [PATCH 20/29] quicksettings: expand the card by dragging the handle
+
+As in One UI: hold the handle and drag it down, the card follows the finger
+and settles open past 30 % of the way; drag it up to fold it.  A tap does
+nothing any more.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../actiondrawer/private/QuickSettings.qml    | 38 +++++++++++--------
+ 1 file changed, 22 insertions(+), 16 deletions(-)
+
+diff --git a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
+index 4120e034..4be71623 100644
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
+@@ -343,9 +343,12 @@ Item {
+             id: gridCard
+ 
+             property bool expanded: false
++            // finger travel on the handle while it is dragged
++            property real dragOffset: 0
+ 
+             readonly property int allRows: Math.ceil(root.gridCount / root.gridColumns)
+-            readonly property int shownRows: expanded ? allRows : Math.min(root.gridRows, allRows)
++            readonly property real foldedHeight: Math.min(root.gridRows, allRows) * cellHeight
++            readonly property real expandedHeight: Math.min(allRows * cellHeight, maxGridHeight)
+             readonly property real cellWidth: Math.floor(gridFlick.width / root.gridColumns)
+             // round button, gap, one line of name, gap to the next row
+             readonly property real cellHeight: root.buttonSize + Kirigami.Units.smallSpacing
+@@ -381,9 +384,12 @@ Item {
+                     Layout.topMargin: Math.round(root.buttonSize * 0.35)
+                     Layout.leftMargin: Kirigami.Units.smallSpacing
+                     Layout.rightMargin: Kirigami.Units.smallSpacing
+-                    Layout.preferredHeight: Math.min(gridCard.shownRows * gridCard.cellHeight, gridCard.maxGridHeight)
++                    // follows the finger while the handle is dragged
++                    Layout.preferredHeight: Math.max(gridCard.foldedHeight, Math.min(gridCard.expandedHeight,
++                        (gridCard.expanded ? gridCard.expandedHeight : gridCard.foldedHeight) + gridCard.dragOffset))
+ 
+                     Behavior on Layout.preferredHeight {
++                        enabled: !handleDrag.active
+                         NumberAnimation {
+                             duration: Kirigami.Units.longDuration
+                             easing.type: Easing.OutCubic
+@@ -430,10 +436,12 @@ Item {
+                     }
+                 }
+ 
+-                // handle: tap or pull to expand and fold the card
++                // handle: hold and drag down to expand, up to fold (as in One UI);
++                // a tap does nothing
+                 Item {
+                     Layout.fillWidth: true
+-                    Layout.preferredHeight: Math.round(root.buttonSize * 0.55)
++                    // taller than the bar itself, so a finger finds it
++                    Layout.preferredHeight: Math.round(root.buttonSize * 0.8)
+                     visible: gridCard.allRows > root.gridRows
+ 
+                     Rectangle {
+@@ -442,32 +450,30 @@ Item {
+                         height: Math.max(3, Math.round(root.buttonSize * 0.06))
+                         radius: height / 2
+                         color: Kirigami.Theme.textColor
+-                        opacity: 0.5
+-                    }
+-
+-                    TapHandler {
+-                        onTapped: {
+-                            gridCard.expanded = !gridCard.expanded;
+-                            if (!gridCard.expanded) {
+-                                gridFlick.contentY = 0;
+-                            }
+-                        }
++                        opacity: handleDrag.active ? 0.9 : 0.5
+                     }
+ 
+                     // only on the handle, so a swipe up elsewhere still closes the drawer
+                     DragHandler {
++                        id: handleDrag
+                         target: null
+                         xAxis.enabled: false
++                        grabPermissions: PointerHandler.CanTakeOverFromAnything
++
++                        onTranslationChanged: gridCard.dragOffset = translation.y
+                         onActiveChanged: {
+                             if (active) {
+                                 return;
+                             }
+-                            if (translation.y > Kirigami.Units.gridUnit) {
++                            // settle past 30 % of the way, otherwise spring back
++                            const travel = gridCard.expandedHeight - gridCard.foldedHeight;
++                            if (!gridCard.expanded && gridCard.dragOffset > travel * 0.3) {
+                                 gridCard.expanded = true;
+-                            } else if (translation.y < -Kirigami.Units.gridUnit) {
++                            } else if (gridCard.expanded && gridCard.dragOffset < -travel * 0.3) {
+                                 gridCard.expanded = false;
+                                 gridFlick.contentY = 0;
+                             }
++                            gridCard.dragOffset = 0;
+                         }
+                     }
+                 }
+-- 
+2.47.3
+

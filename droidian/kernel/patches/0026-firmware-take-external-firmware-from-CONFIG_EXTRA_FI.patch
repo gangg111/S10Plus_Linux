@@ -1,0 +1,34 @@
+From d3a3e3984c2acf82690dbf8785765a784b2cc26d Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:27:06 +0200
+Subject: [PATCH 26/29] firmware: take external firmware from
+ CONFIG_EXTRA_FIRMWARE_DIR
+
+The rule for fw-external-y passed the bare file name to cmd_fwbin, so
+.incbin looked for it next to the build output instead of in
+CONFIG_EXTRA_FIRMWARE_DIR.  Pass the absolute path.
+
+Needed to build the ABOX (calliope_*.bin) firmware into the kernel: the
+initramfs is not unpacked yet when the audio DSP asks for it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ firmware/Makefile | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/firmware/Makefile b/firmware/Makefile
+index 89b841051..9f1ccb97f 100644
+--- a/firmware/Makefile
++++ b/firmware/Makefile
+@@ -216,7 +216,7 @@ wordsize_deps := $(wildcard include/config/64bit.h include/config/32bit.h \
+ $(patsubst %,$(obj)/%.gen.S, $(fw-shipped-y)): %: $(wordsize_deps)
+ 	$(call cmd,fwbin,$(patsubst %.gen.S,%,$@))
+ $(patsubst %,$(obj)/%.gen.S, $(fw-external-y)): %: $(wordsize_deps)
+-	$(call cmd,fwbin,$(patsubst %.gen.S,%,$@))
++	$(call cmd,fwbin,$(fwabs)/$(patsubst firmware/%.gen.S,%,$@))
+ 
+ # The .o files depend on the binaries directly; the .S files don't.
+ $(patsubst %,$(obj)/%.gen.o, $(fw-shipped-y)): %.gen.o: %
+-- 
+2.47.3
+

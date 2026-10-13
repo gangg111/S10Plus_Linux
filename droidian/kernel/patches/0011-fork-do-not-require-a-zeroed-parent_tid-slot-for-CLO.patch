@@ -1,0 +1,51 @@
+From 0705c507680f04926f2e3f15206c9bd63c725dca Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 29 Sep 2026 19:13:08 +0200
+Subject: [PATCH 11/29] fork: do not require a zeroed parent_tid slot for
+ CLONE_PIDFD
+
+The CLONE_PIDFD backport kept the v5.2 rule that the int at parent_tidptr
+must be 0 before the call, which later upstream kernels dropped.  Qt 6
+forkfd calls clone(CLONE_VM | CLONE_VFORK | CLONE_PIDFD) with parent_tidptr
+pointing into the child stack, so once waitid(P_PIDFD) works and Qt picks
+the pidfd path every QProcess start fails with EINVAL and plasma_session
+is never launched.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ kernel/fork.c | 12 ------------
+ 1 file changed, 12 deletions(-)
+
+diff --git a/kernel/fork.c b/kernel/fork.c
+index 5a1168c11..e3b8d6d49 100644
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -1721,8 +1721,6 @@ static __latent_entropy struct task_struct *copy_process(
+ 	}
+ 
+ 	if (clone_flags & CLONE_PIDFD) {
+-		int reserved;
+-
+ 		/*
+ 		 * - CLONE_PARENT_SETTID is useless for pidfds and also
+ 		 *   parent_tidptr is used to return pidfds.
+@@ -1733,16 +1731,6 @@ static __latent_entropy struct task_struct *copy_process(
+ 		if (clone_flags &
+ 		    (CLONE_DETACHED | CLONE_PARENT_SETTID | CLONE_THREAD))
+ 			return ERR_PTR(-EINVAL);
+-
+-		/*
+-		 * Verify that parent_tidptr is sane so we can potentially
+-		 * reuse it later.
+-		 */
+-		if (get_user(reserved, parent_tidptr))
+-			return ERR_PTR(-EFAULT);
+-
+-		if (reserved != 0)
+-			return ERR_PTR(-EINVAL);
+ 	}
+ 
+ 	retval = -ENOMEM;
+-- 
+2.47.3
+

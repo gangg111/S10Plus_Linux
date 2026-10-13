@@ -1,0 +1,88 @@
+From 13bc791151c3c8f085d8d2f75313b5cfc19df4a7 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:31:28 +0200
+Subject: [PATCH 26/29] statusbar: show the network technology next to the
+ signal icon
+
+ModemManager's SignalIndicator does not expose the access technology, and
+the operator name it offers is empty on the Galaxy S10+ modem.  Read the
+technology (5G, LTE, H+, 3G, E, 2G) from /usr/lib/s10plus/modem-rat.sh
+every 5 s and show it next to the signal bars, as One UI does.  The second
+row of the bar keeps the operator name.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../qml/dataproviders/SignalStrengthInfo.qml  | 28 ++++++++++++++++++-
+ .../indicators/SignalStrengthIndicator.qml    |  7 +++--
+ 2 files changed, 32 insertions(+), 3 deletions(-)
+
+diff --git a/components/mobileshell/qml/dataproviders/SignalStrengthInfo.qml b/components/mobileshell/qml/dataproviders/SignalStrengthInfo.qml
+index 0705ea5e..60ee231a 100644
+--- a/components/mobileshell/qml/dataproviders/SignalStrengthInfo.qml
++++ b/components/mobileshell/qml/dataproviders/SignalStrengthInfo.qml
+@@ -10,12 +10,38 @@ pragma Singleton
+ 
+ import QtQuick 2.1
+ import org.kde.plasma.mm
++import org.kde.plasma.plasma5support 2.0 as P5Support
+ 
+ QtObject {
++    id: root
++
+     readonly property string icon: "network-mobile-" + Math.floor(SignalIndicator.strength / 20) * 20
+ 
+     readonly property string label: SignalIndicator.simLocked ? i18n("SIM Locked") : SignalIndicator.name
+ 
+     readonly property bool showIndicator: SignalIndicator.modemAvailable
+-}
+ 
++    // Network technology (5G / LTE / H+ / 3G / E / 2G) for the status bar, as
++    // in One UI.  SignalIndicator (ModemManager) does not expose the access
++    // technology, so a helper script is read every few seconds through the
++    // executable DataSource engine.
++    property string technology: ""
++
++    property P5Support.DataSource _ratSource: P5Support.DataSource {
++        id: ratSource
++        engine: "executable"
++        connectedSources: []
++        onNewData: function(source, data) {
++            root.technology = ("" + (data["stdout"] || "")).trim();
++            disconnectSource(source);
++        }
++    }
++
++    property Timer _ratTimer: Timer {
++        interval: 5000
++        running: true
++        repeat: true
++        triggeredOnStart: true
++        onTriggered: ratSource.connectSource("/usr/lib/s10plus/modem-rat.sh")
++    }
++}
+diff --git a/components/mobileshell/qml/statusbar/indicators/SignalStrengthIndicator.qml b/components/mobileshell/qml/statusbar/indicators/SignalStrengthIndicator.qml
+index 64b10dfd..a9a61674 100644
+--- a/components/mobileshell/qml/statusbar/indicators/SignalStrengthIndicator.qml
++++ b/components/mobileshell/qml/statusbar/indicators/SignalStrengthIndicator.qml
+@@ -40,13 +40,16 @@ Item {
+ 
+     PlasmaComponents.Label {
+         id: label
+-        visible: showLabel
++        // The status bar shows the network technology (LTE/5G/...) instead of
++        // the operator name, which is empty on this modem; the second bar row
++        // still uses SignalStrengthInfo.label with the operator name.
++        visible: showLabel && text.length > 0
+         width: visible ? implicitWidth : 0
+         anchors.leftMargin: Kirigami.Units.smallSpacing
+         anchors.left: strengthIcon.right
+         anchors.verticalCenter: parent.verticalCenter
+ 
+-        text: MobileShell.SignalStrengthInfo.label
++        text: MobileShell.SignalStrengthInfo.technology
+         color: Kirigami.Theme.textColor
+         font.pixelSize: textPixelSize
+     }
+-- 
+2.47.3
+

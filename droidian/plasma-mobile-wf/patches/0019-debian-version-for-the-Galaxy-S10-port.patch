@@ -1,0 +1,53 @@
+From 0e82276c6e59be8f8bca46f48a9b394d52168c74 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 09:42:16 +0200
+Subject: [PATCH 19/29] debian: version for the Galaxy S10+ port
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/changelog | 32 ++++++++++++++++++++++++++++++++
+ 1 file changed, 32 insertions(+)
+
+diff --git a/debian/changelog b/debian/changelog
+index 08778f7c..daa5ad4f 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,35 @@
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus13) rolling; urgency=medium
++
++  * Battery percentage sized by its laid-out text (implicitWidth was for a
++    smaller font), so it stays clear of the front camera.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 07:01:05 +0000
++
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus12) rolling; urgency=medium
++
++  * Battery indicator: Repeater instead of a ListView, which reported too
++    little width; the percentage stays clear of the front camera.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 06:22:48 +0000
++
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus11) rolling; urgency=medium
++
++  * Battery entry takes the width its layout computes (the hand-made sum
++    used an unknown root.elementSpacing), percentage clear of the camera.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 05:43:51 +0000
++
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus10) rolling; urgency=medium
++
++  * Battery indicator reports its real width, so the percentage stays
++    clear of the front camera.
++  * Action drawer window stays mapped: creating it on each pull delayed
++    the first frame by ~220 ms; no blur window (wayfire has no blur).
++  * Drawer release follows the motion of the last 80 ms, not the last
++    touch event, so a quick flick no longer snaps back.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 04:49:41 +0000
++
+ plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus9) rolling; urgency=medium
+ 
+   * Screen brightness through PowerDevil as in Plasma 6.7 (the panel has
+-- 
+2.47.3
+

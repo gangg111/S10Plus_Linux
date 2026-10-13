@@ -1,0 +1,1633 @@
+From 322133a0a8883dfae7e5fde094a0ac6831c674a5 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 29 Sep 2026 22:38:55 +0200
+Subject: [PATCH 06/29] mobileshell: One UI quick settings panel from the pmOS
+ port
+
+Header with time, date and edit/power/settings buttons, the first two
+quick settings as large tiles, the rest as pages of round buttons in one
+card, and brightness and volume cards (3-way merge of the pmOS 6.7.5
+patches onto this fork).  The brightness card uses the libdroid singleton
+of this fork.  Screenshots of the shell over D-Bus (pl.s10plus.ScreenGrab),
+since the compositor cannot read the hwcomposer output back.
+Autolock in kscreenlockerrc decides whether the shell locks itself.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ CMakeLists.txt                                |   1 +
+ components/mobileshell/CMakeLists.txt         |   2 +
+ .../qml/actiondrawer/ActionDrawerWindow.qml   |  60 ++-
+ .../actiondrawer/private/BrightnessItem.qml   | 278 ++++++++--
+ .../actiondrawer/private/ContentContainer.qml |   5 +-
+ .../actiondrawer/private/QuickSettings.qml    | 500 ++++++++++++------
+ .../private/QuickSettingsDelegate.qml         |   4 +-
+ .../private/QuickSettingsDrawer.qml           |  16 +-
+ .../private/QuickSettingsFullDelegate.qml     | 100 ++--
+ .../QuickSettingsMinimizedDelegate.qml        |  56 +-
+ components/mobileshell/shellutil.cpp          | 163 +++++-
+ components/mobileshell/shellutil.h            |  49 ++
+ envmanager/config.h                           |  10 +-
+ 13 files changed, 936 insertions(+), 308 deletions(-)
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 1fe4e952..fcacfc85 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -76,6 +76,7 @@ find_package(KF6 ${KF6_MIN_VERSION} REQUIRED COMPONENTS
+     KCMUtils
+     Package
+     JobWidgets
++    WindowSystem
+ )
+ 
+ find_package(Plasma CONFIG REQUIRED)
+diff --git a/components/mobileshell/CMakeLists.txt b/components/mobileshell/CMakeLists.txt
+index 8e614de3..55384c40 100644
+--- a/components/mobileshell/CMakeLists.txt
++++ b/components/mobileshell/CMakeLists.txt
+@@ -164,6 +164,8 @@ target_link_libraries(mobileshellplugin
+         KF6::Service
+         KF6::Package
+         KF6::ConfigGui
++        KF6::ItemModels
++        KF6::WindowSystem
+         LayerShellQt::Interface
+ )
+ 
+diff --git a/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml b/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml
+index 48fe6f43..b3e6f400 100644
+--- a/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml
++++ b/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml
+@@ -39,8 +39,64 @@ Window {
+ 
+     color: "transparent"
+ 
+-    // set input to transparent when closing to prevent window from taking unwanted touch inputs
+-    onStateChanged: ShellUtil.setInputTransparent(window, state == "close")
++    // Set input to transparent when closing to prevent window from taking unwanted touch inputs
++    onStateChanged: MobileShell.ShellUtil.setInputTransparent(window, state === "close")
++
++    // Blur everything behind the drawer, stronger the further it is pulled
++    // down (One UI).  The blur belongs to a separate empty window under the
++    // drawer, whose opacity KWin uses to fade the blur (see DrawerBlur in the
++    // mobile task switcher effect); fading the drawer window itself would
++    // fade its content too.
++    readonly property real blurProgress: Math.max(0, Math.min(1, drawer.offset / (window.height * 0.5)))
++    property real sentBlurProgress: -1
++
++    function sendBlurProgress() {
++        if (Math.abs(blurProgress - sentBlurProgress) >= 0.02 || (blurProgress !== sentBlurProgress && (blurProgress === 0 || blurProgress === 1))) {
++            sentBlurProgress = blurProgress;
++            MobileShell.ShellUtil.setDrawerBlurStrength(blurProgress);
++        }
++    }
++    onBlurProgressChanged: sendBlurProgress()
++
++    Window {
++        id: blurWindow
++
++        // "splash" marks this window for DrawerBlur in KWin
++        LayerShell.Window.scope: "splash"
++        LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight | LayerShell.Window.AnchorBottom
++        LayerShell.Window.layer: LayerShell.Window.LayerTop
++        LayerShell.Window.exclusionZone: -1
++        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
++
++        // a layer surface of its own, not a child of the drawer window
++        transientParent: null
++        color: "transparent"
++        flags: Qt.WindowTransparentForInput
++        // only while the drawer is out, so a closed drawer costs the GPU nothing
++        visible: window.visible && drawer.offset > 0
++
++        onVisibleChanged: {
++            if (visible) {
++                MobileShell.ShellUtil.setBlurBehind(blurWindow, true);
++                window.sentBlurProgress = -1;
++                window.sendBlurProgress();
++            }
++        }
++    }
++
++    // Preload and render content to avoid lag on first open
++    Component.onCompleted: {
++        preloadTimer.start();
++    }
++
++    Timer {
++        id: preloadTimer
++        interval: 1
++        onTriggered: {
++            // Set window visibility binding after preloading content to the action drawer state
++            window.visible = Qt.binding(() => drawer.intendedToBeVisible);
++        }
++    }
+ 
+     onVisibleChanged: {
+         if (visible) {
+diff --git a/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml b/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml
+index a2282bc0..889e1e5e 100644
+--- a/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml
++++ b/components/mobileshell/qml/actiondrawer/private/BrightnessItem.qml
+@@ -10,15 +10,22 @@ import QtQuick 2.15
+ import QtQuick.Layouts 1.1
+ import org.kde.kirigami 2.20 as Kirigami
+ 
+-import org.kde.plasma.core as PlasmaCore
+-import org.kde.plasma.components 3.0 as PC3
+ import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBrightness
+ import org.kde.plasma.private.mobileshell as MobileShell
++import org.kde.plasma.private.volume
++import org.kde.plasma.workspace.dbus as DBus
+ 
+-Item {
++/*
++ * Brightness and volume, each a thick rounded slider with a round button next
++ * to it: automatic brightness beside brightness, mute beside volume.  The
++ * automatic brightness button talks to the autojasnosc service over D-Bus and
++ * is hidden when that service is not running.
++ */
++ColumnLayout {
+     id: root
+-    implicitHeight: brightnessRow.implicitHeight
+-    visible: ScreenBrightness.ScreenBrightnessUtil.brightnessAvailable
++    spacing: Kirigami.Units.largeSpacing
++
++    visible: screenBrightness.brightnessAvailable || !!PreferredDevice.sink
+ 
+     property double brightnessPressedValue: 1
+     Behavior on brightnessPressedValue {
+@@ -27,51 +34,200 @@ Item {
+             easing.type: Easing.InOutQuad
+         }
+     }
+-    
+-    MobileShell.PanelBackground {
+-        anchors.fill: parent
+-        anchors.leftMargin: -Kirigami.Units.smallSpacing
+-        anchors.rightMargin: -Kirigami.Units.smallSpacing
+-        anchors.topMargin: -Kirigami.Units.smallSpacing * 2
+-        anchors.bottomMargin: -Kirigami.Units.smallSpacing * 2
+-
+-        panelType: MobileShell.PanelBackground.PanelType.Base
+-        flatten:  root.brightnessPressedValue
+-
+-        Kirigami.Theme.inherit: false
+-        Kirigami.Theme.colorSet: Kirigami.Theme.Window
++
++    // card look, set by QuickSettings so all cards of the panel match
++    property color cardColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                                      Kirigami.Theme.textColor.b, 0.07)
++    property color cardRimColor: "transparent"
++    property real cardRadius: Kirigami.Units.gridUnit * 2
++    property real buttonSize: Kirigami.Units.gridUnit * 3
++    property real cardHeight: Kirigami.Units.gridUnit * 5
++
++    readonly property real rowHeight: buttonSize
++
++    component Card: Rectangle {
++        default property alias content: cardRow.data
++        Layout.fillWidth: true
++        Layout.preferredHeight: root.cardHeight
++        radius: root.cardRadius
++        color: root.cardColor
++        border.width: 1
++        border.color: root.cardRimColor
++
++        RowLayout {
++            id: cardRow
++            anchors.fill: parent
++            anchors.leftMargin: (root.cardHeight - root.buttonSize) / 2
++            anchors.rightMargin: (root.cardHeight - root.buttonSize) / 2
++            spacing: Kirigami.Units.largeSpacing * 2
++        }
++    }
++
++    // a singleton in this fork (libdroid backlight), not an instance
++    readonly property var screenBrightness: ScreenBrightness.ScreenBrightnessUtil
++
++    // --- automatic brightness service ----------------------------------------
++    readonly property string autoService: "pl.s10plus.Autojasnosc"
++    property bool autoOn: false
++
++    DBus.DBusServiceWatcher {
++        id: autoWatcher
++        busType: DBus.BusType.Session
++        watchedService: root.autoService
++        onRegisteredChanged: root.fetchAuto()
++    }
++
++    function fetchAuto() {
++        if (!autoWatcher.registered) {
++            return;
++        }
++        DBus.SessionBus.asyncCall({
++            service: root.autoService, path: "/Autojasnosc",
++            iface: root.autoService, member: "Stan", arguments: []
++        }, reply => {
++            root.autoOn = (typeof reply === "boolean") ? reply : !!(reply && reply.value);
++        }, () => {});
++    }
++
++    function setAuto(on) {
++        root.autoOn = on;
++        DBus.SessionBus.asyncCall({
++            service: root.autoService, path: "/Autojasnosc",
++            iface: root.autoService, member: "Ustaw", arguments: [on]
++        }, () => {}, () => root.fetchAuto());
++    }
++
++    Component.onCompleted: fetchAuto()
++
++    // --- building blocks -----------------------------------------------------
++    component PillSlider: Item {
++        id: pill
++        property real from: 0
++        property real to: 1
++        property real value: 0
++        property string iconSource
++        property bool dimmed: false
++        readonly property bool pressed: area.pressed
++        signal moved(real value)
++
++        readonly property real fraction: to > from ? Math.max(0, Math.min(1, (value - from) / (to - from))) : 0
++
++        Layout.fillWidth: true
++        Layout.preferredHeight: root.rowHeight
++        opacity: dimmed ? 0.5 : 1
++
++        Rectangle {
++            id: track
++            anchors.fill: parent
++            radius: height / 2
++            color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                           Kirigami.Theme.textColor.b, 0.14)
++            clip: true
++
++            Rectangle {
++                // the fill never gets narrower than its own rounded end, so a
++                // low value still reads as a round pill around the icon
++                height: parent.height
++                width: Math.max(height, parent.width * pill.fraction)
++                radius: height / 2
++                color: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.92)
++                Behavior on width {
++                    enabled: !area.pressed
++                    NumberAnimation { duration: Kirigami.Units.shortDuration }
++                }
++            }
++        }
++
++        Kirigami.Icon {
++            anchors.verticalCenter: parent.verticalCenter
++            anchors.left: parent.left
++            anchors.leftMargin: (pill.height - width) / 2
++            width: Kirigami.Units.iconSizes.smallMedium
++            height: width
++            source: pill.iconSource
++            // sits on the fill, so it takes the background colour
++            color: Kirigami.Theme.backgroundColor
++            isMask: true
++        }
++
++        MouseArea {
++            id: area
++            anchors.fill: parent
++            preventStealing: true
++            function update(x) {
++                const f = Math.max(0, Math.min(1, x / width));
++                pill.moved(pill.from + f * (pill.to - pill.from));
++            }
++            onPressed: mouse => update(mouse.x)
++            onPositionChanged: mouse => update(mouse.x)
++        }
+     }
+ 
+-    RowLayout {
+-        id: brightnessRow
+-        spacing: Kirigami.Units.smallSpacing * 2
++    component RoundButton: Item {
++        id: button
++        property string iconSource
++        property bool checked: false
++        property string overlayText
++        signal clicked()
+ 
+-        anchors.left: parent.left
+-        anchors.right: parent.right
+-        anchors.top: parent.top
++        Layout.preferredWidth: root.rowHeight
++        Layout.preferredHeight: root.rowHeight
++
++        Rectangle {
++            anchors.fill: parent
++            radius: width / 2
++            color: button.checked
++                   ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.92)
++                   : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                             Kirigami.Theme.textColor.b, 0.14)
++            Behavior on color { ColorAnimation { duration: Kirigami.Units.shortDuration } }
++        }
+ 
+         Kirigami.Icon {
+-            Layout.alignment: Qt.AlignVCenter
+-            Layout.leftMargin: Kirigami.Units.smallSpacing
+-            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+-            Layout.preferredHeight: width
+-            source: "low-brightness"
++            id: buttonIcon
++            anchors.centerIn: parent
++            width: Kirigami.Units.iconSizes.smallMedium
++            height: width
++            source: button.iconSource
++            color: button.checked ? Kirigami.Theme.backgroundColor : Kirigami.Theme.textColor
++            isMask: true
++        }
++
++        Text {
++            visible: button.overlayText.length > 0
++            anchors.left: buttonIcon.right
++            anchors.leftMargin: -Kirigami.Units.smallSpacing
++            anchors.top: buttonIcon.verticalCenter
++            text: button.overlayText
++            font.bold: true
++            font.pixelSize: buttonIcon.height * 0.55
++            color: buttonIcon.color
++        }
++
++        MouseArea {
++            anchors.fill: parent
++            onClicked: button.clicked()
+         }
++    }
++
++    // --- brightness ------------------------------------------------------------
++    Card {
++        visible: screenBrightness.brightnessAvailable
+ 
+-        PC3.Slider {
++        PillSlider {
+             id: brightnessSlider
+-            Layout.fillWidth: true
+             from: 1
+-            to: ScreenBrightness.ScreenBrightnessUtil.maxBrightness
+-            value: ScreenBrightness.ScreenBrightnessUtil.brightness
+-            onMoved: ScreenBrightness.ScreenBrightnessUtil.brightness = value;
++            to: screenBrightness.maxBrightness
++            value: screenBrightness.brightness
++            iconSource: "high-brightness"
++            onMoved: value => { screenBrightness.brightness = Math.round(value); }
+ 
+             onPressedChanged: {
+                 if (pressed) {
+                     brightnessPressedTimer.restart();
+-                } else{
++                } else {
+                     brightnessPressedTimer.stop();
+-                    brightnessPressedValue = 1;
++                    root.brightnessPressedValue = 1;
+                 }
+             }
+ 
+@@ -81,26 +237,50 @@ Item {
+                 repeat: false
+                 onTriggered: {
+                     if (brightnessSlider.pressed) {
+-                        brightnessPressedValue = 0;
++                        root.brightnessPressedValue = 0;
+                     }
+                 }
+             }
++        }
+ 
+-            // HACK: for some reason, the slider initial value doesn't set without being done after the component completes loading
+-            Timer {
+-                interval: 0
+-                running: true
+-                repeat: false
+-                onTriggered: brightnessSlider.value = Qt.binding(() => ScreenBrightness.ScreenBrightnessUtil.brightness)
++        RoundButton {
++            visible: autoWatcher.registered
++            iconSource: "high-brightness"
++            overlayText: "A"
++            checked: root.autoOn
++            onClicked: root.setAuto(!root.autoOn)
++        }
++    }
++
++    // --- volume ----------------------------------------------------------------
++    Card {
++        visible: !!PreferredDevice.sink
++        opacity: root.brightnessPressedValue
++
++        PillSlider {
++            from: 0
++            to: PulseAudio.NormalVolume
++            value: PreferredDevice.sink ? PreferredDevice.sink.volume : 0
++            dimmed: PreferredDevice.sink ? PreferredDevice.sink.muted : false
++            iconSource: "audio-volume-high"
++            onMoved: value => {
++                if (!PreferredDevice.sink) {
++                    return;
++                }
++                PreferredDevice.sink.volume = Math.round(value);
++                PreferredDevice.sink.muted = value <= 0;
+             }
+         }
+ 
+-        Kirigami.Icon {
+-            Layout.alignment: Qt.AlignVCenter
+-            Layout.rightMargin: Kirigami.Units.smallSpacing
+-            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+-            Layout.preferredHeight: width
+-            source: "high-brightness"
++        RoundButton {
++            iconSource: PreferredDevice.sink && PreferredDevice.sink.muted
++                        ? "audio-volume-muted" : MobileShell.AudioInfo.icon
++            checked: PreferredDevice.sink ? PreferredDevice.sink.muted : false
++            onClicked: {
++                if (PreferredDevice.sink) {
++                    PreferredDevice.sink.muted = !PreferredDevice.sink.muted;
++                }
++            }
+         }
+     }
+ }
+diff --git a/components/mobileshell/qml/actiondrawer/private/ContentContainer.qml b/components/mobileshell/qml/actiondrawer/private/ContentContainer.qml
+index 7398193e..80de2c37 100644
+--- a/components/mobileshell/qml/actiondrawer/private/ContentContainer.qml
++++ b/components/mobileshell/qml/actiondrawer/private/ContentContainer.qml
+@@ -261,11 +261,12 @@ Item {
+ 
+     property MobileShell.StatusBar statusBar: MobileShell.StatusBar {
+         id: statusBar
+-        Kirigami.Theme.colorSet: Kirigami.Theme.Window
++        Kirigami.Theme.colorSet: Kirigami.Theme.Complementary
+         Kirigami.Theme.inherit: false
+ 
+         backgroundColor: "transparent"
+-        showSecondRow: root.actionDrawer.mode == MobileShell.ActionDrawer.Portrait
++        // the date is in the header of QuickSettings
++        showSecondRow: false
+         showDropShadow: false
+         showTime: root.actionDrawer.mode == MobileShell.ActionDrawer.Portrait
+ 
+diff --git a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
+index 2206cafa..1a34eb6a 100644
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
+@@ -12,12 +12,19 @@ import QtQuick.Window 2.2
+ 
+ import org.kde.plasma.private.mobileshell as MobileShell
+ import org.kde.plasma.private.mobileshell.shellsettingsplugin as ShellSettings
++import org.kde.plasma.private.mobileshell.state as MobileShellState
+ import org.kde.plasma.components 3.0 as PlasmaComponents
+ import org.kde.plasma.private.mobileshell.quicksettingsplugin as QS
+-import org.kde.kirigami 2.20 as Kirigami
++import org.kde.plasma.quicksetting.powermenu as PowerMenu
++import org.kde.kirigami as Kirigami
+ 
+ /**
+  * Quick settings elements layout, change the height to clip.
++ *
++ * Laid out like the quick panel of One UI: a header with the time, the date
++ * and edit/power/settings buttons, the first two quick settings as large
++ * tiles, the rest as pages of round buttons in one card, then the brightness
++ * and volume cards.
+  */
+ Item {
+     id: root
+@@ -29,46 +36,40 @@ Item {
+ 
+     required property QS.QuickSettingsModel quickSettingsModel
+ 
+-    readonly property real columns: Math.round(Math.min(6, Math.max(ShellSettings.Settings.quickSettingsColumns, width / intendedColumnWidth)))
+-    readonly property real columnWidth: Math.floor(width / columns)
+-    readonly property int minimizedColumns: Math.round(Math.min(8, Math.max(5, width / intendedMinimizedColumnWidth)))
++    // One UI proportions, measured on a 911 px wide screenshot of the panel
++    readonly property real cardSpacing: Math.round(width * 0.022)
++    readonly property real cardRadius: Math.round(width * 0.075)
++    readonly property real buttonSize: Math.round(width * 0.118)
++    readonly property real largeTileHeight: Math.round(width * 0.19)
++    // glass: slightly darker than the blurred screen, with a thin light rim
++    // (a white layer here reads as fog)
++    readonly property color cardColor: Qt.rgba(0, 0, 0, 0.14)
++    readonly property color cardRimColor: Qt.rgba(1, 1, 1, 0.14)
++
++    readonly property int largeCount: Math.min(2, quickSettingsCount)
++    readonly property int gridColumns: 4
++    readonly property int gridRows: 2
++    readonly property int pageSize: gridColumns * gridRows
++    readonly property int gridCount: quickSettingsCount - largeCount
++    readonly property int quickSettingsCount: quickSettingsModel.count
++
++    readonly property int minimizedColumns: 6
+     readonly property real minimizedColumnWidth: Math.floor(width / minimizedColumns)
++    readonly property real minimizedRowHeight: buttonSize + Kirigami.Units.largeSpacing
+ 
+-    readonly property real rowHeight: columnWidth * 0.7
+     readonly property real fullHeight: fullView.implicitHeight
+ 
+-    readonly property real intendedColumnWidth: Kirigami.Units.gridUnit * 7
+-    readonly property real intendedMinimizedColumnWidth: Kirigami.Units.gridUnit * 4 + Kirigami.Units.smallSpacing
+-    readonly property real minimizedRowHeight: Kirigami.Units.gridUnit * 4 + Kirigami.Units.smallSpacing
+-
+     property real fullViewProgress: 1
+ 
+-    readonly property int columnCount: Math.floor(width/columnWidth)
+-    readonly property int rowCount: {
+-        let totalRows = Math.ceil(quickSettingsCount / columnCount);
+-
+-        if (root.mode === QuickSettings.Pages) {
+-            // portrait orientation
+-            let maxRows = 5; // more than 5 is just disorienting
+-            let targetRows = Math.floor(Window.height * 0.65 / rowHeight);
+-            return Math.min(maxRows, Math.min(totalRows, targetRows));
+-
+-        } else if (root.mode === QuickSettings.ScrollView) {
+-            // horizontal orientation
+-            let targetRows = Math.floor(Window.height * 0.8 / rowHeight);
+-            return Math.min(totalRows, targetRows);
+-        }
+-    }
+-
+-    readonly property int pageSize: rowCount * columnCount
+-    readonly property int quickSettingsCount: quickSettingsModel.count
+-
+     readonly property alias brightnessPressedValue: brightnessItem.brightnessPressedValue
+ 
+     function resetSwipeView() {
+-        if (root.mode === QuickSettings.Pages) {
+-            swipeView.currentIndex = 0;
+-        }
++        swipeView.currentIndex = 0;
++    }
++
++    function runCommand(command) {
++        actionDrawer.close();
++        MobileShell.ShellUtil.executeCommand(command);
+     }
+ 
+     // return to the first page when the action drawer is closed
+@@ -82,7 +83,124 @@ Item {
+         }
+     }
+ 
+-    // view when in minimized mode
++    // --- building blocks -------------------------------------------------------
++
++    // Large tile: a round button that toggles, next to the name and status,
++    // which open the settings page (like Wi-Fi and Bluetooth in One UI).
++    component LargeTile: QuickSettingsDelegate {
++        id: tile
++
++        iconItem: tileIcon
++        zoomScale: (ShellSettings.Settings.animationsEnabled && (circleArea.pressed || labelArea.pressed)) ? 0.95 : 1
++
++        background: Rectangle {
++            radius: height / 2
++            color: root.cardColor
++            border.width: 1
++            border.color: root.cardRimColor
++        }
++
++        MobileShell.HapticsEffect {
++            id: tileHaptics
++        }
++
++        contentItem: Item {
++            Rectangle {
++                id: circle
++                anchors.left: parent.left
++                anchors.leftMargin: (parent.height - height) / 2
++                anchors.verticalCenter: parent.verticalCenter
++                width: root.buttonSize
++                height: width
++                radius: width / 2
++                color: tile.enabled
++                       ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.92)
++                       : Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.16)
++                opacity: circleArea.pressed ? 0.8 : 1
++                Behavior on color { ColorAnimation { duration: Kirigami.Units.shortDuration } }
++
++                Kirigami.Icon {
++                    id: tileIcon
++                    anchors.centerIn: parent
++                    width: Math.round(parent.width * 0.73)
++                    height: width
++                    // a flat Breeze glyph whatever the icon theme (One UI themes draw
++                    // coloured rounded squares, which as a mask become plain squares)
++                    source: MobileShell.ShellUtil.symbolicIcon(tile.icon)
++                    isMask: true
++                    color: tile.enabled ? Kirigami.Theme.backgroundColor : Kirigami.Theme.textColor
++                }
++
++                MouseArea {
++                    id: circleArea
++                    anchors.fill: parent
++                    onPressed: tileHaptics.buttonVibrate()
++                    onClicked: tile.delegateClick()
++                    onPressAndHold: tile.delegatePressAndHold()
++                }
++            }
++
++            ColumnLayout {
++                anchors.left: circle.right
++                anchors.leftMargin: Kirigami.Units.largeSpacing
++                anchors.right: parent.right
++                anchors.rightMargin: Kirigami.Units.largeSpacing
++                anchors.verticalCenter: parent.verticalCenter
++                spacing: 0
++
++                MobileShell.MarqueeLabel {
++                    Layout.fillWidth: true
++                    inputText: tile.text
++                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.05
++                    font.weight: Font.DemiBold
++                }
++                MobileShell.MarqueeLabel {
++                    Layout.fillWidth: true
++                    visible: tile.status.length > 0
++                    inputText: tile.status
++                    opacity: 0.6
++                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 0.85
++                }
++            }
++
++            MouseArea {
++                id: labelArea
++                anchors.left: circle.right
++                anchors.right: parent.right
++                anchors.top: parent.top
++                anchors.bottom: parent.bottom
++                onPressed: tileHaptics.buttonVibrate()
++                onClicked: tile.delegatePressAndHold()
++            }
++        }
++    }
++
++    component HeaderButton: Item {
++        id: headerButton
++        property string iconSource
++        signal clicked()
++
++        Layout.preferredWidth: root.buttonSize * 0.8
++        Layout.preferredHeight: root.buttonSize * 0.8
++
++        Kirigami.Icon {
++            anchors.centerIn: parent
++            width: Kirigami.Units.iconSizes.smallMedium
++            height: width
++            source: headerButton.iconSource
++            isMask: true
++            color: Kirigami.Theme.textColor
++            opacity: headerArea.pressed ? 0.5 : 1
++        }
++
++        MouseArea {
++            id: headerArea
++            anchors.fill: parent
++            onClicked: headerButton.clicked()
++        }
++    }
++
++    // --- view when in minimized mode (first pull) ----------------------------------
+     RowLayout {
+         id: minimizedView
+         spacing: 0
+@@ -97,160 +215,244 @@ Item {
+             id: repeater
+             model: QS.PaginateModel {
+                 sourceModel: root.quickSettingsModel
+-                pageSize: Math.min(root.pageSize, root.minimizedColumns) // HACK: just root.minimizedColumns appears to end up with an empty model?
++                pageSize: Math.min(root.quickSettingsCount, root.minimizedColumns)
+             }
+-            delegate: Loader {
++            delegate: MobileShell.BaseItem {
+                 required property var modelData
+ 
+-                asynchronous: true
++                implicitHeight: root.minimizedRowHeight
++                implicitWidth: root.minimizedColumnWidth
++                horizontalPadding: (width - root.buttonSize) / 2
++                verticalPadding: (height - root.buttonSize) / 2
+ 
+-                sourceComponent: quickSettingComponentMinimized
++                contentItem: QuickSettingsMinimizedDelegate {
++                    restrictedPermissions: actionDrawer.restrictedPermissions
++
++                    text: modelData.text
++                    status: modelData.status
++                    icon: modelData.icon
++                    enabled: modelData.enabled
++                    settingsCommand: modelData.settingsCommand
++                    toggleFunction: modelData.toggle
++
++                    onCloseRequested: {
++                        actionDrawer.close();
++                    }
++                }
+             }
+         }
+     }
+ 
+-    // view when fully open
++    // --- view when fully open ----------------------------------------------------
+     ColumnLayout {
+         id: fullView
+         opacity: root.fullViewProgress
++        spacing: root.cardSpacing
+ 
+         anchors.top: minimizedView.bottom
+         anchors.left: parent.left
+         anchors.right: parent.right
++        anchors.leftMargin: Kirigami.Units.largeSpacing
++        anchors.rightMargin: Kirigami.Units.largeSpacing
+ 
+-        // Quick settings view
+-        ColumnLayout {
++        // header: time, date, edit, power, settings
++        RowLayout {
+             Layout.fillWidth: true
+-            Layout.minimumHeight: rowCount * rowHeight
+-
++            Layout.leftMargin: Kirigami.Units.largeSpacing
+             opacity: brightnessPressedValue
++            spacing: Kirigami.Units.smallSpacing
++
++            property date now: new Date()
++            Timer {
++                interval: 1000
++                repeat: true
++                running: root.actionDrawer.opened || root.fullViewProgress > 0
++                triggeredOnStart: true
++                onTriggered: parent.now = new Date()
++            }
+ 
+-            SwipeView {
+-                id: swipeView
+-                // we need to clip this view here to prevent the other quick settings pages from being visible
+-                // when fullViewProgress is not less then 1 and the base view is no longer being clipped
+-                clip: true
+-
++            PlasmaComponents.Label {
++                text: Qt.formatTime(parent.now, MobileShell.ShellUtil.isSystem24HourFormat ? "h:mm" : "h:mm ap")
++                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 2.1
++                font.weight: Font.DemiBold
++            }
++            PlasmaComponents.Label {
+                 Layout.fillWidth: true
+-                Layout.preferredHeight: rowCount * rowHeight
+-
+-                Repeater {
+-                    model: Math.ceil(quickSettingsCount / pageSize)
+-                    delegate: Flow {
+-                        id: flow
+-                        spacing: 0
++                Layout.alignment: Qt.AlignBottom
++                Layout.bottomMargin: Kirigami.Units.smallSpacing
++                text: Qt.locale().toString(parent.now, "ddd, d MMM")
++                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.1
++                elide: Text.ElideRight
++            }
++            HeaderButton {
++                visible: !actionDrawer.restrictedPermissions
++                iconSource: "document-edit"
++                onClicked: root.runCommand("plasma-open-settings kcm_mobileshell")
++            }
++            HeaderButton {
++                iconSource: "system-shutdown"
++                onClicked: {
++                    actionDrawer.close();
++                    PowerMenu.PowerMenuUtil.openShutdownScreen();
++                }
++            }
++            HeaderButton {
++                visible: !actionDrawer.restrictedPermissions
++                iconSource: "configure"
++                onClicked: root.runCommand("plasma-open-settings")
++            }
++        }
+ 
+-                        required property int index
++        // large tiles
++        RowLayout {
++            Layout.fillWidth: true
++            spacing: root.cardSpacing
++            visible: root.largeCount > 0
++            opacity: brightnessPressedValue
+ 
+-                        Repeater {
+-                            model: QS.PaginateModel {
+-                                sourceModel: quickSettingsModel
+-                                pageSize: root.pageSize
+-                                firstItem: pageSize * flow.index
+-                            }
+-                            delegate: Loader {
+-                                required property var modelData
++            Repeater {
++                model: QS.PaginateModel {
++                    sourceModel: quickSettingsModel
++                    pageSize: Math.max(1, root.largeCount)
++                    firstItem: 0
++                }
++                delegate: LargeTile {
++                    required property var modelData
++
++                    Layout.fillWidth: true
++                    Layout.preferredWidth: 1
++                    Layout.preferredHeight: root.largeTileHeight
++
++                    restrictedPermissions: actionDrawer.restrictedPermissions
++                    text: modelData.text
++                    status: modelData.status
++                    icon: modelData.icon
++                    enabled: modelData.enabled
++                    settingsCommand: modelData.settingsCommand
++                    toggleFunction: modelData.toggle
++
++                    onCloseRequested: actionDrawer.close()
++                }
++            }
++        }
+ 
+-                                asynchronous: true
++        // round buttons, a page of gridColumns x gridRows at a time
++        Rectangle {
++            Layout.fillWidth: true
++            Layout.preferredHeight: gridColumn.implicitHeight
++            visible: root.gridCount > 0
++            radius: root.cardRadius
++            color: root.cardColor
++            border.width: 1
++            border.color: root.cardRimColor
++            opacity: brightnessPressedValue
+ 
+-                                sourceComponent: quickSettingComponentFull
++            ColumnLayout {
++                id: gridColumn
++                anchors.left: parent.left
++                anchors.right: parent.right
++                spacing: 0
++
++                SwipeView {
++                    id: swipeView
++                    // we need to clip this view here to prevent the other quick settings pages from being visible
++                    // when fullViewProgress is not less then 1 and the base view is no longer being clipped
++                    clip: true
++
++                    readonly property real cellWidth: Math.floor(width / root.gridColumns)
++                    // round button, gap, one line of name, gap to the next row
++                    readonly property real cellHeight: root.buttonSize + Kirigami.Units.smallSpacing
++                                                       + Math.ceil(Kirigami.Theme.defaultFont.pixelSize * 0.8 * 1.4)
++                                                       + Math.round(root.buttonSize * 0.3)
++                    readonly property int rows: Math.min(root.gridRows, Math.ceil(root.gridCount / root.gridColumns))
++
++                    Layout.fillWidth: true
++                    Layout.topMargin: Math.round(root.buttonSize * 0.35)
++                    Layout.bottomMargin: pageIndicator.visible ? 0 : Math.round(root.buttonSize * 0.35)
++                    Layout.leftMargin: Kirigami.Units.smallSpacing
++                    Layout.rightMargin: Kirigami.Units.smallSpacing
++                    Layout.preferredHeight: rows * cellHeight
++
++                    Repeater {
++                        model: Math.ceil(root.gridCount / root.pageSize)
++                        delegate: Flow {
++                            id: flow
++                            spacing: 0
++
++                            required property int index
++
++                            Repeater {
++                                model: QS.PaginateModel {
++                                    sourceModel: quickSettingsModel
++                                    pageSize: root.pageSize
++                                    firstItem: root.largeCount + root.pageSize * flow.index
++                                }
++                                delegate: MobileShell.BaseItem {
++                                    required property var modelData
++
++                                    width: swipeView.cellWidth
++                                    height: swipeView.cellHeight
++                                    padding: 0
++                                    leftPadding: Kirigami.Units.smallSpacing
++                                    rightPadding: Kirigami.Units.smallSpacing
++
++                                    contentItem: QuickSettingsFullDelegate {
++                                        circleSize: root.buttonSize
++                                        restrictedPermissions: actionDrawer.restrictedPermissions
++
++                                        text: modelData.text
++                                        status: modelData.status
++                                        icon: modelData.icon
++                                        enabled: modelData.enabled
++                                        settingsCommand: modelData.settingsCommand
++                                        toggleFunction: modelData.toggle
++
++                                        onCloseRequested: {
++                                            actionDrawer.close();
++                                        }
++                                    }
++                                }
+                             }
+                         }
+                     }
+                 }
+-            }
+-
+-            Loader {
+-                id: indicatorLoader
+-
+-                Layout.alignment: Qt.AlignCenter
+-                Layout.topMargin: Kirigami.Units.smallSpacing
+-                Layout.leftMargin: Kirigami.Units.smallSpacing
+-                Layout.rightMargin: Kirigami.Units.smallSpacing
+-
+-                // Avoid wasting space when not loaded
+-                Layout.maximumHeight: active ? item.implicitHeight : 0
+-
+-                active: swipeView.count > 1 ? true: false
+-                asynchronous: true
+-
+-                sourceComponent: PageIndicator {
+-                    count: swipeView.count
+-                    currentIndex: swipeView.currentIndex
+ 
+-                    delegate: Rectangle {
+-                        implicitWidth: 8
+-                        implicitHeight: count > 1 ? 8 : 0
+-
+-                        radius: parent.width / 2
+-                        color: Kirigami.Theme.disabledTextColor
+-
+-                        opacity: index === currentIndex ? 0.95 : 0.45
++                // page indicator: short bars, the current one wider and brighter
++                Row {
++                    id: pageIndicator
++                    Layout.alignment: Qt.AlignHCenter
++                    Layout.topMargin: Kirigami.Units.smallSpacing
++                    Layout.bottomMargin: Math.round(root.buttonSize * 0.3)
++                    visible: swipeView.count > 1
++                    spacing: Kirigami.Units.smallSpacing
++
++                    Repeater {
++                        model: swipeView.count
++                        delegate: Rectangle {
++                            required property int index
++                            width: index === swipeView.currentIndex ? root.buttonSize * 0.45 : root.buttonSize * 0.15
++                            height: Math.max(3, Math.round(root.buttonSize * 0.06))
++                            radius: height / 2
++                            color: Kirigami.Theme.textColor
++                            opacity: index === swipeView.currentIndex ? 0.7 : 0.3
++                            Behavior on width { NumberAnimation { duration: Kirigami.Units.shortDuration } }
++                        }
+                     }
+                 }
+             }
+         }
+ 
+-        // Brightness slider
++        // brightness and volume cards
+         BrightnessItem {
+             id: brightnessItem
+             Layout.bottomMargin: Kirigami.Units.smallSpacing * 2
+-            Layout.leftMargin: Kirigami.Units.smallSpacing
+-            Layout.rightMargin: Kirigami.Units.smallSpacing
+             Layout.fillWidth: true
+-        }
+-    }
+-
+-    // Quick setting component minimized
+-    Component {
+-        id: quickSettingComponentMinimized
+-
+-        MobileShell.BaseItem {
+-            implicitHeight: root.minimizedRowHeight
+-            implicitWidth: root.minimizedColumnWidth
+-            horizontalPadding: (width - Kirigami.Units.gridUnit * 3) / 2
+-            verticalPadding: (height - Kirigami.Units.gridUnit * 3) / 2
+-
+-            contentItem: QuickSettingsMinimizedDelegate {
+-                restrictedPermissions: actionDrawer.restrictedPermissions
+-
+-                text: modelData.text
+-                status: modelData.status
+-                icon: modelData.icon
+-                enabled: modelData.enabled
+-                settingsCommand: modelData.settingsCommand
+-                toggleFunction: modelData.toggle
+-
+-                onCloseRequested: {
+-                    actionDrawer.close();
+-                }
+-            }
+-        }
+-    }
+-
+-    // Quick setting component full
+-    Component {
+-        id: quickSettingComponentFull
+-
+-        MobileShell.BaseItem {
+-            height: root.rowHeight
+-            width: root.columnWidth
+-            padding: Kirigami.Units.smallSpacing
+-
+-            contentItem: QuickSettingsFullDelegate {
+-                restrictedPermissions: actionDrawer.restrictedPermissions
+-
+-                text: modelData.text
+-                status: modelData.status
+-                icon: modelData.icon
+-                enabled: modelData.enabled
+-                settingsCommand: modelData.settingsCommand
+-                toggleFunction: modelData.toggle
+-
+-                onCloseRequested: {
+-                    actionDrawer.close();
+-                }
+-            }
++            cardColor: root.cardColor
++            cardRimColor: root.cardRimColor
++            cardRadius: root.cardRadius
++            buttonSize: root.buttonSize
++            cardHeight: root.largeTileHeight
++            spacing: root.cardSpacing
+         }
+     }
+ }
+diff --git a/components/mobileshell/qml/actiondrawer/private/QuickSettingsDelegate.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettingsDelegate.qml
+index 8c126c60..87dbaa2d 100644
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettingsDelegate.qml
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettingsDelegate.qml
+@@ -34,8 +34,8 @@ MobileShell.BaseItem {
+     // set by children
+     property var iconItem
+ 
+-    Kirigami.Theme.inherit: false
+-    Kirigami.Theme.colorSet: Kirigami.Theme.Button
++    // follow the panel, so the tiles are light on the dark glass drawer
++    Kirigami.Theme.inherit: true
+ 
+     readonly property color enabledButtonBorderColor: Qt.darker(Kirigami.Theme.highlightColor, 1.25)
+     readonly property color disabledButtonBorderColor: separatorColorHelper(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.2)
+diff --git a/components/mobileshell/qml/actiondrawer/private/QuickSettingsDrawer.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettingsDrawer.qml
+index de09464c..7fa0ca01 100644
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettingsDrawer.qml
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettingsDrawer.qml
+@@ -58,20 +58,20 @@ MobileShell.BaseItem {
+     bottomPadding: Kirigami.Units.smallSpacing * 4
+ 
+     Kirigami.Theme.inherit: false
+-    Kirigami.Theme.colorSet: Kirigami.Theme.Window
++    Kirigami.Theme.colorSet: Kirigami.Theme.Complementary
+ 
+     background: Item {
+         opacity: brightnessPressedValue
+ 
+-        MobileShell.PanelBackground {
++        // dark glass over the blurred screen, like the One UI quick panel
++        Rectangle {
+             id: background
++            readonly property color panelColor: color
+             anchors.fill: parent
+             anchors.bottomMargin: shadow.height
+-            panelType: MobileShell.PanelBackground.PanelType.Flat
+-            radius: 0
+-
+-            Kirigami.Theme.inherit: false
+-            Kirigami.Theme.colorSet: Kirigami.Theme.Window
++            // a light black veil only: the blur (with its saturation boost)
++            // does the glass, a grey veil turns it into fog
++            color: Qt.rgba(0, 0, 0, 0.22)
+         }
+ 
+         Rectangle {
+@@ -118,7 +118,7 @@ MobileShell.BaseItem {
+             MobileShell.BaseItem {
+                 id: statusBarProxy
+                 Layout.fillWidth: true
+-                Layout.preferredHeight: MobileShell.Constants.topPanelHeight + Kirigami.Units.gridUnit * 0.8
++                Layout.preferredHeight: MobileShell.Constants.topPanelHeight + Kirigami.Units.smallSpacing
+             }
+ 
+             MobileShell.BaseItem {
+diff --git a/components/mobileshell/qml/actiondrawer/private/QuickSettingsFullDelegate.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettingsFullDelegate.qml
+index 65397145..c0066615 100644
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettingsFullDelegate.qml
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettingsFullDelegate.qml
+@@ -10,49 +10,29 @@ import QtQuick.Layouts 1.1
+ 
+ import org.kde.kirigami 2.12 as Kirigami
+ 
+-import org.kde.plasma.core as PlasmaCore
+ import org.kde.plasma.private.mobileshell as MobileShell
+ import org.kde.plasma.private.mobileshell.shellsettingsplugin as ShellSettings
+ import org.kde.plasma.components 3.0 as PlasmaComponents
+ 
++/*
++ * A round quick settings button with its name underneath (the fully expanded
++ * panel of One UI): filled when the setting is on, translucent when it is
++ * off.  Tap toggles, press and hold opens the settings page.
++ */
+ QuickSettingsDelegate {
+     id: root
+ 
+-    padding: Kirigami.Units.smallSpacing * 2
++    // diameter of the round button, set by QuickSettings
++    property real circleSize: Kirigami.Units.gridUnit * 3
++
+     iconItem: icon
+ 
+     // scale animation on press
+     zoomScale: (ShellSettings.Settings.animationsEnabled && mouseArea.pressed) ? 0.9 : 1
+ 
+-    background: Item {
+-        // very simple shadow for performance
+-        Rectangle {
+-            anchors.top: parent.top
+-            anchors.topMargin: 1
+-            anchors.left: parent.left
+-            anchors.right: parent.right
+-            height: parent.height
+-
+-            radius: Kirigami.Units.cornerRadius
+-            color: Qt.rgba(0, 0, 0, 0.075)
+-        }
+-
+-        // background color
+-        Rectangle {
+-            anchors.fill: parent
+-            radius: Kirigami.Units.cornerRadius
+-            border.pixelAligned: false
+-            border.width: 1
+-            border.color: root.enabled ? root.enabledButtonBorderColor : root.disabledButtonBorderColor
+-            color: {
+-                if (root.enabled) {
+-                    return mouseArea.pressed ? root.enabledButtonPressedColor : root.enabledButtonColor
+-                } else {
+-                    return mouseArea.pressed ? root.disabledButtonPressedColor : root.disabledButtonColor
+-                }
+-            }
+-        }
+-    }
++    readonly property color onColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.92)
++    readonly property color offColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                                              Kirigami.Theme.textColor.b, 0.16)
+ 
+     MobileShell.HapticsEffect {
+         id: haptics
+@@ -70,38 +50,40 @@ QuickSettingsDelegate {
+ 
+         cursorShape: Qt.PointingHandCursor
+ 
+-        Kirigami.Icon {
+-            id: icon
++        Rectangle {
++            id: circle
+             anchors.top: parent.top
+-            anchors.left: parent.left
+-            implicitWidth: Kirigami.Units.iconSizes.small
+-            implicitHeight: width
+-            source: root.icon
++            anchors.horizontalCenter: parent.horizontalCenter
++            width: root.circleSize
++            height: width
++            radius: width / 2
++            color: root.enabled ? root.onColor : root.offColor
++            opacity: mouseArea.pressed ? 0.8 : 1
++            Behavior on color { ColorAnimation { duration: Kirigami.Units.shortDuration } }
++
++            Kirigami.Icon {
++                id: icon
++                anchors.centerIn: parent
++                implicitWidth: Math.round(parent.width * 0.73)
++                implicitHeight: width
++                // a flat Breeze glyph whatever the icon theme (One UI themes draw
++                // coloured rounded squares, which as a mask become plain squares)
++                source: MobileShell.ShellUtil.symbolicIcon(root.icon)
++                isMask: true
++                color: root.enabled ? Kirigami.Theme.backgroundColor : Kirigami.Theme.textColor
++            }
+         }
+ 
+-        ColumnLayout {
+-            id: column
+-            spacing: Kirigami.Units.smallSpacing
+-            anchors.right: parent.right
++        PlasmaComponents.Label {
++            anchors.top: circle.bottom
++            anchors.topMargin: Kirigami.Units.smallSpacing
+             anchors.left: parent.left
+-            anchors.bottom: parent.bottom
+-
+-            MobileShell.MarqueeLabel {
+-                Layout.fillWidth: true
+-                inputText: root.text
+-                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 0.75 // TODO base height off of size of delegate
+-                font.weight: Font.Bold
+-            }
+-
+-            MobileShell.MarqueeLabel {
+-                // if no status is given, just use On/Off
+-                inputText: root.status ? root.status : (root.enabled ? i18n("On") : i18n("Off"))
+-                opacity: 0.6
+-
+-                Layout.fillWidth: true
+-                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 0.75
+-            }
++            anchors.right: parent.right
++            text: root.text
++            horizontalAlignment: Text.AlignHCenter
++            elide: Text.ElideRight
++            maximumLineCount: 1
++            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 0.8
+         }
+     }
+ }
+-
+diff --git a/components/mobileshell/qml/actiondrawer/private/QuickSettingsMinimizedDelegate.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettingsMinimizedDelegate.qml
+index ff08519e..d2b904f9 100644
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettingsMinimizedDelegate.qml
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettingsMinimizedDelegate.qml
+@@ -4,17 +4,19 @@
+  *   SPDX-License-Identifier: LGPL-2.0-or-later
+  */
+ 
+-import QtQuick 2.1
++import QtQuick 2.15
+ import QtQuick.Layouts 1.1
+ 
+ import org.kde.kirigami 2.12 as Kirigami
+ 
+ import org.kde.plasma.private.mobileshell as MobileShell
+-import org.kde.plasma.core as PlasmaCore
+-import org.kde.plasma.private.nanoshell 2.0 as NanoShell
+ import org.kde.plasma.private.mobileshell.shellsettingsplugin as ShellSettings
+-import org.kde.plasma.components 3.0 as PlasmaComponents
+ 
++/*
++ * A round quick settings button without a label: filled when the setting is
++ * on, translucent when it is off.  Tap toggles, press and hold opens the
++ * settings page of the quick setting.
++ */
+ QuickSettingsDelegate {
+     id: root
+ 
+@@ -23,34 +25,15 @@ QuickSettingsDelegate {
+     // scale animation on press
+     zoomScale: (ShellSettings.Settings.animationsEnabled && mouseArea.pressed) ? 0.9 : 1
+ 
+-    background: Item {
+-        // very simple shadow for performance
+-        Rectangle {
+-            anchors.top: parent.top
+-            anchors.topMargin: 1
+-            anchors.left: parent.left
+-            anchors.right: parent.right
+-            height: parent.height
+-
+-            radius: Kirigami.Units.cornerRadius
+-            color: Qt.rgba(0, 0, 0, 0.075)
+-        }
++    readonly property color onColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.92)
++    readonly property color offColor: Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g,
++                                              Kirigami.Theme.textColor.b, 0.16)
+ 
+-        // background
+-        Rectangle {
+-            anchors.fill: parent
+-            radius: Kirigami.Units.cornerRadius
+-            border.pixelAligned: false
+-            border.width: 1
+-            border.color: root.enabled ? root.enabledButtonBorderColor : root.disabledButtonBorderColor
+-            color: {
+-                if (root.enabled) {
+-                    return mouseArea.pressed ? root.enabledButtonPressedColor : root.enabledButtonColor
+-                } else {
+-                    return mouseArea.pressed ? root.disabledButtonPressedColor : root.disabledButtonColor
+-                }
+-            }
+-        }
++    background: Rectangle {
++        radius: width / 2
++        color: root.enabled ? root.onColor : root.offColor
++        opacity: mouseArea.pressed ? 0.8 : 1
++        Behavior on color { ColorAnimation { duration: Kirigami.Units.shortDuration } }
+     }
+ 
+     MobileShell.HapticsEffect {
+@@ -60,7 +43,7 @@ QuickSettingsDelegate {
+     contentItem: MouseArea {
+         id: mouseArea
+ 
+-        onPressed: haptics.buttonVibrate();
++        onPressed: haptics.buttonVibrate()
+         onClicked: root.delegateClick()
+         onPressAndHold: {
+             haptics.buttonVibrate();
+@@ -72,10 +55,13 @@ QuickSettingsDelegate {
+         Kirigami.Icon {
+             id: icon
+             anchors.centerIn: parent
+-            implicitWidth: Kirigami.Units.iconSizes.smallMedium
++            implicitWidth: Math.round(parent.width * 0.73)
+             implicitHeight: width
+-            source: root.icon
++            // a flat Breeze glyph whatever the icon theme (One UI themes draw
++            // coloured rounded squares, which as a mask become plain squares)
++            source: MobileShell.ShellUtil.symbolicIcon(root.icon)
++            isMask: true
++            color: root.enabled ? Kirigami.Theme.backgroundColor : Kirigami.Theme.textColor
+         }
+     }
+ }
+-
+diff --git a/components/mobileshell/shellutil.cpp b/components/mobileshell/shellutil.cpp
+index 000e4050..6b6c6ee2 100644
+--- a/components/mobileshell/shellutil.cpp
++++ b/components/mobileshell/shellutil.cpp
+@@ -13,13 +13,22 @@
+ #include <KLocalizedString>
+ #include <KNotification>
+ #include <KNotificationJobUiDelegate>
++#include <KWindowEffects>
+ 
+ #include <QQuickWindow>
++#include <QGuiApplication>
++#include <QImage>
++#include <QPainter>
++#include <QScreen>
+ 
++#include <QDBusConnection>
++#include <QDBusMessage>
+ #include <QDBusPendingReply>
+ #include <QDateTime>
+ #include <QDebug>
+ #include <QFile>
++#include <QHash>
++#include <QStandardPaths>
+ #include <QProcess>
+ 
+ #include <QTextDocumentFragment>
+@@ -32,6 +41,73 @@
+ 
+ ShellUtil::ShellUtil(QObject *parent) : QObject{parent}, m_localeConfig {
+     KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::SimpleConfig) } {
++    // only the first ShellUtil of a process gets the object path
++    auto *grabber = new ScreenGrab(this);
++    if (!QDBusConnection::sessionBus().registerObject(QStringLiteral("/ScreenGrab"), grabber, QDBusConnection::ExportAllSlots)) {
++        delete grabber;
++    }
++}
++
++QString ScreenGrab::grab(const QString &prefix)
++{
++    QScreen *screen = QGuiApplication::primaryScreen();
++    if (!screen) {
++        return {};
++    }
++    const qreal dpr = screen->devicePixelRatio();
++    QImage out(screen->size() * dpr, QImage::Format_ARGB32_Premultiplied);
++    out.fill(Qt::black);
++
++    struct Shot {
++        int layer;
++        QPoint pos;
++        QImage image;
++    };
++    QList<Shot> shots;
++    QStringList written;
++
++    for (QWindow *window : QGuiApplication::topLevelWindows()) {
++        auto *quickWindow = qobject_cast<QQuickWindow *>(window);
++        if (!quickWindow || !quickWindow->isVisible()) {
++            continue;
++        }
++        const QImage image = quickWindow->grabWindow();
++        if (image.isNull()) {
++            continue;
++        }
++        const QString file = prefix + QStringLiteral("-%1.png").arg(written.size());
++        image.save(file);
++        written << file;
++
++        // do not create a layer-shell object for windows that have none
++        int layer = LayerShellQt::Window::LayerTop;
++        QPoint pos;
++        if (auto *layerWindow = window->findChild<LayerShellQt::Window *>()) {
++            layer = layerWindow->layer();
++            const auto anchors = layerWindow->anchors();
++            if ((anchors & LayerShellQt::Window::AnchorBottom) && !(anchors & LayerShellQt::Window::AnchorTop)) {
++                pos.setY(out.height() - image.height());
++            }
++            if ((anchors & LayerShellQt::Window::AnchorRight) && !(anchors & LayerShellQt::Window::AnchorLeft)) {
++                pos.setX(out.width() - image.width());
++            }
++        }
++        shots.append({layer, pos, image});
++    }
++
++    std::stable_sort(shots.begin(), shots.end(), [](const Shot &a, const Shot &b) {
++        return a.layer < b.layer;
++    });
++    QPainter painter(&out);
++    for (const Shot &shot : std::as_const(shots)) {
++        painter.drawImage(shot.pos, shot.image);
++    }
++    painter.end();
++
++    const QString file = prefix + QStringLiteral(".png");
++    out.save(file);
++    written.prepend(file);
++    return written.join(QLatin1Char('\n'));
+ }
+ 
+ void ShellUtil::stackItemBefore(QQuickItem *item1, QQuickItem *item2)
+@@ -113,7 +189,92 @@ void ShellUtil::setWindowLayer(QQuickWindow *window, LayerShellQt::Window::Layer
+     }
+ }
+ 
+-void ShellUtil::setInputRegion(QWindow *window, const QRect &region) {
++void ShellUtil::setBlurBehind(QWindow *window, bool enable)
++{
++    if (!window) {
++        return;
++    }
++
++    // an empty region blurs the whole window
++    KWindowEffects::enableBlurBehind(window, enable);
++}
++
++void ShellUtil::setDrawerBlurStrength(double strength)
++{
++    QDBusMessage message = QDBusMessage::createMethodCall(QStringLiteral("org.kde.KWin"),
++                                                          QStringLiteral("/org/kde/plasma/mobile/DrawerBlur"),
++                                                          QStringLiteral("org.kde.plasma.mobile.DrawerBlur"),
++                                                          QStringLiteral("setStrength"));
++    message << strength;
++    QDBusConnection::sessionBus().send(message);
++}
++
++QString ShellUtil::symbolicIcon(const QString &name)
++{
++    // not a theme icon name (a path or a URL)
++    if (name.isEmpty() || name.contains(QLatin1Char('/'))) {
++        return name;
++    }
++
++    static QHash<QString, QString> cache;
++    const auto cached = cache.constFind(name);
++    if (cached != cache.constEnd()) {
++        return *cached;
++    }
++
++    QString base = name;
++    if (base.endsWith(QLatin1String("-symbolic"))) {
++        base.chop(int(qstrlen("-symbolic")));
++    }
++
++    // the small Breeze sizes are all flat glyphs, symbolic or not
++    static const QStringList contexts{QStringLiteral("actions"),
++                                      QStringLiteral("status"),
++                                      QStringLiteral("devices"),
++                                      QStringLiteral("preferences"),
++                                      QStringLiteral("places"),
++                                      QStringLiteral("apps"),
++                                      QStringLiteral("applets"),
++                                      QStringLiteral("emblems"),
++                                      QStringLiteral("categories")};
++    static const QStringList sizes{QStringLiteral("24"), QStringLiteral("22"), QStringLiteral("16")};
++    static const QStringList suffixes{QStringLiteral("-symbolic.svg"), QStringLiteral(".svg")};
++
++    const QString root = QStandardPaths::locate(QStandardPaths::GenericDataLocation, QStringLiteral("icons/breeze"), QStandardPaths::LocateDirectory);
++    const auto find = [&]() -> QString {
++        if (root.isEmpty()) {
++            return name;
++        }
++        for (const QString &suffix : suffixes) {
++            for (const QString &size : sizes) {
++                for (const QString &context : contexts) {
++                    const QString path = root + QLatin1Char('/') + context + QLatin1Char('/') + size + QLatin1Char('/') + base + suffix;
++                    if (QFile::exists(path)) {
++                        return path;
++                    }
++                }
++            }
++        }
++        return name;
++    };
++
++    const QString found = find();
++    cache.insert(name, found);
++    return found;
++}
++
++bool ShellUtil::autolockEnabled()
++{
++    const KConfigGroup daemon(KSharedConfig::openConfig(QStringLiteral("kscreenlockerrc")), QStringLiteral("Daemon"));
++    return daemon.readEntry("Autolock", true);
++}
++
++void ShellUtil::setInputRegion(QWindow *window, const QRect &region)
++{
++    if (!window) {
++        return;
++    }
++
+     auto waylandWindow = dynamic_cast<QtWaylandClient::QWaylandWindow *>(window->handle());
+     if (!waylandWindow) {
+         qWarning() << "Failed to retrieve Wayland window handle.";
+diff --git a/components/mobileshell/shellutil.h b/components/mobileshell/shellutil.h
+index 2b6f56a1..4829c712 100644
+--- a/components/mobileshell/shellutil.h
++++ b/components/mobileshell/shellutil.h
+@@ -84,6 +84,33 @@ public:
+      */
+     Q_INVOKABLE void setInputRegion(QWindow *window, const QRect &region);
+ 
++    /**
++     * Asks the compositor to blur what is behind the whole window.
++     * Needs the KWin blur effect to be enabled.
++     */
++    Q_INVOKABLE void setBlurBehind(QWindow *window, bool enable);
++
++    /**
++     * Sets how strong the blur behind the action drawer looks, from 0 (none)
++     * to 1 (full), through the DrawerBlur object of the mobile task switcher
++     * effect in KWin.
++     */
++    Q_INVOKABLE void setDrawerBlurStrength(double strength);
++
++    /**
++     * Returns the path of the flat monochrome Breeze glyph for an icon name,
++     * or the name itself when Breeze has none.  Quick settings tiles use it
++     * so they stay glyphs whatever icon theme the user picked for apps
++     * (themes such as One UI draw icons as coloured rounded squares).
++     */
++    Q_INVOKABLE QString symbolicIcon(const QString &name);
++
++    /**
++     * Whether the session should lock itself (at start, on the power key and
++     * when idle), read from Autolock in the [Daemon] group of kscreenlockerrc.
++     */
++    Q_INVOKABLE bool autolockEnabled();
++
+     /**
+      * Converts rich text to plain text.
+      */
+@@ -96,3 +123,25 @@ private:
+     KConfigWatcher::Ptr m_localeConfigWatcher;
+     KSharedConfig::Ptr m_localeConfig;
+ };
++
++/**
++ * Screenshots of the shell's own windows over D-Bus (pl.s10plus.ScreenGrab at
++ * /ScreenGrab), for the hwcomposer backend where the compositor cannot read
++ * the output back.  Each visible window is rendered with grabWindow() and the
++ * layer-shell windows are stacked by layer and anchors into one screen image.
++ */
++class ScreenGrab : public QObject
++{
++    Q_OBJECT
++    Q_CLASSINFO("D-Bus Interface", "pl.s10plus.ScreenGrab")
++
++public:
++    using QObject::QObject;
++
++public Q_SLOTS:
++    /**
++     * Writes <prefix>.png (whole screen) and <prefix>-<n>.png (each window).
++     * Returns the files written, one per line.
++     */
++    QString grab(const QString &prefix);
++};
+diff --git a/envmanager/config.h b/envmanager/config.h
+index 56d29bb1..ce3aae62 100644
+--- a/envmanager/config.h
++++ b/envmanager/config.h
+@@ -53,12 +53,20 @@ QMap<QString, QMap<QString, QVariant>> getKwinrcSettings(KSharedConfig::Ptr m_mo
+              }},
+             {"Plugins",
+              {
+-                 {"blurEnabled", false}, // disable blur for performance reasons, we could reconsider in the future for more powerful devices
++                 {"blurEnabled", true}, // the quick settings drawer is glass (blur behind it), like One UI
+                  {"convergentwindowsEnabled", true}, // enable our convergent window plugin
+                  {"mobiletaskswitcherEnabled", true}, // ensure the mobile task switcher plugin is enabled
+                  {"screenedgeEnabled", false} // disable the blue highlighting of screen edge effects. TODO would be nice if we could only deactivate it on
+                                               // touchscreen gestures and not mouse as well
+              }},
++            {"Effect-blur",
++             {
++                 // KWin defaults (15, 5, 150) smear the screen into an even, grainy fog;
++                 // glass keeps the shapes and colours of what is behind
++                 {"BlurStrength", 8},
++                 {"NoiseStrength", 0},
++                 {"Saturation", 170}
++             }},
+             {"Wayland",
+              {
+                  {"VirtualKeyboardEnabled", true} // enable vkbd
+-- 
+2.47.3
+

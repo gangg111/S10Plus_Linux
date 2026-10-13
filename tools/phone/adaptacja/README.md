@@ -18,7 +18,13 @@ Pochodzenie binarek w `tools/` (sumy sha256, 16 znakow):
 - `libobrot.so` `5fbd7132aff30c84`: `tools/phone/podglad/obrot.cpp` (obrot ekranu bez polowy czarnego obrazu, zamiast autorotate-iio), budowa `podglad/buduj-obrot.sh`.
 - `wayfire.ini` `46ae61a6eea0a77d`: konfiguracja sesji z telefonu (wtyczki podglad i obrot, gesty przelacznika, skala 3, `[grid] type = none`); `startplasmamobile-wf` kopiuje ja do `~/.config` tylko przy pierwszym starcie, wiec zmiana pliku nie dotyka istniejacych kont.
 - `plasma-settings` `07204cbf6edee521`, `mobile.plasmasettings.mo` `6a8b77284bda3cbd`: `tools/phone/plasma-settings-oneui`, budowa `ps-buduj.sh`.
-- FormCard (8 plikow, lista w `tools/phone/kirigami-addons-oneui`): `tools/phone/kirigami-addons-oneui`, zaokraglone karty One UI na telefonie.
+
+Nakladki QML One UI nie sa gotowymi plikami: `qml-oneui.diff` (11 plikow: FormCard z
+kirigami-addons, naglowek strony Kirigami, pasek narzedzi Breeze, w kazdym `qmldir` bez
+linii `prefer`, zeby Qt czytal QML z dysku) naklada `qml-oneui.sh` przy budowie na pliki
+paczek pobranych z archiwum, a `-tools` zalezy dokladnie od tych wersji. Gdy nowe wydanie
+przesunie kod, latka sie nie nalozy i budowa stanie, zamiast wymieszac dwie wersje modulu.
+Budowa potrzebuje wiec dostepu do archiwum Droidiana (`apt-get download`).
 
 Migracja z recznego stanu (wersja 1 nie niosla tych plikow): preinst usuwa recznie
 dodana jednostke `dotyk-boost` i autostart, a lokalne przekierowania `plasma_session`

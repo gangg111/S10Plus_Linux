@@ -1,0 +1,34 @@
+From 0a051ba4880f7ab9109110a18b98de39b1b429b9 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:29:50 +0200
+Subject: [PATCH 29/29] droidian: ship the init-top ORDER in the initramfs
+ overlay
+
+The overlay provides its own scripts/init-top/ORDER, which replaces the
+list mkinitramfs generates.  It runs the standard Debian scripts
+(all_generic_ide, blacklist, keymap, udev) in that order; this is the
+initramfs the working boot.img was built with.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/initramfs-overlay/scripts/init-top/ORDER | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+ create mode 100644 debian/initramfs-overlay/scripts/init-top/ORDER
+
+diff --git a/debian/initramfs-overlay/scripts/init-top/ORDER b/debian/initramfs-overlay/scripts/init-top/ORDER
+new file mode 100644
+index 000000000..bc90984b7
+--- /dev/null
++++ b/debian/initramfs-overlay/scripts/init-top/ORDER
+@@ -0,0 +1,8 @@
++/scripts/init-top/all_generic_ide "$@"
++[ -e /conf/param.conf ] && . /conf/param.conf
++/scripts/init-top/blacklist "$@"
++[ -e /conf/param.conf ] && . /conf/param.conf
++/scripts/init-top/keymap "$@"
++[ -e /conf/param.conf ] && . /conf/param.conf
++/scripts/init-top/udev "$@"
++[ -e /conf/param.conf ] && . /conf/param.conf
+-- 
+2.47.3
+

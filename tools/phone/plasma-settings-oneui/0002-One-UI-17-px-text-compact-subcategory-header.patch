@@ -1,7 +1,7 @@
 From 6bdc5fc0664f23ce763c46009025926c51fdfed6 Mon Sep 17 00:00:00 2001
 From: Artur <ganggg111@gmail.com>
 Date: Fri, 2 Oct 2026 22:46:06 +0200
-Subject: [PATCH 2/3] One UI: 17 px text, compact subcategory header
+Subject: [PATCH 2/4] One UI: 17 px text, compact subcategory header
 
 One UI list text is 17 px: the application font is set to it, so the module
 pages (FormCard rows take their height from the font) match the One UI rows.

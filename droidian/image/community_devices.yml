@@ -1,0 +1,16 @@
+#
+# Samsung
+#
+
+# Samsung Galaxy S10+ Exynos (beyond2lte, SM-G975F)
+# Vendor from G975FXXSGHWC1 (Android 12), hence API level 32.
+samsung_beyond2lte:
+  type: image
+  arch: arm64
+  edition: plamo_wf_experimental
+  variant: phone
+  apilevel: 32
+
+  packages:
+    - adaptation-samsung-beyond2lte
+    - adaptation-samsung-beyond2lte-configs

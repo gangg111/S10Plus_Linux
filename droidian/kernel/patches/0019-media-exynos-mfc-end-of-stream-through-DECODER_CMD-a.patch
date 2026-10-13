@@ -1,0 +1,123 @@
+From 6c34536cb8ba11ad0632d3aae70c13312d2a1b22 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 03:33:13 +0200
+Subject: [PATCH 19/29] media: exynos-mfc: end of stream through DECODER_CMD
+ and BUF_FLAG_LAST
+
+Android ends a stream by setting MFC_FLAG_LAST_FRAME in reserved2 of its
+last source buffer. Generic clients use the stateful decoder API instead:
+VIDIOC_DECODER_CMD with V4L2_DEC_CMD_STOP, then capture buffers until one
+has V4L2_BUF_FLAG_LAST. Neither existed, so FFmpeg h264_v4l2m2m decoded
+every frame and then waited forever for the end.
+
+decoder_cmd STOP marks the source buffer still waiting last with
+MFC_FLAG_LAST_FRAME, or with none waiting moves the context to FINISHING,
+which decodes an empty stream and flushes the DPB. NAL-Q stops by itself
+in both cases. The buffers returned when FINISHING ends get
+V4L2_BUF_FLAG_LAST, so vb2 answers EPIPE after them.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ .../media/platform/exynos/mfc/mfc_dec_v4l2.c  | 56 +++++++++++++++++++
+ drivers/media/platform/exynos/mfc/mfc_isr.c   |  4 ++
+ 2 files changed, 60 insertions(+)
+
+diff --git a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+index 49a7a166f..0c86a870a 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
++++ b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+@@ -1274,6 +1274,60 @@ static int mfc_dec_g_ext_ctrls(struct file *file, void *priv,
+ 	return ret;
+ }
+ 
++static int mfc_dec_try_decoder_cmd(struct file *file, void *priv,
++		struct v4l2_decoder_cmd *cmd)
++{
++	if (cmd->cmd != V4L2_DEC_CMD_STOP)
++		return -EINVAL;
++
++	cmd->flags = 0;
++	return 0;
++}
++
++/*
++ * Drain for generic clients (FFmpeg, GStreamer). The source buffer still
++ * waiting last gets MFC_FLAG_LAST_FRAME, as Android sets it on its own; with
++ * nothing waiting the context goes to FINISHING, which decodes an empty
++ * stream and flushes the DPB. Either way NAL-Q stops on its own first
++ * (mfc_nal_q_check_enable), and the capture buffers returned at the end
++ * carry V4L2_BUF_FLAG_LAST.
++ */
++static int mfc_dec_decoder_cmd(struct file *file, void *priv,
++		struct v4l2_decoder_cmd *cmd)
++{
++	struct mfc_ctx *ctx = fh_to_mfc_ctx(file->private_data);
++	struct mfc_dev *dev = ctx->dev;
++	struct mfc_buf *last = NULL;
++	unsigned long flags;
++	int ret;
++
++	ret = mfc_dec_try_decoder_cmd(file, priv, cmd);
++	if (ret)
++		return ret;
++
++	if (!vb2_is_streaming(&ctx->vq_src) || !vb2_is_streaming(&ctx->vq_dst))
++		return 0;
++
++	spin_lock_irqsave(&ctx->buf_queue_lock, flags);
++	if (!list_empty(&ctx->src_buf_queue.head)) {
++		last = list_entry(ctx->src_buf_queue.head.prev, struct mfc_buf, list);
++		mfc_set_vb_flag(last, MFC_FLAG_LAST_FRAME);
++	}
++	spin_unlock_irqrestore(&ctx->buf_queue_lock, flags);
++
++	if (!last && ctx->state == MFCINST_RUNNING)
++		mfc_change_state(ctx, MFCINST_FINISHING);
++	mfc_debug(2, "[STREAM] decoder stop, %s\n",
++			last ? "last source buffer marked" : "finishing now");
++
++	if (mfc_ctx_ready(ctx)) {
++		mfc_set_bit(ctx->num, &dev->work_bits);
++		mfc_try_run(dev);
++	}
++
++	return 0;
++}
++
+ /* v4l2_ioctl_ops */
+ static const struct v4l2_ioctl_ops mfc_dec_ioctl_ops = {
+ 	.vidioc_querycap		= mfc_dec_querycap,
+@@ -1296,6 +1350,8 @@ static const struct v4l2_ioctl_ops mfc_dec_ioctl_ops = {
+ 	.vidioc_s_ctrl			= mfc_dec_s_ctrl,
+ 	.vidioc_g_crop			= mfc_dec_g_crop,
+ 	.vidioc_g_ext_ctrls		= mfc_dec_g_ext_ctrls,
++	.vidioc_try_decoder_cmd		= mfc_dec_try_decoder_cmd,
++	.vidioc_decoder_cmd		= mfc_dec_decoder_cmd,
+ };
+ 
+ const struct v4l2_ioctl_ops *mfc_get_dec_v4l2_ioctl_ops(void)
+diff --git a/drivers/media/platform/exynos/mfc/mfc_isr.c b/drivers/media/platform/exynos/mfc/mfc_isr.c
+index 3b43f5a37..d84f24702 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_isr.c
++++ b/drivers/media/platform/exynos/mfc/mfc_isr.c
+@@ -106,6 +106,8 @@ static void __mfc_handle_frame_all_extracted(struct mfc_ctx *ctx)
+ 	struct mfc_dec *dec = ctx->dec_priv;
+ 	struct mfc_buf *dst_mb;
+ 	int index, i, is_first = 1;
++	/* end of stream, not a resolution change or a DPB reallocation */
++	bool eos = (ctx->state == MFCINST_FINISHING);
+ 
+ 	mfc_debug(2, "Decided to finish\n");
+ 	ctx->sequence++;
+@@ -149,6 +151,8 @@ static void __mfc_handle_frame_all_extracted(struct mfc_ctx *ctx)
+ 				0);
+ 		}
+ 
++		if (eos)
++			dst_mb->vb.flags |= V4L2_BUF_FLAG_LAST;
+ 		vb2_buffer_done(&dst_mb->vb.vb2_buf, VB2_BUF_STATE_DONE);
+ 
+ 		/* decoder dst buffer CFW UNPROT */
+-- 
+2.47.3
+

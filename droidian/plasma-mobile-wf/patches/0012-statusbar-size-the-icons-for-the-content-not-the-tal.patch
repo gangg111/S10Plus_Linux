@@ -1,0 +1,77 @@
+From da6dbd0669cd8fd6d69f6def4a0c062e13457f5a Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 05:12:27 +0200
+Subject: [PATCH 12/29] statusbar: size the icons for the content, not the
+ taller panel
+
+The panel is at least 200 px high on the Galaxy S10+ to line up with the
+camera, and the indicators took that whole height, dwarfing the clock.  Size
+them from the usual content height (statusBarScaleFactor) and centre the row
+in the panel; centre the battery percentage and let the battery indicator
+take the width it needs.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ components/mobileshell/qml/components/Constants.qml         | 5 +++--
+ components/mobileshell/qml/statusbar/StatusBar.qml          | 6 ++++--
+ .../qml/statusbar/indicators/BatteryIndicator.qml           | 1 +
+ 3 files changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/components/mobileshell/qml/components/Constants.qml b/components/mobileshell/qml/components/Constants.qml
+index 00557fa9..1c042590 100644
+--- a/components/mobileshell/qml/components/Constants.qml
++++ b/components/mobileshell/qml/components/Constants.qml
+@@ -15,8 +15,9 @@ QtObject {
+     // Galaxy S10+: at least 200 physical px, so the clock and the icons line up
+     // with the middle of the front camera cut-out (bottom edge at 142 px)
+     readonly property real devicePixelRatio: Qt.application.screens.length > 0 ? Qt.application.screens[0].devicePixelRatio : 1
+-    readonly property real topPanelHeight: Math.max(Math.round(Kirigami.Units.gridUnit * ShellSettings.Settings.statusBarScaleFactor / 2) * 2 + Kirigami.Units.smallSpacing,
+-                                                    Math.round(200 / devicePixelRatio))
++    // the height the status bar content is sized for (clock, icons)
++    readonly property real topPanelContentHeight: Math.round(Kirigami.Units.gridUnit * ShellSettings.Settings.statusBarScaleFactor / 2) * 2 + Kirigami.Units.smallSpacing
++    readonly property real topPanelHeight: Math.max(topPanelContentHeight, Math.round(200 / devicePixelRatio))
+     readonly property real navigationPanelThickness: ShellSettings.Settings.navigationPanelEnabled ? Kirigami.Units.gridUnit * 2 : 0
+ 
+     function navigationPanelOnSide(screenWidth: real, screenHeight: real): bool {
+diff --git a/components/mobileshell/qml/statusbar/StatusBar.qml b/components/mobileshell/qml/statusbar/StatusBar.qml
+index 9db29436..f2407840 100644
+--- a/components/mobileshell/qml/statusbar/StatusBar.qml
++++ b/components/mobileshell/qml/statusbar/StatusBar.qml
+@@ -109,10 +109,13 @@ Item {
+ 
+             RowLayout {
+                 id: mainRow
+-                readonly property real rowHeight: MobileShell.Constants.topPanelHeight - Kirigami.Units.smallSpacing * 2
++                // icons follow the content height, not the (taller) panel, so they
++                // stay in proportion to the clock; the row is centred in the panel
++                readonly property real rowHeight: MobileShell.Constants.topPanelContentHeight - Kirigami.Units.smallSpacing * 2
+ 
+                 Layout.fillWidth: true
+                 Layout.preferredHeight: rowHeight
++                Layout.fillHeight: !root.showSecondRow
+ 
+                 spacing: 0
+ 
+@@ -179,7 +182,6 @@ Item {
+                         spacing: root.elementSpacing
+                         textPixelSize: root.textPixelSize
+                         implicitHeight: mainRow.rowHeight
+-                        Layout.preferredWidth: height
+                     }
+                 }
+             }
+diff --git a/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml b/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml
+index b6cc48f8..e39ebc20 100644
+--- a/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml
++++ b/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml
+@@ -62,6 +62,7 @@ RowLayout {
+                 text: i18n("%1%", Percent)
+                 Layout.alignment: Qt.AlignVCenter
+                 Layout.fillHeight: true
++                verticalAlignment: Text.AlignVCenter
+ 
+                 color: Kirigami.Theme.textColor
+                 visible: ShellSettings.Settings.showBatteryPercentage
+-- 
+2.47.3
+

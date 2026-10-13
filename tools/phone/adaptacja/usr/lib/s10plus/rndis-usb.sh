@@ -1,10 +1,23 @@
 #!/bin/bash
-# Idempotentne: jesli rndis0 juz ma IP -> nic. Inaczej przelacz gadzet g1 na RNDIS i nadaj IP.
+# Siec po kablu USB: gadzet g1 z funkcja RNDIS i adresem 169.254.172.1 (link-local, PC sam
+# nadaje sobie adres z tej puli, bez DHCP).  Windows bierze sterownik RNDIS sam, przez
+# deskryptory Microsoft OS (os_desc), Linux przez rndis_host.  usb-tethering z hybris-usb
+# na tym jadrze nie dziala (nie umie zalozyc funkcji sieciowej), dlatego gadzet tworzymy tu.
+# Idempotentne: jesli rndis0 juz ma adres, nic nie robi.
 G=/sys/kernel/config/usb_gadget/g1
 UDC=10c00000.dwc3
 IP=169.254.172.1/16
 if ip -br addr show rndis0 2>/dev/null | grep -q "169.254.172.1"; then exit 0; fi
-[ -d "$G" ] || exit 0
+[ -d /sys/kernel/config/usb_gadget ] || mount -t configfs none /sys/kernel/config 2>/dev/null
+if [ ! -d "$G" ]; then
+	mkdir -p $G/strings/0x409 $G/configs/c.1/strings/0x409 || exit 1
+	echo 0x0fce > $G/idVendor     # te same identyfikatory co domyslny profil hybris-usb
+	echo 0x7169 > $G/idProduct
+	echo "Droidian Galaxy S10+" > $G/strings/0x409/manufacturer
+	echo "Galaxy S10+" > $G/strings/0x409/product
+	cut -c1-16 /etc/machine-id > $G/strings/0x409/serialnumber 2>/dev/null
+	echo "RNDIS" > $G/configs/c.1/strings/0x409/configuration
+fi
 echo "" > $G/UDC 2>/dev/null; sleep 1
 rm -f $G/configs/c.1/ncm.usb0 2>/dev/null
 rm -f $G/configs/c.1/rndis.usb0 2>/dev/null

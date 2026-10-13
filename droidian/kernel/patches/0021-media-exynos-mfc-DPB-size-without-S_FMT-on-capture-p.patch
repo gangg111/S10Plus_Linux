@@ -1,0 +1,49 @@
+From adfdbec97fc5a4cf4a5a625253942ceb1fc31451 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 03:47:24 +0200
+Subject: [PATCH 21/29] media: exynos-mfc: DPB size without S_FMT on capture,
+ progressive try_fmt
+
+A client that keeps the capture format the driver picks after the header
+(GStreamer v4l2h264dec never calls S_FMT there) left raw_buf.num_planes
+at 0: only S_FMT set it, so mfc_dec_calc_dpb_size() came out with a total
+plane size of 0 and INIT_BUFFERS failed with
+MFC_REG_ERR_INSUFFICIENT_DPB_SIZE. The 8-bit branch of
+__mfc_dec_change_format() now sets it from the chosen format, as the
+10-bit branches already do.
+
+try_fmt also left field at V4L2_FIELD_ANY, which GStreamer reports as a
+driver bug for every size it probes; answer V4L2_FIELD_NONE.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+index f4d817caf..35c7cea22 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
++++ b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+@@ -262,6 +262,8 @@ static void __mfc_dec_change_format(struct mfc_ctx *ctx)
+ 			/* It is right format */
+ 			break;
+ 		}
++		/* only S_FMT set this before: without it the DPB size is 0 */
++		ctx->raw_buf.num_planes = ctx->dst_fmt->num_planes;
+ 	}
+ 
+ 	if (org_fmt != ctx->dst_fmt->fourcc)
+@@ -414,6 +416,10 @@ static int mfc_dec_try_fmt(struct file *file, void *priv, struct v4l2_format *f)
+ 		return -EINVAL;
+ 	}
+ 
++	/* progressive unless the stream says otherwise (g_fmt reports that) */
++	if (pix_fmt_mp->field == V4L2_FIELD_ANY)
++		pix_fmt_mp->field = V4L2_FIELD_NONE;
++
+ 	return 0;
+ }
+ 
+-- 
+2.47.3
+

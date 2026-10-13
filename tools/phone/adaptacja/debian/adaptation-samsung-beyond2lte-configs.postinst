@@ -8,7 +8,29 @@ drop_if_same() {
 	fi
 }
 
+# Firefox: mobile-config-firefox sklada userChrome.css i userContent.css z fragmentow
+# wymienionych w swoich listach w /etc i nie ma katalogu na dodatkowe wpisy, wiec
+# nasze dwa fragmenty dopisujemy na koniec list (ostatni wygrywa).  Wyzwalacz na
+# /etc/mobile-config-firefox wola nas znowu, gdy aktualizacja podmieni listy.
+firefox_fragments() {
+	M=/etc/mobile-config-firefox
+	for pair in userChrome:userChrome/s10plus-pasek-u-gory.css \
+	            userContent:userContent/s10plus-strona-glowna.css; do
+		list=$M/${pair%%:*}.files
+		line=${pair#*:}
+		if [ -f "$list" ] && [ -f "$M/$line" ] && ! grep -qxF "$line" "$list"; then
+			echo "$line" >> "$list"
+		fi
+	done
+}
+
+if [ "$1" = triggered ]; then
+	firefox_fragments
+fi
+
 if [ "$1" = configure ]; then
+	firefox_fragments
+
 	# hand-installed copies from before version 2 (rules in /etc override
 	# the packaged ones in /usr/lib, so identical ones are dropped)
 	drop_if_same /usr/lib/udev/rules.d/70-beyond2lte.rules /etc/udev/rules.d/70-beyond2lte.rules
@@ -24,6 +46,17 @@ if [ "$1" = configure ]; then
 		systemctl enable rndis-usb.service >/dev/null 2>&1 || true
 		rm -f "$M"
 		rmdir /var/lib/adaptation-samsung-beyond2lte 2>/dev/null || true
+	fi
+
+	# Do wersji 15 binder.conf z ofono-configs-binder-common byl przekierowany
+	# i zastapiony naszym; przekierowanie konfiguracji z /etc konczylo sie
+	# pytaniem dpkg ("Deleted locally since installation"), na ktorym staje
+	# budowa obrazu.  Teraz zakres sygnalu siedzi w binder.d/90-s10plus.conf,
+	# wiec nasz stary plik znika, a oryginal wraca z .distrib.
+	B=/etc/ofono/binder.conf
+	if [ "$(dpkg-divert --listpackage "$B")" = adaptation-samsung-beyond2lte-configs ]; then
+		rm -f "$B"
+		dpkg-divert --package adaptation-samsung-beyond2lte-configs --rename --remove "$B"
 	fi
 
 	if command -v udevadm >/dev/null 2>&1; then

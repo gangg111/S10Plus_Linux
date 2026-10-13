@@ -1,0 +1,212 @@
+From 93fbb140933e6729ad7ca7782a64d6cb44516461 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 06:21:39 +0200
+Subject: [PATCH 15/29] quicksettings: grow the round button card downwards
+
+One UI shows two rows and expands the card downwards to all the buttons,
+scrolling vertically when they do not fit, instead of paging sideways.  The
+handle expands and folds it (tap or drag); a closed drawer folds it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../actiondrawer/private/QuickSettings.qml    | 136 +++++++++++-------
+ 1 file changed, 87 insertions(+), 49 deletions(-)
+
+diff --git a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
+index 1a34eb6a..4120e034 100644
+--- a/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
++++ b/components/mobileshell/qml/actiondrawer/private/QuickSettings.qml
+@@ -64,7 +64,8 @@ Item {
+     readonly property alias brightnessPressedValue: brightnessItem.brightnessPressedValue
+ 
+     function resetSwipeView() {
+-        swipeView.currentIndex = 0;
++        gridCard.expanded = false;
++        gridFlick.contentY = 0;
+     }
+ 
+     function runCommand(command) {
+@@ -336,8 +337,23 @@ Item {
+             }
+         }
+ 
+-        // round buttons, a page of gridColumns x gridRows at a time
++        // round buttons: gridRows rows, the card grows downwards to show all of
++        // them (One UI), scrolling vertically when they do not fit
+         Rectangle {
++            id: gridCard
++
++            property bool expanded: false
++
++            readonly property int allRows: Math.ceil(root.gridCount / root.gridColumns)
++            readonly property int shownRows: expanded ? allRows : Math.min(root.gridRows, allRows)
++            readonly property real cellWidth: Math.floor(gridFlick.width / root.gridColumns)
++            // round button, gap, one line of name, gap to the next row
++            readonly property real cellHeight: root.buttonSize + Kirigami.Units.smallSpacing
++                                               + Math.ceil(Kirigami.Theme.defaultFont.pixelSize * 0.8 * 1.4)
++                                               + Math.round(root.buttonSize * 0.3)
++            // leave the brightness and volume cards on screen
++            readonly property real maxGridHeight: Math.max(root.gridRows * cellHeight, Math.round(root.Window.height * 0.5))
++
+             Layout.fillWidth: true
+             Layout.preferredHeight: gridColumn.implicitHeight
+             visible: root.gridCount > 0
+@@ -346,6 +362,7 @@ Item {
+             border.width: 1
+             border.color: root.cardRimColor
+             opacity: brightnessPressedValue
++            clip: true
+ 
+             ColumnLayout {
+                 id: gridColumn
+@@ -353,45 +370,42 @@ Item {
+                 anchors.right: parent.right
+                 spacing: 0
+ 
+-                SwipeView {
+-                    id: swipeView
+-                    // we need to clip this view here to prevent the other quick settings pages from being visible
+-                    // when fullViewProgress is not less then 1 and the base view is no longer being clipped
++                Flickable {
++                    id: gridFlick
+                     clip: true
+-
+-                    readonly property real cellWidth: Math.floor(width / root.gridColumns)
+-                    // round button, gap, one line of name, gap to the next row
+-                    readonly property real cellHeight: root.buttonSize + Kirigami.Units.smallSpacing
+-                                                       + Math.ceil(Kirigami.Theme.defaultFont.pixelSize * 0.8 * 1.4)
+-                                                       + Math.round(root.buttonSize * 0.3)
+-                    readonly property int rows: Math.min(root.gridRows, Math.ceil(root.gridCount / root.gridColumns))
++                    interactive: gridCard.expanded && contentHeight > height
++                    contentHeight: gridFlow.height
++                    boundsBehavior: Flickable.StopAtBounds
+ 
+                     Layout.fillWidth: true
+                     Layout.topMargin: Math.round(root.buttonSize * 0.35)
+-                    Layout.bottomMargin: pageIndicator.visible ? 0 : Math.round(root.buttonSize * 0.35)
+                     Layout.leftMargin: Kirigami.Units.smallSpacing
+                     Layout.rightMargin: Kirigami.Units.smallSpacing
+-                    Layout.preferredHeight: rows * cellHeight
++                    Layout.preferredHeight: Math.min(gridCard.shownRows * gridCard.cellHeight, gridCard.maxGridHeight)
+ 
+-                    Repeater {
+-                        model: Math.ceil(root.gridCount / root.pageSize)
+-                        delegate: Flow {
+-                            id: flow
+-                            spacing: 0
++                    Behavior on Layout.preferredHeight {
++                        NumberAnimation {
++                            duration: Kirigami.Units.longDuration
++                            easing.type: Easing.OutCubic
++                        }
++                    }
+ 
+-                            required property int index
++                    Flow {
++                        id: gridFlow
++                        width: gridFlick.width
++                        spacing: 0
+ 
+-                            Repeater {
+-                                model: QS.PaginateModel {
+-                                    sourceModel: quickSettingsModel
+-                                    pageSize: root.pageSize
+-                                    firstItem: root.largeCount + root.pageSize * flow.index
+-                                }
++                        Repeater {
++                            model: QS.PaginateModel {
++                                sourceModel: quickSettingsModel
++                                pageSize: Math.max(1, root.gridCount)
++                                firstItem: root.largeCount
++                            }
+                                 delegate: MobileShell.BaseItem {
+                                     required property var modelData
+ 
+-                                    width: swipeView.cellWidth
+-                                    height: swipeView.cellHeight
++                                    width: gridCard.cellWidth
++                                    height: gridCard.cellHeight
+                                     padding: 0
+                                     leftPadding: Kirigami.Units.smallSpacing
+                                     rightPadding: Kirigami.Units.smallSpacing
+@@ -412,33 +426,57 @@ Item {
+                                         }
+                                     }
+                                 }
+-                            }
+                         }
+                     }
+                 }
+ 
+-                // page indicator: short bars, the current one wider and brighter
+-                Row {
+-                    id: pageIndicator
+-                    Layout.alignment: Qt.AlignHCenter
+-                    Layout.topMargin: Kirigami.Units.smallSpacing
+-                    Layout.bottomMargin: Math.round(root.buttonSize * 0.3)
+-                    visible: swipeView.count > 1
+-                    spacing: Kirigami.Units.smallSpacing
+-
+-                    Repeater {
+-                        model: swipeView.count
+-                        delegate: Rectangle {
+-                            required property int index
+-                            width: index === swipeView.currentIndex ? root.buttonSize * 0.45 : root.buttonSize * 0.15
+-                            height: Math.max(3, Math.round(root.buttonSize * 0.06))
+-                            radius: height / 2
+-                            color: Kirigami.Theme.textColor
+-                            opacity: index === swipeView.currentIndex ? 0.7 : 0.3
+-                            Behavior on width { NumberAnimation { duration: Kirigami.Units.shortDuration } }
++                // handle: tap or pull to expand and fold the card
++                Item {
++                    Layout.fillWidth: true
++                    Layout.preferredHeight: Math.round(root.buttonSize * 0.55)
++                    visible: gridCard.allRows > root.gridRows
++
++                    Rectangle {
++                        anchors.centerIn: parent
++                        width: Math.round(root.buttonSize * 0.45)
++                        height: Math.max(3, Math.round(root.buttonSize * 0.06))
++                        radius: height / 2
++                        color: Kirigami.Theme.textColor
++                        opacity: 0.5
++                    }
++
++                    TapHandler {
++                        onTapped: {
++                            gridCard.expanded = !gridCard.expanded;
++                            if (!gridCard.expanded) {
++                                gridFlick.contentY = 0;
++                            }
++                        }
++                    }
++
++                    // only on the handle, so a swipe up elsewhere still closes the drawer
++                    DragHandler {
++                        target: null
++                        xAxis.enabled: false
++                        onActiveChanged: {
++                            if (active) {
++                                return;
++                            }
++                            if (translation.y > Kirigami.Units.gridUnit) {
++                                gridCard.expanded = true;
++                            } else if (translation.y < -Kirigami.Units.gridUnit) {
++                                gridCard.expanded = false;
++                                gridFlick.contentY = 0;
++                            }
+                         }
+                     }
+                 }
++
++                // bottom margin when there is no handle
++                Item {
++                    Layout.preferredHeight: Math.round(root.buttonSize * 0.35)
++                    visible: gridCard.allRows <= root.gridRows
++                }
+             }
+         }
+ 
+-- 
+2.47.3
+

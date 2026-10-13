@@ -1,3 +1,56 @@
+adaptation-samsung-beyond2lte (18) unstable; urgency=medium
+
+  * droidian-quirks-regenerate-ssh-keys next to openssh-server: openssh-server
+    is installed while the image is built, so its host keys are created
+    then, and every phone flashed from the same image would share them.
+    The quirk makes new ones on the first boot.
+  * The USB cable network is rndis-usb, enabled from the first boot, and it
+    creates the g1 gadget itself.  hybris-usb is dropped again: its
+    usb-tethering cannot set up a network function on this kernel and
+    leaves a failed unit; 17 depended on it without it ever working.
+    The phone is at 169.254.172.1 (link-local, no DHCP needed; Windows
+    loads its RNDIS driver by itself through the Microsoft OS descriptors).
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Tue, 13 Oct 2026 00:30:00 +0200
+
+adaptation-samsung-beyond2lte (17) unstable; urgency=medium
+
+  * Firefox: the address bar back on top (mobile-config-firefox 4.3 moves it
+    to the bottom on a narrow screen and has no switch for it), the tab
+    strip ends before the front camera, the toolbar 30% larger, and the new
+    tab page of Firefox 153 in one column below 700 pt.  Two CSS fragments
+    appended to the mobile-config-firefox lists by postinst, again through a
+    trigger when an update replaces the lists.  Until now they existed only
+    by hand on the first phone, so an image built from the sources had the
+    bar at the bottom.
+  * openssh-server and hybris-usb (usb-tethering): the plamo-wf image carries
+    neither, so a freshly flashed phone had no way in, not over Wi-Fi and
+    not over the USB cable (found on the first flash of an image built from
+    the sources).
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Mon, 12 Oct 2026 23:40:00 +0200
+
+adaptation-samsung-beyond2lte (16) unstable; urgency=medium
+
+  * The One UI QML overlays (FormCard, the Kirigami page header, the Breeze
+    toolbar) are no longer copies of the edited files: qml-oneui.diff is
+    applied at build time to the files of the archive packages, and -tools
+    depends on exactly those versions.  The archive moved on (FormCard 1.14,
+    Kirigami 6.30), and files edited for 1.12 and 6.28 must not be mixed into
+    the newer modules.  The diff is ported to those versions: FormCard 1.14
+    moved the card background to private/FormCardBackground.qml, and its
+    FormDelegateBackground already takes the corner radius from the card, so
+    that file is no longer replaced (postinst drops the old diversion).
+  * The modem signal range moves to /etc/ofono/binder.d/90-s10plus.conf,
+    which ofono merges over binder.conf.  Diverting the binder.conf conffile
+    of ofono-configs-binder-common made dpkg stop on a conffile prompt
+    ("Deleted locally since installation"), which hangs an image build;
+    postinst drops the old diversion and the original file comes back.
+  * plasma-settings and plasma-workspace accept any rebuild of the same
+    release (26.04.0-1+b1 is in the archive now, 26.04.0-1 is gone).
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sun, 11 Oct 2026 21:30:00 +0200
+
 adaptation-samsung-beyond2lte (15) unstable; urgency=medium
 
   * Everything the working phone had installed by hand is now packaged, so a

@@ -1,0 +1,105 @@
+From bd2775921a3c6e883ab72e53f83aee38305f8aaf Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 03:41:40 +0200
+Subject: [PATCH 20/29] media: exynos-mfc: report dpb_count + 5 capture
+ buffers, no BUG() on decoder errors
+
+The firmware needs 5 DPBs on top of the stream dpb_count (the driver
+itself waits for dpb_count + 5 references); Android allocates them on its
+own, but queue_setup and V4L2_CID_MIN_BUFFERS_FOR_CAPTURE reported only
+dpb_count. GStreamer v4l2h264dec took 4 buffers for a baseline 1080p
+stream and INIT_BUFFERS failed with MFC_REG_ERR_INSUFFICIENT_DPB_SIZE.
+
+That error then reset the phone: debug_mode = <1> in the vendor DT makes
+__mfc_dump_info_and_stop_hw_debug() BUG() on any decoder error, and these
+are reachable from user space. Keep the DT value only with the new
+exynos_mfc.panic_on_error=1.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ drivers/media/platform/exynos/mfc/mfc.c             | 8 ++++++++
+ drivers/media/platform/exynos/mfc/mfc_data_struct.h | 2 ++
+ drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c    | 4 ++--
+ drivers/media/platform/exynos/mfc/mfc_dec_vb2.c     | 5 +++--
+ 4 files changed, 15 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/media/platform/exynos/mfc/mfc.c b/drivers/media/platform/exynos/mfc/mfc.c
+index f702b9016..e50667b4e 100644
+--- a/drivers/media/platform/exynos/mfc/mfc.c
++++ b/drivers/media/platform/exynos/mfc/mfc.c
+@@ -866,6 +866,10 @@ static unsigned int mfc_poll(struct file *file,
+ 	return ret;
+ }
+ 
++static bool panic_on_error;
++module_param(panic_on_error, bool, 0444);
++MODULE_PARM_DESC(panic_on_error, "BUG() on MFC errors, as the vendor DT debug_mode does");
++
+ /* Mmap */
+ static int mfc_mmap(struct file *file, struct vm_area_struct *vma)
+ {
+@@ -1009,6 +1013,10 @@ static void __mfc_parse_dt(struct device_node *np, struct mfc_dev *mfc)
+ 
+ 	/* Debug mode */
+ 	of_property_read_u32(np, "debug_mode", &pdata->debug_mode);
++	/* debug_mode BUG()s on any decoder error, which a user space client
++	 * can cause; only with exynos_mfc.panic_on_error=1 */
++	if (!panic_on_error)
++		pdata->debug_mode = 0;
+ 
+ 	/* Sysmmu check */
+ 	of_property_read_u32(np, "share_sysmmu", &pdata->share_sysmmu);
+diff --git a/drivers/media/platform/exynos/mfc/mfc_data_struct.h b/drivers/media/platform/exynos/mfc/mfc_data_struct.h
+index 8d4dbab09..032036a01 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_data_struct.h
++++ b/drivers/media/platform/exynos/mfc/mfc_data_struct.h
+@@ -37,6 +37,8 @@
+ #define MFC_NUM_CONTEXTS		32
+ #define MFC_MAX_PLANES			3
+ #define MFC_MAX_DPBS			32
++/* DPBs the firmware needs beyond the stream's dpb_count, see mfc_run_dec_frame() */
++#define MFC_EXTRA_DPB		5
+ #define MFC_MAX_BUFFERS			32
+ #define MFC_MAX_EXTRA_BUF		10
+ #define MFC_SFR_LOGGING_COUNT_SET0	10
+diff --git a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+index 0c86a870a..f4d817caf 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
++++ b/drivers/media/platform/exynos/mfc/mfc_dec_v4l2.c
+@@ -944,7 +944,7 @@ static int __mfc_dec_get_ctrl_val(struct mfc_ctx *ctx, struct v4l2_control *ctrl
+ 	case V4L2_CID_MIN_BUFFERS_FOR_CAPTURE:
+ 		if (ctx->state >= MFCINST_HEAD_PARSED &&
+ 		    ctx->state < MFCINST_ABORT) {
+-			ctrl->value = ctx->dpb_count;
++			ctrl->value = ctx->dpb_count + MFC_EXTRA_DPB;
+ 			break;
+ 		} else if (ctx->state != MFCINST_INIT) {
+ 			mfc_err_ctx("Decoding not initialised\n");
+@@ -960,7 +960,7 @@ static int __mfc_dec_get_ctrl_val(struct mfc_ctx *ctx, struct v4l2_control *ctrl
+ 
+ 		if (ctx->state >= MFCINST_HEAD_PARSED &&
+ 		    ctx->state < MFCINST_ABORT) {
+-			ctrl->value = ctx->dpb_count;
++			ctrl->value = ctx->dpb_count + MFC_EXTRA_DPB;
+ 		} else {
+ 			mfc_err_ctx("Decoding not initialised\n");
+ 			return -EINVAL;
+diff --git a/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c b/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c
+index 500e16b9d..65c9aaa5e 100644
+--- a/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c
++++ b/drivers/media/platform/exynos/mfc/mfc_dec_vb2.c
+@@ -58,8 +58,9 @@ static int mfc_dec_queue_setup(struct vb2_queue *vq,
+ 		/* Output plane count is different by the pixel format */
+ 		*plane_count = ctx->dst_fmt->mem_planes;
+ 		/* Setup buffer count */
+-		if (*buf_count < ctx->dpb_count)
+-			*buf_count = ctx->dpb_count;
++		/* the firmware wants 5 DPBs on top (MFC_EXTRA_DPB) */
++		if (*buf_count < ctx->dpb_count + MFC_EXTRA_DPB)
++			*buf_count = ctx->dpb_count + MFC_EXTRA_DPB;
+ 		if (*buf_count > MFC_MAX_BUFFERS)
+ 			*buf_count = MFC_MAX_BUFFERS;
+ 
+-- 
+2.47.3
+

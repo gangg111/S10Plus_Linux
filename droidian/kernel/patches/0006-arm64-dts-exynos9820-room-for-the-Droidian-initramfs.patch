@@ -1,0 +1,75 @@
+From 645d8b04df88b78219e2bcd70fa568550aeb0a75 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 14:10:20 +0200
+Subject: [PATCH 06/29] arm64: dts: exynos9820: room for the Droidian
+ initramfs, console on the boot logo
+
+The stock tree gives the ramdisk a 2 MB window at 0x84000000; the Halium
+initramfs is 11.7 MB, and the UBports port had to fall back to a small
+ramdisk for the same reason.  The kernel image ends below 0x84000000, so
+widen the window to 16 MB.
+
+S-Boot leaves DECON scanning the boot logo buffer at 0xca000000 and even
+passes s3cfb.bootloaderfb=0xca000000.  Describe it as a simple-framebuffer
+under /chosen and keep it out of the page allocator, so a text console on
+it shows the kernel log on a phone without a serial line.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../boot/dts/exynos/exynos9820-rmem.dtsi      |  6 ++++++
+ arch/arm64/boot/dts/exynos/exynos9820.dts     | 21 ++++++++++++++++++-
+ 2 files changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820-rmem.dtsi b/arch/arm64/boot/dts/exynos/exynos9820-rmem.dtsi
+index d06cd6900..6762c1fb3 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820-rmem.dtsi
++++ b/arch/arm64/boot/dts/exynos/exynos9820-rmem.dtsi
+@@ -91,6 +91,12 @@
+ 			reg = <0x0 0x80000000 0x1000>;
+ 		};
+ 
++		/* Droidian: boot logo buffer S-Boot leaves DECON scanning */
++		bootloader_fb@ca000000 {
++			reg = <0x0 0xca000000 0x10b3000>;
++			no-map;
++		};
++
+ 		sec_rdx_bootdev {
+ 			compatible = "exynos,sec_rdx_bootdev";
+ 			no-ship;
+diff --git a/arch/arm64/boot/dts/exynos/exynos9820.dts b/arch/arm64/boot/dts/exynos/exynos9820.dts
+index 1508ef2f7..70edf45c3 100644
+--- a/arch/arm64/boot/dts/exynos/exynos9820.dts
++++ b/arch/arm64/boot/dts/exynos/exynos9820.dts
+@@ -229,8 +229,27 @@
+ 
+ 	chosen: chosen {
+ 	        bootargs = "";
++		/*
++		 * Droidian: the Halium initramfs is 11.7 MB, the 2 MB window
++		 * of the stock tree cuts it off.  The kernel image ends below
++		 * 0x84000000, so give the ramdisk 16 MB.
++		 */
+ 		linux,initrd-start = <0x84000000>;
+-		linux,initrd-end = <0x841FFFFF>;
++		linux,initrd-end = <0x84FFFFFF>;
++
++		/*
++		 * S-Boot leaves DECON scanning this buffer (it also passes
++		 * s3cfb.bootloaderfb=0xca000000), so a console on it shows
++		 * the kernel log over the boot logo.
++		 */
++		framebuffer@ca000000 {
++			compatible = "simple-framebuffer";
++			reg = <0x0 0xca000000 0x10b3000>;
++			width = <1440>;
++			height = <3040>;
++			stride = <5760>;
++			format = "a8r8g8b8";
++		};
+ 	};
+ 
+ 	memory@80000000 {
+-- 
+2.47.3
+

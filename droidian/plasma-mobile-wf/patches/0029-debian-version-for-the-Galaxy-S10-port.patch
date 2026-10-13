@@ -1,0 +1,43 @@
+From 9d069f337994f75275931c9ab516971b563b7832 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:31:28 +0200
+Subject: [PATCH 29/29] debian: version for the Galaxy S10+ port
+
+s10plus15: network technology in the status bar.
+s10plus16: rebuild against Qt 6.11.2, no functional change.
+debian/rules is executable again.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/changelog | 13 +++++++++++++
+ debian/rules     |  0
+ 2 files changed, 13 insertions(+)
+ mode change 100644 => 100755 debian/rules
+
+diff --git a/debian/changelog b/debian/changelog
+index 79e463aa..51c33756 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,16 @@
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus16) rolling; urgency=medium
++
++  * Przebudowa pod Qt 6.11.2 (snapshot 102), bez zmian funkcjonalnych.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 10 Oct 2026 22:52:50 +0200
++
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus15) rolling; urgency=medium
++
++  * Pasek stanu: napis technologii sieci (LTE/5G/H+/3G/E/2G) obok ikony
++    sygnalu, czytany z ModemManagera przez /usr/lib/s10plus/modem-rat.sh.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Sun, 04 Oct 2026 16:49:13 +0200
++
+ plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus14) rolling; urgency=medium
+ 
+   * Quick settings handle: hold and drag down to expand (One UI), the card
+diff --git a/debian/rules b/debian/rules
+old mode 100644
+new mode 100755
+-- 
+2.47.3
+

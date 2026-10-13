@@ -1,0 +1,51 @@
+From d8d21e8ed6a6874332f7f653977c7cdd16444de9 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 19:09:09 +0200
+Subject: [PATCH] droidian_base: local repository of the Galaxy S10+ port,
+ pinned
+
+Add the port's local repository (images/localrepo, copied to
+/opt/localrepo) right after the bootstrap repositories are cleaned and
+before the first package is installed, pinned to 1100.  The port carries
+rebuilds of packages the archive has in versions that no longer install
+together (qt6-text-input-v3 against the current Qt), so they have to win
+from the start, not only for the edition's own packages.  Droidian pins
+its own archive to 1002, so a pin of 1001 loses to it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ recipes/droidian_base.yaml | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/recipes/droidian_base.yaml b/recipes/droidian_base.yaml
+index b06214a..19267a6 100644
+--- a/recipes/droidian_base.yaml
++++ b/recipes/droidian_base.yaml
+@@ -40,6 +40,24 @@ actions:
+     chroot: true
+     script: ../scripts/clean-bootstrap-repositories.sh {{ $droidian_version }} {{ $droidian_variant }}
+ 
++  # Galaxy S10+ port: the local repository with the port packages (kernel,
++  # adaptation, plasma-mobile-wf and the rebuilds the archive lacks), pinned
++  # above the archive before the first package is installed, so every package
++  # it carries wins over the archive copy, also on later upgrades.  Droidian pins
++  # its own archive (o=Droidian) to 1002, so the pin has to be higher than that.
++  - action: overlay
++    source: ../../localrepo
++    description: Add the local repository of the S10+ port
++    destination: /opt/localrepo
++
++  - action: run
++    chroot: true
++    description: Enable the local repository of the S10+ port, pinned to 1100
++    command: |
++      echo "deb [trusted=yes] file:/opt/localrepo ./" > /etc/apt/sources.list.d/zz-s10plus-local.list
++      printf 'Package: *\nPin: origin ""\nPin-Priority: 1100\n' > /etc/apt/preferences.d/zz-s10plus-local
++      apt-get update
++
+ {{ if eq $use_internal_repository "yes" }}
+   - action: overlay
+     source: ../../apt
+-- 
+2.47.3
+

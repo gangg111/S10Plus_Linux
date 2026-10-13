@@ -1,0 +1,87 @@
+From 1fca192028c80e934e13dd8d0819b93df39241a3 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 09:42:16 +0200
+Subject: [PATCH 18/29] statusbar: battery percentage clear of the front camera
+
+The battery entry reported less width than it drew, so the percentage ran
+past the indicator row under the Galaxy S10+ camera cut-out.  Use a Repeater
+so each entry is a layout item, and size the percentage by its laid-out
+text.  Right edge of the bar content now at 1066 px (limit 1071).
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../statusbar/indicators/BatteryIndicator.qml | 27 +++++++++----------
+ 1 file changed, 13 insertions(+), 14 deletions(-)
+
+diff --git a/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml b/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml
+index e39ebc20..74287197 100644
+--- a/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml
++++ b/components/mobileshell/qml/statusbar/indicators/BatteryIndicator.qml
+@@ -18,31 +18,26 @@ import org.kde.plasma.private.mobileshell as MobileShell
+ import org.kde.plasma.private.battery // needed for charging state
+ 
+ RowLayout {
++    id: root
+     property real textPixelSize: Kirigami.Units.gridUnit * 0.6
+ 
+     visible: MobileShell.BatteryInfo.isVisible
+ 
+-    ListView {
++    // A Repeater, not a ListView: the ListView reported less width than the
++    // icon and percentage took (measured: the row shifted 78 px for a 149 px
++    // percentage), so the percentage ran under the front camera cut-out.  With
++    // a Repeater each entry is a layout item and counts in full.
++    Repeater {
+         id: batteryRepeater
+ 
+-        spacing: 0
+         model: MobileShell.BatteryInfo.batteries
+-        orientation: ListView.Horizontal
+-
+-        Layout.alignment: Qt.AlignVCenter
+-        Layout.preferredWidth: contentItem.childrenRect.width
+-        Layout.fillHeight: true
+-        Layout.fillWidth: false
+ 
+         delegate: RowLayout {
+             id: batteryBase
+ 
+-            width: (batteryBase.visible ? ((batteryLabel.visible ? batteryLabel.width : 0) + battery.width) + (ShellSettings.Settings.showBatteryPercentage ? root.elementSpacing : 0) : 0)
+-            Layout.fillHeight: false
++            Layout.fillHeight: true
+             Layout.alignment: Qt.AlignVCenter
+ 
+-            height: batteryRepeater.height
+-
+             visible: Type === "Battery" // only show the internal battery
+ 
+             PW.BatteryIcon {
+@@ -50,7 +45,7 @@ RowLayout {
+ 
+                 Layout.alignment: Qt.AlignVCenter
+                 Layout.fillHeight: true
+-                width: batteryLabel.height
++                Layout.preferredWidth: batteryLabel.implicitHeight
+ 
+                 hasBattery: PluggedIn
+                 percent: Percent
+@@ -62,11 +57,15 @@ RowLayout {
+                 text: i18n("%1%", Percent)
+                 Layout.alignment: Qt.AlignVCenter
+                 Layout.fillHeight: true
++                // implicitWidth came out for a smaller font than the one drawn
++                // (measured: 59 px given, 123 px painted), so the percentage ran
++                // under the front camera; size it by the text actually laid out
++                Layout.preferredWidth: Math.ceil(contentWidth)
+                 verticalAlignment: Text.AlignVCenter
+ 
+                 color: Kirigami.Theme.textColor
+                 visible: ShellSettings.Settings.showBatteryPercentage
+-                font.pixelSize: textPixelSize
++                font.pixelSize: root.textPixelSize
+             }
+         }
+     }
+-- 
+2.47.3
+

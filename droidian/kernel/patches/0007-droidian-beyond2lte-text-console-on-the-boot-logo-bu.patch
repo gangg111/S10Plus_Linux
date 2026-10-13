@@ -1,0 +1,58 @@
+From 8c14b8af77bb71708e0968e8db16c5232d5a4ff6 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 14:10:20 +0200
+Subject: [PATCH 07/29] droidian: beyond2lte: text console on the boot logo
+ buffer
+
+Turn on FB_SIMPLE and the framebuffer console for the simple-framebuffer
+node, and pass ignore_loglevel so every message reaches it.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/kernel-info.mk      |  2 +-
+ droidian/beyond2lte.config | 14 +++++++++-----
+ 2 files changed, 10 insertions(+), 6 deletions(-)
+
+diff --git a/debian/kernel-info.mk b/debian/kernel-info.mk
+index 17ab0cc1d..ea18e534e 100644
+--- a/debian/kernel-info.mk
++++ b/debian/kernel-info.mk
+@@ -11,7 +11,7 @@ VARIANT = android
+ KERNEL_BASE_VERSION = 4.14.356
+ 
+ # The kernel cmdline to use
+-KERNEL_BOOTIMAGE_CMDLINE = androidboot.selinux=permissive loop.max_part=7 console=tty0 droidian.lvm.prefer
++KERNEL_BOOTIMAGE_CMDLINE = androidboot.selinux=permissive loop.max_part=7 console=tty0 ignore_loglevel droidian.lvm.prefer
+ 
+ # Slug for the device vendor. This is going to be used in the KERNELRELEASE
+ # and package names.
+diff --git a/droidian/beyond2lte.config b/droidian/beyond2lte.config
+index 340b72b75..8fe8f70a6 100644
+--- a/droidian/beyond2lte.config
++++ b/droidian/beyond2lte.config
+@@ -4,13 +4,17 @@
+ # userspace (LOD_SEC, UH, SEC_RESTRICT_ROOTING).  The common fragments bring
+ # USER_NS, SYSVIPC, FHANDLE and VT.  What is left is device specific.
+ 
+-# The first Droidian kernel hung before the initramfs.  Stay with what the
+-# LineageOS kernel boots with: no framebuffer console on the Samsung DECON
+-# driver, and SCHED_TUNE kept for the Samsung EMS scheduler, which the
+-# Halium fragment turns off.
+-# CONFIG_FRAMEBUFFER_CONSOLE is not set
++# SCHED_TUNE stays on for the Samsung EMS scheduler, which the Halium
++# fragment turns off.
+ CONFIG_SCHED_TUNE=y
+ 
++# Console on the boot logo buffer S-Boot leaves DECON scanning
++# (simple-framebuffer at 0xca000000 in the device tree).
++CONFIG_FB_SIMPLE=y
++CONFIG_FRAMEBUFFER_CONSOLE=y
++CONFIG_FONT_SUPPORT=y
++CONFIG_FONT_8x16=y
++
+ # Bluetooth profiles used by BlueZ (as in the UBports port)
+ CONFIG_BT_RFCOMM_TTY=y
+ CONFIG_BT_BNEP=y
+-- 
+2.47.3
+

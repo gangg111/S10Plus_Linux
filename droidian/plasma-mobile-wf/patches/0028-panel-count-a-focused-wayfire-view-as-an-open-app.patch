@@ -1,0 +1,44 @@
+From 5bc35aeeb4fef60bd641df096842b3d59b22d9b0 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:31:28 +0200
+Subject: [PATCH 28/29] panel: count a focused wayfire view as an open app
+
+Under wayfire the tasks model behind windowMaximizedTracker has no windows
+(there is no Plasma window management protocol), so the status bar stayed
+transparent over the wallpaper while an app was open.  Also treat a view
+focused according to wayfire IPC as a showing app.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ containments/panel/qml/main.qml | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/containments/panel/qml/main.qml b/containments/panel/qml/main.qml
+index fb6e0961..73143246 100644
+--- a/containments/panel/qml/main.qml
++++ b/containments/panel/qml/main.qml
+@@ -16,6 +16,7 @@ import org.kde.plasma.private.mobileshell as MobileShell
+ import org.kde.plasma.private.mobileshell.shellsettingsplugin as ShellSettings
+ import org.kde.plasma.private.mobileshell.state as MobileShellState
+ import org.kde.plasma.private.mobileshell.windowplugin as WindowPlugin
++import org.kde.plasma.private.mobileshell.wayfireipcplugin as WayfireIpcPlugin
+ 
+ import org.kde.taskmanager as TaskManager
+ import org.kde.notificationmanager as NotificationManager
+@@ -34,8 +35,11 @@ ContainmentItem {
+     // Whether the startup feedback is showing
+     readonly property bool showingStartupFeedback: MobileShellState.ShellDBusObject.startupFeedbackModel.activeWindowIsStartupFeedback
+ 
+-    // Whether an app is maximized and showing (does not include startup feedback)
+-    readonly property bool showingApp: windowMaximizedTracker.showingWindow && !showingStartupFeedback
++    // Whether an app is maximized and showing (does not include startup feedback).
++    // Under wayfire the tasks model behind the tracker has no windows (no plasma
++    // window management protocol), so a focused app view counts as well; without
++    // it the bar stays transparent over the wallpaper while an app is open.
++    readonly property bool showingApp: (windowMaximizedTracker.showingWindow || WayfireIpcPlugin.WayfireIPC.hasViewFocused) && !showingStartupFeedback
+ 
+     // Whether the currently showing app is in "fullscreen"
+     readonly property bool fullscreen: {
+-- 
+2.47.3
+

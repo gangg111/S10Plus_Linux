@@ -1,0 +1,44 @@
+From a5154f73966e7bbf6f5b182e871f9b6d3d755f60 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 04:16:09 +0200
+Subject: [PATCH 11/29] debian: version for the Galaxy S10+ port
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/changelog | 23 +++++++++++++++++++++++
+ 1 file changed, 23 insertions(+)
+
+diff --git a/debian/changelog b/debian/changelog
+index d7381ca5..884db875 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,26 @@
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus7) rolling; urgency=medium
++
++  * Default surface format 8/8/8/8: with the sizes unset libhybris ends
++    up with RGB_565 buffers and the transparent status bar shows black.
++  * ScreenGrab reports the requested format of each window.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 01:39:10 +0000
++
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus6) rolling; urgency=medium
++
++  * Ask for an alpha channel for all Qt Quick windows: through libhybris
++    a transparent status bar was drawn black (alphaBufferSize 0).
++  * ScreenGrab: physical pixels, alpha size of each window.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 00:46:47 +0000
++
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus5) rolling; urgency=medium
++
++  * No drop shadow under the status bar (drew it black on the S10+).
++  * ScreenGrab: physical pixels, alpha size of each window.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 00:08:09 +0000
++
+ plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus4) rolling; urgency=medium
+ 
+   * Session lock only with Autolock on; the preloaded lock surface no
+-- 
+2.47.3
+

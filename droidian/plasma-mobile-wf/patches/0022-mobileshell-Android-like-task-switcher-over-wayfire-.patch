@@ -1,0 +1,622 @@
+From 9def3de0beb68e5adb86264cc71cb08c1160a90f Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 17:32:00 +0200
+Subject: [PATCH 22/29] mobileshell: Android-like task switcher over wayfire
+ IPC
+
+Cards of the app windows, newest first, scrolled sideways. Tap goes back
+to the app (also restores it when minimized), swipe up closes it, with
+SIGTERM when the window is still there 1.5 s later. Replaces the wayfire
+scale plugin, whose GLES renderer crashes when a window closes under it.
+Opened by D-Bus pl.s10plus.ScreenGrab.toggleTaskSwitcher.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ components/mobileshell/CMakeLists.txt         |   1 +
+ .../mobileshell/qml/homescreen/HomeScreen.qml |   2 +
+ .../qml/taskswitcher/TaskSwitcherWindow.qml   | 296 ++++++++++++++++++
+ components/mobileshell/shellutil.cpp          |  42 +++
+ components/mobileshell/shellutil.h            |  18 ++
+ components/wayfireipcplugin/wayfireipc.cpp    | 103 +++++-
+ components/wayfireipcplugin/wayfireipc.h      |  14 +-
+ 7 files changed, 467 insertions(+), 9 deletions(-)
+ create mode 100644 components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml
+
+diff --git a/components/mobileshell/CMakeLists.txt b/components/mobileshell/CMakeLists.txt
+index 55384c40..364c9410 100644
+--- a/components/mobileshell/CMakeLists.txt
++++ b/components/mobileshell/CMakeLists.txt
+@@ -125,6 +125,7 @@ ecm_target_qml_sources(mobileshellplugin SOURCES
+     qml/widgets/notifications/ThumbnailStrip.qml
+     qml/wayfiretweaks/LockScreenSplash.qml
+     qml/wayfiretweaks/WayfireTweaks.qml
++    qml/taskswitcher/TaskSwitcherWindow.qml
+ )
+ 
+ # Other supporting QML files
+diff --git a/components/mobileshell/qml/homescreen/HomeScreen.qml b/components/mobileshell/qml/homescreen/HomeScreen.qml
+index 84a7ed45..6c69d11e 100644
+--- a/components/mobileshell/qml/homescreen/HomeScreen.qml
++++ b/components/mobileshell/qml/homescreen/HomeScreen.qml
+@@ -205,4 +205,6 @@ Item {
+ 
+     // Wayfire realated tweaks
+     MobileShell.WayfireTweaks {}
++
++    MobileShell.TaskSwitcherWindow {}
+ }
+diff --git a/components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml b/components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml
+new file mode 100644
+index 00000000..c763f5b9
+--- /dev/null
++++ b/components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml
+@@ -0,0 +1,296 @@
++// SPDX-FileCopyrightText: 2026 Artur <ganggg111@gmail.com>
++// SPDX-License-Identifier: GPL-2.0-or-later
++
++import QtQuick
++import QtQuick.Controls as QQC2
++import QtQuick.Window
++
++import org.kde.kirigami as Kirigami
++import org.kde.layershell 1.0 as LayerShell
++
++import org.kde.plasma.private.mobileshell as MobileShell
++import org.kde.plasma.private.mobileshell.wayfireipcplugin as WayfireIpcPlugin
++
++/**
++ * Recent apps like on Android: one card per app window, newest first,
++ * scrolled sideways.  Tap a card to go back to the app, swipe it up to close
++ * it, "Zamknij wszystko" closes them all.  Windows come from wayfire over IPC
++ * (no scale plugin, whose GLES renderer crashes when a window closes under it).
++ *
++ * Opened by D-Bus pl.s10plus.ScreenGrab.toggleTaskSwitcher on
++ * org.kde.plasmashell, bound to an edge swipe in wayfire.ini.
++ */
++Window {
++    id: window
++
++    LayerShell.Window.scope: "taskswitcher"
++    LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight | LayerShell.Window.AnchorBottom
++    LayerShell.Window.layer: LayerShell.Window.LayerOverlay
++    LayerShell.Window.exclusionZone: -1
++    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
++
++    // mapped only while open: a transparent full screen surface on top of
++    // every app would be blended in each frame
++    visible: false
++    color: "transparent"
++
++    // views asked to close: id -> pid, for the kill fallback
++    property var pendingClose: ({})
++    property bool checkingPending: false
++
++    function open() {
++        views.clear();
++        WayfireIpcPlugin.WayfireIPC.requestViews();
++        visible = true;
++        raise();
++        list.positionViewAtBeginning();
++    }
++
++    function hide() {
++        visible = false;
++    }
++
++    function closeCard(index) {
++        const view = views.get(index);
++        pendingClose[view.viewId] = view.pid;
++        WayfireIpcPlugin.WayfireIPC.closeView(view.viewId);
++        views.remove(index);
++        killCheck.restart();
++        if (views.count === 0) {
++            hide();
++        }
++    }
++
++    function closeAll() {
++        while (views.count > 0) {
++            closeCard(0);
++        }
++    }
++
++    // an app that keeps its window after the close request (asks to save,
++    // hangs) is terminated, as swiping it away does on Android
++    Timer {
++        id: killCheck
++        interval: 1500
++        onTriggered: {
++            window.checkingPending = true;
++            WayfireIpcPlugin.WayfireIPC.requestViews();
++        }
++    }
++
++    Connections {
++        target: MobileShell.ShellUtil
++        function onTaskSwitcherToggleRequested() {
++            if (window.visible) {
++                window.hide();
++            } else {
++                window.open();
++            }
++        }
++    }
++
++    Connections {
++        target: WayfireIpcPlugin.WayfireIPC
++
++        function onViewsListed(list) {
++            if (window.checkingPending) {
++                window.checkingPending = false;
++                for (const view of list) {
++                    if (window.pendingClose[view.id] !== undefined) {
++                        WayfireIpcPlugin.WayfireIPC.terminatePid(view.pid);
++                    }
++                }
++                window.pendingClose = {};
++            }
++            if (!window.visible) {
++                return;
++            }
++            views.clear();
++            for (const view of list) {
++                if (window.pendingClose[view.id] !== undefined) {
++                    continue;
++                }
++                const info = MobileShell.ShellUtil.appInfo(view.appId);
++                views.append({
++                    viewId: view.id,
++                    pid: view.pid,
++                    name: info.name,
++                    iconName: info.icon,
++                    title: view.title
++                });
++            }
++        }
++
++        function onViewsChanged() {
++            if (window.visible) {
++                WayfireIpcPlugin.WayfireIPC.requestViews();
++            }
++        }
++    }
++
++    ListModel {
++        id: views
++    }
++
++    Rectangle {
++        anchors.fill: parent
++        color: Qt.rgba(0, 0, 0, 0.82)
++
++        // tap outside the cards goes back
++        TapHandler {
++            onTapped: window.hide()
++        }
++    }
++
++    QQC2.Label {
++        anchors.centerIn: parent
++        visible: views.count === 0
++        text: "Brak ostatnich aplikacji"
++        color: "white"
++        font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.3
++    }
++
++    ListView {
++        id: list
++        anchors.left: parent.left
++        anchors.right: parent.right
++        anchors.verticalCenter: parent.verticalCenter
++        anchors.verticalCenterOffset: -window.height * 0.03
++        height: window.height * 0.62
++
++        orientation: ListView.Horizontal
++        model: views
++        spacing: window.width * 0.05
++        snapMode: ListView.SnapToItem
++        highlightRangeMode: ListView.StrictlyEnforceRange
++        preferredHighlightBegin: (width - cardWidth) / 2
++        preferredHighlightEnd: (width + cardWidth) / 2
++        boundsBehavior: Flickable.StopAtBounds
++
++        readonly property real cardWidth: window.width * 0.66
++
++        remove: Transition {
++            NumberAnimation { property: "opacity"; to: 0; duration: 150 }
++        }
++        displaced: Transition {
++            NumberAnimation { property: "x"; duration: 220; easing.type: Easing.OutCubic }
++        }
++
++        delegate: Item {
++            id: delegate
++            width: list.cardWidth
++            height: list.height
++
++            required property int index
++            required property string name
++            required property string iconName
++            required property string title
++
++            Rectangle {
++                id: card
++                width: parent.width
++                height: parent.height
++                radius: width * 0.08
++                color: Qt.rgba(0.16, 0.17, 0.19, 1)
++                opacity: 1 - Math.min(1, Math.max(0, -y / (parent.height * 0.6)))
++
++                Kirigami.Icon {
++                    id: icon
++                    anchors.horizontalCenter: parent.horizontalCenter
++                    anchors.top: parent.top
++                    anchors.topMargin: parent.height * 0.24
++                    width: parent.width * 0.42
++                    height: width
++                    source: delegate.iconName
++                }
++
++                QQC2.Label {
++                    id: nameLabel
++                    anchors.top: icon.bottom
++                    anchors.topMargin: parent.height * 0.05
++                    anchors.left: parent.left
++                    anchors.right: parent.right
++                    anchors.margins: parent.width * 0.08
++                    horizontalAlignment: Text.AlignHCenter
++                    elide: Text.ElideRight
++                    text: delegate.name
++                    color: "white"
++                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.4
++                    font.weight: Font.DemiBold
++                }
++
++                QQC2.Label {
++                    anchors.top: nameLabel.bottom
++                    anchors.topMargin: parent.height * 0.015
++                    anchors.left: parent.left
++                    anchors.right: parent.right
++                    anchors.margins: parent.width * 0.08
++                    horizontalAlignment: Text.AlignHCenter
++                    elide: Text.ElideRight
++                    visible: delegate.title !== delegate.name
++                    text: delegate.title
++                    color: Qt.rgba(1, 1, 1, 0.6)
++                }
++
++                TapHandler {
++                    onTapped: {
++                        WayfireIpcPlugin.WayfireIPC.focusView(views.get(delegate.index).viewId);
++                        window.hide();
++                    }
++                }
++
++                DragHandler {
++                    id: swipe
++                    target: null
++                    yAxis.enabled: true
++                    xAxis.enabled: false
++                    // sideways moves stay with the list
++                    acceptedDevices: PointerDevice.TouchScreen | PointerDevice.Mouse
++                    onTranslationChanged: card.y = Math.min(0, translation.y)
++                    onActiveChanged: {
++                        if (active) {
++                            return;
++                        }
++                        if (-card.y > delegate.height * 0.25 || centroid.velocity.y < -1500) {
++                            flyAway.start();
++                        } else {
++                            settle.start();
++                        }
++                    }
++                }
++
++                NumberAnimation {
++                    id: settle
++                    target: card
++                    property: "y"
++                    to: 0
++                    duration: 180
++                    easing.type: Easing.OutCubic
++                }
++
++                SequentialAnimation {
++                    id: flyAway
++                    NumberAnimation {
++                        target: card
++                        property: "y"
++                        to: -delegate.height * 1.2
++                        duration: 160
++                        easing.type: Easing.InCubic
++                    }
++                    ScriptAction {
++                        script: window.closeCard(delegate.index)
++                    }
++                }
++            }
++        }
++    }
++
++    QQC2.Button {
++        anchors.horizontalCenter: parent.horizontalCenter
++        anchors.top: list.bottom
++        anchors.topMargin: window.height * 0.04
++        visible: views.count > 0
++        text: "Zamknij wszystko"
++        onClicked: window.closeAll()
++    }
++}
+diff --git a/components/mobileshell/shellutil.cpp b/components/mobileshell/shellutil.cpp
+index 4eff955a..ffaa4ac5 100644
+--- a/components/mobileshell/shellutil.cpp
++++ b/components/mobileshell/shellutil.cpp
+@@ -29,6 +29,7 @@
+ #include <QDebug>
+ #include <QFile>
+ #include <QHash>
++#include <QPointer>
+ #include <QStandardPaths>
+ #include <QProcess>
+ 
+@@ -55,11 +56,16 @@ struct DefaultFormat8888 {
+         QSurfaceFormat::setDefaultFormat(format);
+     }
+ } defaultFormat8888;
++
++// every ShellUtil of the process (one per QML engine); the D-Bus toggle
++// reaches the task switcher whichever engine it lives in
++QList<QPointer<ShellUtil>> shellUtils;
+ }
+ 
+ 
+ ShellUtil::ShellUtil(QObject *parent) : QObject{parent}, m_localeConfig {
+     KSharedConfig::openConfig(QStringLiteral("kdeglobals"), KConfig::SimpleConfig) } {
++    shellUtils.append(this);
+     // only the first ShellUtil of a process gets the object path
+     auto *grabber = new ScreenGrab(this);
+     if (!QDBusConnection::sessionBus().registerObject(QStringLiteral("/ScreenGrab"), grabber, QDBusConnection::ExportAllSlots)) {
+@@ -291,6 +297,42 @@ QString ShellUtil::symbolicIcon(const QString &name)
+     return found;
+ }
+ 
++QVariantMap ShellUtil::appInfo(const QString &appId)
++{
++    KService::Ptr service = KService::serviceByDesktopName(appId);
++    if (!service) {
++        service = KService::serviceByStorageId(appId + QStringLiteral(".desktop"));
++    }
++    if (!service) {
++        // apps whose app-id differs from the .desktop name set StartupWMClass
++        const auto all = KService::allServices();
++        for (const KService::Ptr &candidate : all) {
++            if (candidate->property<QString>(QStringLiteral("StartupWMClass")).compare(appId, Qt::CaseInsensitive) == 0) {
++                service = candidate;
++                break;
++            }
++        }
++    }
++    QVariantMap info;
++    info[QStringLiteral("name")] = service ? service->name() : appId;
++    info[QStringLiteral("icon")] = service && !service->icon().isEmpty() ? service->icon() : appId;
++    return info;
++}
++
++void ShellUtil::requestTaskSwitcherToggle()
++{
++    Q_EMIT taskSwitcherToggleRequested();
++}
++
++void ScreenGrab::toggleTaskSwitcher()
++{
++    for (const auto &util : std::as_const(shellUtils)) {
++        if (util) {
++            util->requestTaskSwitcherToggle();
++        }
++    }
++}
++
+ bool ShellUtil::autolockEnabled()
+ {
+     const KConfigGroup daemon(KSharedConfig::openConfig(QStringLiteral("kscreenlockerrc")), QStringLiteral("Daemon"));
+diff --git a/components/mobileshell/shellutil.h b/components/mobileshell/shellutil.h
+index 4829c712..63655450 100644
+--- a/components/mobileshell/shellutil.h
++++ b/components/mobileshell/shellutil.h
+@@ -111,6 +111,18 @@ public:
+      */
+     Q_INVOKABLE bool autolockEnabled();
+ 
++    /**
++     * Name and icon of the application behind a Wayland app-id, from its
++     * .desktop file: {name, icon}.  Falls back to the app-id itself.
++     */
++    Q_INVOKABLE QVariantMap appInfo(const QString &appId);
++
++    /**
++     * Opens or closes the task switcher (D-Bus pl.s10plus.ScreenGrab
++     * toggleTaskSwitcher, bound to a wayfire edge swipe).
++     */
++    void requestTaskSwitcherToggle();
++
+     /**
+      * Converts rich text to plain text.
+      */
+@@ -118,6 +130,7 @@ public:
+ 
+ Q_SIGNALS:
+     void isSystem24HourFormatChanged();
++    void taskSwitcherToggleRequested();
+ 
+ private:
+     KConfigWatcher::Ptr m_localeConfigWatcher;
+@@ -144,4 +157,9 @@ public Q_SLOTS:
+      * Returns the files written, one per line.
+      */
+     QString grab(const QString &prefix);
++
++    /**
++     * Opens or closes the task switcher of this shell.
++     */
++    void toggleTaskSwitcher();
+ };
+diff --git a/components/wayfireipcplugin/wayfireipc.cpp b/components/wayfireipcplugin/wayfireipc.cpp
+index 7c639d5b..e2de6619 100644
+--- a/components/wayfireipcplugin/wayfireipc.cpp
++++ b/components/wayfireipcplugin/wayfireipc.cpp
+@@ -3,6 +3,12 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include <QDebug>
++#include <QFileInfo>
++#include <QJsonArray>
++
++#include <algorithm>
++#include <signal.h>
++#include <unistd.h>
+ 
+ #include "wayfireipc.h"
+ 
+@@ -98,15 +104,94 @@ bool WayfireIPC::hasViewFocused()
+     return m_hasViewFocused;
+ }
+ 
+-void WayfireIPC::onReadData()
++void WayfireIPC::requestViews()
++{
++    QJsonObject msgObj;
++    msgObj["method"] = "window-rules/list-views";
++    sendMessage(QJsonDocument(msgObj));
++}
++
++void WayfireIPC::focusView(int viewId)
++{
++    QJsonObject dataObj;
++    dataObj["id"] = viewId;
++    QJsonObject msgObj;
++    msgObj["method"] = "window-rules/focus-view";
++    msgObj["data"] = dataObj;
++    sendMessage(QJsonDocument(msgObj));
++}
++
++void WayfireIPC::closeView(int viewId)
++{
++    QJsonObject dataObj;
++    dataObj["id"] = viewId;
++    QJsonObject msgObj;
++    msgObj["method"] = "window-rules/close-view";
++    msgObj["data"] = dataObj;
++    sendMessage(QJsonDocument(msgObj));
++}
++
++bool WayfireIPC::terminatePid(int pid)
+ {
+-    qint64 bytesToRead = m_wfsocket->bytesAvailable();
++    if (pid <= 1 || pid == getpid()) {
++        return false;
++    }
++    // only processes of this user
++    QFileInfo proc(QStringLiteral("/proc/%1").arg(pid));
++    if (!proc.exists() || proc.ownerId() != getuid()) {
++        return false;
++    }
++    return ::kill(pid, SIGTERM) == 0;
++}
+ 
+-    while(bytesToRead > 0){
+-        char *data;
+-        m_in.readBytes(data, bytesToRead);
++void WayfireIPC::onReadData()
++{
++    while (true) {
++        // a reply can arrive in pieces (the view list is long): wait for the
++        // whole message instead of reading a partial one
++        m_in.startTransaction();
++        char *data = nullptr;
++        qint64 length = 0;
++        m_in.readBytes(data, length);
++        if (!m_in.commitTransaction()) {
++            delete[] data;
++            return;
++        }
+ 
+-        QJsonDocument msg = QJsonDocument::fromJson(QString(data).toUtf8());
++        // the buffer has no terminating zero, so use its length
++        QJsonDocument msg = QJsonDocument::fromJson(QByteArray(data, length));
++        delete[] data;
++
++        if (msg.isArray()) {
++            // reply to window-rules/list-views
++            QList<QPair<qint64, QVariantMap>> views;
++            for (const QJsonValue &value : msg.array()) {
++                const QJsonObject view = value.toObject();
++                if (view.value("role").toString() != QLatin1String("toplevel") || !view.value("mapped").toBool()) {
++                    continue;
++                }
++                const QString appId = view.value("app-id").toString();
++                if (appId.isEmpty() || appId == QLatin1String("nil")) {
++                    continue;
++                }
++                QVariantMap entry;
++                entry[QStringLiteral("id")] = view.value("id").toInt();
++                entry[QStringLiteral("pid")] = view.value("pid").toInt();
++                entry[QStringLiteral("appId")] = appId;
++                entry[QStringLiteral("title")] = view.value("title").toString();
++                entry[QStringLiteral("minimized")] = view.value("minimized").toBool();
++                views.append({view.value("last-focus-timestamp").toVariant().toLongLong(), entry});
++            }
++            std::stable_sort(views.begin(), views.end(), [](const auto &a, const auto &b) {
++                return a.first > b.first;
++            });
++            QVariantList list;
++            for (const auto &view : std::as_const(views)) {
++                list.append(view.second);
++            }
++            Q_EMIT viewsListed(list);
++            continue;
++        }
+ 
+         QString event = msg.object().value("event").toString();
+         QString appId = msg.object().value("view").toObject().value("app-id").toString();
+@@ -141,8 +226,10 @@ void WayfireIPC::onReadData()
+             }
+         }
+ 
+-        bytesToRead = m_wfsocket->bytesAvailable();
+-        delete data;
++        if (event == QLatin1String("view-mapped") || event == QLatin1String("view-unmapped")
++            || event == QLatin1String("view-minimized") || event == QLatin1String("view-focused")) {
++            Q_EMIT viewsChanged();
++        }
+     }
+ }
+ 
+diff --git a/components/wayfireipcplugin/wayfireipc.h b/components/wayfireipcplugin/wayfireipc.h
+index 2b4b3262..ed14a585 100644
+--- a/components/wayfireipcplugin/wayfireipc.h
++++ b/components/wayfireipcplugin/wayfireipc.h
+@@ -29,8 +29,20 @@ public:
+     Q_INVOKABLE void minimizeAllApps();
+     Q_INVOKABLE void requestCloseApp();
+     bool hasViewFocused();
+-    
++
++    // task switcher: list the app windows (answer in viewsListed), bring one
++    // back, close one; terminatePid is the fallback for an app that ignores
++    // the close request (only processes of this user, never the shell)
++    Q_INVOKABLE void requestViews();
++    Q_INVOKABLE void focusView(int viewId);
++    Q_INVOKABLE void closeView(int viewId);
++    Q_INVOKABLE bool terminatePid(int pid);
++
+ Q_SIGNALS:
++    // toplevel app windows, newest first: {id, pid, appId, title, minimized}
++    void viewsListed(const QVariantList &views);
++    // an app window appeared, went away or changed state
++    void viewsChanged();
+     void viewMapped(QString appId);
+     void pwrKeyStateChanged(int state);
+     void idleTimout();
+-- 
+2.47.3
+

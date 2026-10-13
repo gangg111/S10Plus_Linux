@@ -1,0 +1,121 @@
+From d6b947c5800187489716e5c3f2e337cd41d718c5 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 29 Sep 2026 18:58:00 +0200
+Subject: [PATCH 10/29] pidfd: add P_PIDFD to waitid()
+
+Backport of upstream commit 3695eae5fee0 ("pidfd: add P_PIDFD to waitid()",
+v5.4) on top of the pidfd_open() and CLONE_PIDFD backports this tree
+already carries.
+
+Qt 6 only uses pidfds for QProcess when waitid(P_PIDFD) works.  Without
+it Qt falls back to a SIGCHLD handler, and in plasmashell that handler is
+gone by the time a child exits: every child stays a zombie and
+QProcess::waitForFinished() never returns, which froze the Plasma Mobile
+shell on start (waydroid integration probing "waydroid status").
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ include/linux/pid.h       |  1 +
+ include/uapi/linux/wait.h |  1 +
+ kernel/exit.c             | 13 ++++++++++---
+ kernel/pid.c              | 19 +++++++++++++++++++
+ 4 files changed, 31 insertions(+), 3 deletions(-)
+
+diff --git a/include/linux/pid.h b/include/linux/pid.h
+index 0cf3bf22e..b74e49213 100644
+--- a/include/linux/pid.h
++++ b/include/linux/pid.h
+@@ -79,6 +79,7 @@ struct pid_link
+ };
+ 
+ extern const struct file_operations pidfd_fops;
++extern struct pid *pidfd_get_pid(unsigned int fd);
+ 
+ static inline struct pid *get_pid(struct pid *pid)
+ {
+diff --git a/include/uapi/linux/wait.h b/include/uapi/linux/wait.h
+index ac49a220c..85b809fc9 100644
+--- a/include/uapi/linux/wait.h
++++ b/include/uapi/linux/wait.h
+@@ -17,6 +17,7 @@
+ #define P_ALL		0
+ #define P_PID		1
+ #define P_PGID		2
++#define P_PIDFD		3
+ 
+ 
+ #endif /* _UAPI_LINUX_WAIT_H */
+diff --git a/kernel/exit.c b/kernel/exit.c
+index 545ab9cc8..a1b13e0bb 100644
+--- a/kernel/exit.c
++++ b/kernel/exit.c
+@@ -1668,19 +1668,26 @@ static long kernel_waitid(int which, pid_t upid, struct waitid_info *infop,
+ 		type = PIDTYPE_PID;
+ 		if (upid <= 0)
+ 			return -EINVAL;
++		pid = find_get_pid(upid);
+ 		break;
+ 	case P_PGID:
+ 		type = PIDTYPE_PGID;
+ 		if (upid <= 0)
+ 			return -EINVAL;
++		pid = find_get_pid(upid);
++		break;
++	case P_PIDFD:
++		type = PIDTYPE_PID;
++		if (upid < 0)
++			return -EINVAL;
++		pid = pidfd_get_pid(upid);
++		if (IS_ERR(pid))
++			return PTR_ERR(pid);
+ 		break;
+ 	default:
+ 		return -EINVAL;
+ 	}
+ 
+-	if (type < PIDTYPE_MAX)
+-		pid = find_get_pid(upid);
+-
+ 	wo.wo_type	= type;
+ 	wo.wo_pid	= pid;
+ 	wo.wo_flags	= options;
+diff --git a/kernel/pid.c b/kernel/pid.c
+index 7d7bfbcd2..370eba2f5 100644
+--- a/kernel/pid.c
++++ b/kernel/pid.c
+@@ -39,6 +39,7 @@
+ #include <linux/proc_ns.h>
+ #include <linux/proc_fs.h>
+ #include <linux/anon_inodes.h>
++#include <linux/file.h>
+ #include <linux/sched/signal.h>
+ #include <linux/sched/task.h>
+ 
+@@ -569,6 +570,24 @@ struct pid *find_ge_pid(int nr, struct pid_namespace *ns)
+ 	return pid;
+ }
+ 
++struct pid *pidfd_get_pid(unsigned int fd)
++{
++	struct fd f;
++	struct pid *pid;
++
++	f = fdget(fd);
++	if (!f.file)
++		return ERR_PTR(-EBADF);
++
++	if (f.file->f_op == &pidfd_fops)
++		pid = get_pid(f.file->private_data);
++	else
++		pid = ERR_PTR(-EBADF);
++
++	fdput(f);
++	return pid;
++}
++
+ /**
+  * pidfd_create() - Create a new pid file descriptor.
+  *
+-- 
+2.47.3
+

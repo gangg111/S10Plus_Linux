@@ -1,0 +1,36 @@
+From 5bd2d6c4d32ba63fab60444dd678666d95929cef Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 06:05:12 +0200
+Subject: [PATCH 01/29] ANDROID: binder: do not hand out the security context
+ on Halium
+
+The Linux side of a Halium system does not run SELinux, so a binder node
+that asks for the security context of its callers fails every transaction.
+Never set txn_security_ctx; the same change is carried by the UBports port
+for this SoC.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/android/binder.c | 6 +++++-
+ 1 file changed, 5 insertions(+), 1 deletion(-)
+
+diff --git a/drivers/android/binder.c b/drivers/android/binder.c
+index 8f6bf64d5..3a71a9209 100644
+--- a/drivers/android/binder.c
++++ b/drivers/android/binder.c
+@@ -1360,7 +1360,11 @@ static struct binder_node *binder_init_node_ilocked(
+ 	node->min_priority = to_kernel_prio(node->sched_policy, priority);
+ 	node->accept_fds = !!(flags & FLAT_BINDER_FLAG_ACCEPTS_FDS);
+ 	node->inherit_rt = !!(flags & FLAT_BINDER_FLAG_INHERIT_RT);
+-	node->txn_security_ctx = !!(flags & FLAT_BINDER_FLAG_TXN_SECURITY_CTX);
++	/*
++	 * Halium: the security context is taken from SELinux, which the Linux
++	 * side does not run, so a node asking for it would fail every call.
++	 */
++	node->txn_security_ctx = 0;
+ 	spin_lock_init(&node->lock);
+ 	INIT_LIST_HEAD(&node->work.entry);
+ 	INIT_LIST_HEAD(&node->async_todo);
+-- 
+2.47.3
+

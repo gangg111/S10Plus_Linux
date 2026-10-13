@@ -1,0 +1,39 @@
+From eeed324b36cfef9b3a56836c113af93fe9cdd29b Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 16:19:45 +0200
+Subject: [PATCH 08/29] droidian: build for aarch64-linux-gnu, not
+ aarch64-linux-android
+
+This 4.14 Makefile passes --target=$(notdir $(CROSS_COMPILE)) to clang, so
+the packaging's aarch64-linux-android- triplet built the kernel for the
+Android target.  With CC_STACKPROTECTOR_STRONG clang then reads the stack
+canary from TPIDR_EL0 the way bionic lays it out; in the kernel that
+register holds nothing yet, the first protected function takes the
+__stack_chk_fail path before any console or restart handler exists, and
+the phone sits on the boot logo.
+
+Found by elimination on the phone with a reset probe: the same tree and
+.config built with make and CROSS_COMPILE=aarch64-linux-gnu- gets past
+setup_arch, the packaged build never does.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/kernel-info.mk | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/debian/kernel-info.mk b/debian/kernel-info.mk
+index ea18e534e..ae66e5093 100644
+--- a/debian/kernel-info.mk
++++ b/debian/kernel-info.mk
+@@ -206,7 +206,7 @@ BUILD_CROSS = 1
+ # (Cross-build only) The build triplet to use. You'll probably want to
+ # use aarch64-linux-android- if building Android kernels.
+ # might need to use aarch64-linux-gnu- with newer kernels such as GKI
+-BUILD_TRIPLET = aarch64-linux-android-
++BUILD_TRIPLET = aarch64-linux-gnu-
+ 
+ # (Cross-build only) The build triplet to use with clang. You'll probably
+ # want to use aarch64-linux-gnu- here.
+-- 
+2.47.3
+

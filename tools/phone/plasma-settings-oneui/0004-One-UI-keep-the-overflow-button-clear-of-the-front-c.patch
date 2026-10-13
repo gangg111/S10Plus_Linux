@@ -1,0 +1,43 @@
+From e6d4d7bb7bd28ca423bb90690f663e46235cce06 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:31:58 +0200
+Subject: [PATCH 4/4] One UI: keep the overflow button clear of the front
+ camera
+
+With the panels auto-hidden the window covers the whole portrait screen
+and the Galaxy S10+ front camera hole sits over the top right corner (from
+x = 367 pt).  Move the overflow button left of it in that case.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ src/qml/SidebarCategoriesPage.qml | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/qml/SidebarCategoriesPage.qml b/src/qml/SidebarCategoriesPage.qml
+index cbff9ae7..7266d1ef 100644
+--- a/src/qml/SidebarCategoriesPage.qml
++++ b/src/qml/SidebarCategoriesPage.qml
+@@ -9,6 +9,7 @@
+ // scroll, account card, one rounded card per category, floating search pill.
+ 
+ import QtQuick
++import QtQuick.Window
+ import QtQuick.Layouts
+ import QtQuick.Controls as QQC2
+ import org.kde.kirigami as Kirigami
+@@ -271,7 +272,11 @@ Kirigami.Page {
+ 
+         QQC2.ToolButton {
+             anchors.right: parent.right
+-            anchors.rightMargin: 6
++            // Galaxy S10+: with the panels auto-hidden the window covers the whole
++            // portrait screen and the front camera hole sits over the top right
++            // corner (from x = 367 pt); the button stays left of it then
++            anchors.rightMargin: 6 + ((Window.width > 0 && Screen.width < Screen.height && Window.height >= Screen.height - 1)
++                                      ? Math.max(0, Window.width - 367) : 0)
+             anchors.verticalCenter: parent.verticalCenter
+             icon.name: "overflow-menu"
+             icon.color: OneUi.text
+-- 
+2.47.3
+

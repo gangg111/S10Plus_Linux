@@ -2,6 +2,13 @@
 set -e
 
 if [ "$1" = remove ] || [ "$1" = purge ]; then
+	# our Firefox fragments are gone, their lines leave the mobile-config-firefox lists
+	for pair in userChrome:userChrome/s10plus-pasek-u-gory.css \
+	            userContent:userContent/s10plus-strona-glowna.css; do
+		list=/etc/mobile-config-firefox/${pair%%:*}.files
+		[ -f "$list" ] && sed -i "\\|^${pair#*:}\$|d" "$list"
+	done
+
 	# back to the theme of the distribution when ours goes away
 	if command -v plymouth-set-default-theme >/dev/null 2>&1 &&
 	   [ "$(plymouth-set-default-theme 2>/dev/null)" = debian-s10 ]; then

@@ -1,5 +1,6 @@
 usr/lib/droidian/device/*
 etc/ofono/*
+etc/mobile-config-firefox/*
 usr/lib/udev/rules.d/*
 usr/lib/s10plus/*
 usr/lib/systemd/user/*

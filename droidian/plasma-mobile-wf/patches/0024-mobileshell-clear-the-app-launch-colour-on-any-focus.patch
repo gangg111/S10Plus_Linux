@@ -1,0 +1,51 @@
+From 4f9f0d5063f6260685c15abf087bf369d1cf7b5e Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Thu, 1 Oct 2026 18:11:38 +0200
+Subject: [PATCH 24/29] mobileshell: clear the app launch colour on any focus
+ change
+
+Under wayfire the tasks model gets no windows (there is no plasma window
+management protocol), so showingWindow never changed and the colour of the
+launched app stayed on the status bar and the navigation panel for good,
+also after going back home.  Clear it on every focus change reported over
+the wayfire IPC as well.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../qml/components/StartupFeedbackPanelFill.qml     | 13 +++++++++++++
+ 1 file changed, 13 insertions(+)
+
+diff --git a/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml b/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml
+index ae39ad8f..11c9a72a 100644
+--- a/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml
++++ b/components/mobileshell/qml/components/StartupFeedbackPanelFill.qml
+@@ -4,6 +4,7 @@
+ import QtQuick
+ 
+ import org.kde.plasma.private.mobileshell.state as MobileShellState
++import org.kde.plasma.private.mobileshell.wayfireipcplugin as WayfireIpcPlugin
+ 
+ // Component to supplement the StartupFeedback window maximization animation for panel backgrounds.
+ 
+@@ -32,6 +33,18 @@ Rectangle {
+         }
+     }
+ 
++    // Under wayfire Plasma's tasks model has no windows (no plasma window
++    // management protocol), so showingWindow never changes and the launch
++    // colour stayed on the panel for good.  Any focus change (the app showing
++    // up, going home, switching apps) ends the launch animation as well.
++    Connections {
++        target: WayfireIpcPlugin.WayfireIPC
++
++        function onHasViewFocusedChanged() {
++            root.color = 'transparent';
++        }
++    }
++
+     // Listen to event from shell dbus
+     Connections {
+         target: MobileShellState.ShellDBusClient
+-- 
+2.47.3
+

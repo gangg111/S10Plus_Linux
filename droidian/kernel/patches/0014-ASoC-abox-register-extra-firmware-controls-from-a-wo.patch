@@ -1,0 +1,77 @@
+From 959a8b131486b5508da16276d91953563100f98f Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 3 Oct 2026 01:45:29 +0200
+Subject: [PATCH 14/29] ASoC: abox: register extra firmware controls from a
+ work item
+
+The first runtime resume after a reset downloads the extra firmware and
+used to register its void component controls right there, in
+abox_runtime_resume. snd_ctl_add takes the card controls_rwsem for
+writing, while a control get/put that triggered this resume holds the
+same rwsem for reading and waits in pm_runtime_get_sync: the HAL thread
+and the resume worker wait for each other forever (audio HAL in D state,
+seen on the first mixer access after boot).
+
+Hand the firmware to register_component_work instead; the resume
+completes, the control access returns and the controls appear right
+after.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ sound/soc/samsung/abox/abox.c | 14 ++++++++++++--
+ sound/soc/samsung/abox/abox.h |  1 +
+ 2 files changed, 13 insertions(+), 2 deletions(-)
+
+diff --git a/sound/soc/samsung/abox/abox.c b/sound/soc/samsung/abox/abox.c
+index 50b43be81..f601e2882 100644
+--- a/sound/soc/samsung/abox/abox.c
++++ b/sound/soc/samsung/abox/abox.c
+@@ -1469,12 +1469,17 @@ static void abox_register_component_work_func(struct work_struct *work)
+ 	struct abox_data *data = container_of(work, struct abox_data,
+ 			register_component_work);
+ 	struct device *dev = &data->pdev->dev;
++	const void *void_component;
+ 	struct abox_component *com;
+ 	size_t len = ARRAY_SIZE(data->components);
+ 	int ret;
+ 
+ 	dev_dbg(dev, "%s\n", __func__);
+ 
++	void_component = xchg(&data->void_component, NULL);
++	if (void_component)
++		abox_register_void_component(data, void_component);
++
+ 	for (com = data->components; com - data->components < len; com++) {
+ 		struct ABOX_COMPONENT_DESCRIPTIOR *desc = com->desc;
+ 		struct ABOX_COMPONENT_CONTROL *ctrl, *first;
+@@ -2287,8 +2292,13 @@ static void abox_download_extra_firmware(struct abox_data *data)
+ 				efw->firmware->size);
+ 		dev_dbg(dev, "%s is downloaded %u, %#x\n", efw->name,
+ 				efw->area, efw->offset);
+-		if (efw->kcontrol)
+-			abox_register_void_component(data, efw->firmware->data);
++		if (efw->kcontrol) {
++			/* not here: snd_ctl_add waits for controls_rwsem, which a
++			 * control get/put holds while it waits for this resume
++			 */
++			WRITE_ONCE(data->void_component, efw->firmware->data);
++			schedule_work(&data->register_component_work);
++		}
+ 	}
+ }
+ 
+diff --git a/sound/soc/samsung/abox/abox.h b/sound/soc/samsung/abox/abox.h
+index b3fc3cec2..6c926cdd9 100644
+--- a/sound/soc/samsung/abox/abox.h
++++ b/sound/soc/samsung/abox/abox.h
+@@ -295,6 +295,7 @@ struct abox_data {
+ 	bool sif_auto_config[SET_SIFS0_FORMAT - SET_SIFS0_RATE];
+ 	int apf_coef[2][16];
+ 	struct work_struct register_component_work;
++	const void *void_component;
+ 	struct abox_component components[16];
+ 	struct list_head ipc_actions;
+ 	struct list_head iommu_maps;
+-- 
+2.47.3
+

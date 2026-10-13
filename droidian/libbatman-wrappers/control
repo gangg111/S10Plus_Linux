@@ -1,0 +1,10 @@
+Package: libbatman-wrappers
+Version: 0.0-s10plus1
+Architecture: all
+Maintainer: Artur Szafraniec <ganggg111@gmail.com>
+Section: libs
+Priority: optional
+Description: Empty placeholder for the Galaxy S10+ port
+ droidian-fpd-client and droidian-fpd-gui still declare this dependency,
+ but neither binary links against it and the batman package is gone from
+ the Droidian archive. This empty package satisfies the dependency.

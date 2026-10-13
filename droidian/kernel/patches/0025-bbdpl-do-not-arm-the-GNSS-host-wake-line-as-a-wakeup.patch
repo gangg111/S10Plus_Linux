@@ -1,0 +1,48 @@
+From e8f158d600699998f0923130e927b2b6310dde09 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:27:05 +0200
+Subject: [PATCH 25/29] bbdpl: do not arm the GNSS host-wake line as a wakeup
+ source
+
+The BCM47752 raises host_req about six times a second while the GNSS
+device is open, which pulled the AP out of deep sleep every ~0.4 s.  Keep
+the interrupt for normal operation, but do not mark it as a system wakeup
+source.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c b/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c
+index 8bda37bbd..438c8e241 100644
+--- a/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c
++++ b/drivers/sensorhub/brcm/bbdpl/bcm_gps_spi.c
+@@ -241,7 +241,13 @@ static int bcm_spi_open(struct inode *inode, struct file *filp)
+ 
+ 	spin_unlock_irqrestore(&priv->irq_lock, flags);
+ 
+-	enable_irq_wake(priv->spi->irq);
++	/*
++	 * The GNSS host-wake line is not a system wakeup source: the BCM47752
++	 * raises host_req about 6 times a second, which pulled the AP out of
++	 * deep sleep every ~0.4 s.  GPS still works while awake (plain
++	 * enable_irq above), it just does not wake the SoC.
++	 */
++	/* enable_irq_wake(priv->spi->irq); */
+ 
+ 	filp->private_data = priv;
+ #ifdef DEBUG_1HZ_STAT
+@@ -355,7 +361,8 @@ static int bcm_spi_release(struct inode *inode, struct file *filp)
+ 
+ 	spin_unlock_irqrestore(&priv->irq_lock, flags);
+ 
+-	disable_irq_wake(priv->spi->irq);
++	/* not armed as a wakeup source, see bcm_spi_open() */
++	/* disable_irq_wake(priv->spi->irq); */
+ 
+ 	pr_info("%s--\n", __func__);
+ 	return 0;
+-- 
+2.47.3
+

@@ -37,13 +37,12 @@ if [ "$1" = install ] || [ "$1" = upgrade ]; then
 		done
 	fi
 
-	# binder.conf: nasza wersja z signalStrengthRange dla modemu S10+ wygrywa nad
-	# ta z ofono-configs-binder-common (diversion, jak w pakiecie -tools).
 	# mm_modem.py: ofono2mm z bramka na PinRequired, ktorego ofono jeszcze nie
 	# wyslal zaraz po wlozeniu karty (bez niej KeyError i modem w stanie failed).
+	# (binder.conf do wersji 15 tez byl przekierowany; teraz binder.d, patrz postinst)
 	# keep in sync with postrm
 	PKG=adaptation-samsung-beyond2lte-configs
-	for f in /etc/ofono/binder.conf /usr/lib/ofono2mm/ofono2mm/mm_modem.py; do
+	for f in /usr/lib/ofono2mm/ofono2mm/mm_modem.py; do
 		owner=$(dpkg-divert --listpackage "$f")
 		if [ "$owner" = "$PKG" ]; then
 			:

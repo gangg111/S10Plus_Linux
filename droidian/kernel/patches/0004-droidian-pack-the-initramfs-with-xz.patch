@@ -1,0 +1,50 @@
+From 01da382c601f925f14cff9572d64971edcf8021b Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 06:12:34 +0200
+Subject: [PATCH 04/29] droidian: pack the initramfs with xz
+
+With the kernel at 43 MB the gzip initramfs (16.9 MB) overflows the 55 MB
+boot partition; xz brings it to 11.7 MB.  The kernel is built with RD_XZ
+and its decoder only accepts the crc32 check.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/kernel-info.mk | 2 +-
+ debian/rules          | 9 +++++++++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/debian/kernel-info.mk b/debian/kernel-info.mk
+index 9ec7f7434..17ab0cc1d 100644
+--- a/debian/kernel-info.mk
++++ b/debian/kernel-info.mk
+@@ -116,7 +116,7 @@ KERNEL_BOOTIMAGE_VERSION = 1
+ # Kernel initramfs compression. Defaults to gzip.
+ # All non-gki devices need a gzip (gz) initramfs
+ # For devices launched with a GKI kernel it can be either gzip (gz) or lz4 (lz4)
+-KERNEL_INITRAMFS_COMPRESSION = gz
++KERNEL_INITRAMFS_COMPRESSION = xz
+ 
+ # Whether to generate a vendor_boot image. Supported since
+ # bootimage version 3.
+diff --git a/debian/rules b/debian/rules
+index 224ef2f34..5a04132b4 100755
+--- a/debian/rules
++++ b/debian/rules
+@@ -2,5 +2,14 @@
+ 
+ include /usr/share/linux-packaging-snippets/kernel-snippet.mk
+ 
++# The boot partition holds 55 MB and the kernel alone takes 43 MB, so the
++# Droidian initramfs goes in as xz (11.7 MB) instead of gzip (16.9 MB).
++# The kernel XZ decoder only knows the crc32 check.
++out/KERNEL_OBJ/initramfs.xz: out/KERNEL_OBJ/initramfs.gz
++	gunzip -c $< | xz -9e --check=crc32 -T0 > $@
++
++out/KERNEL_OBJ/initramfs.recovery-xz: out/KERNEL_OBJ/initramfs.recovery-gz
++	gunzip -c $< | xz -9e --check=crc32 -T0 > $@
++
+ %:
+ 	dh $@
+-- 
+2.47.3
+

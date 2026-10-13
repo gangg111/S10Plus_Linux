@@ -1,0 +1,790 @@
+From 376d4894a8542b0fe22b7a59f580e8f5692d0661 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 18:29:02 +0200
+Subject: [PATCH 23/29] mobileshell: One UI look for the task switcher
+
+Window pictures on the cards (podglad wayfire plugin, only the app on
+screen is captured again at each opening, ~130 ms of compositor time),
+the older cards stacked and shaded on the left, the icon over the top
+edge, a cross on each card, the app count pill, the outlined close all
+pill, the three dots menu with the Recents settings page and a row of
+suggested apps (last used, not open), which that page turns off.
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ .../qml/taskswitcher/TaskSwitcherWindow.qml   | 513 +++++++++++++++---
+ components/mobileshell/shellutil.cpp          |   1 +
+ components/mobileshell/shellutil.h            |   3 +-
+ components/wayfireipcplugin/wayfireipc.cpp    |  28 +
+ components/wayfireipcplugin/wayfireipc.h      |   5 +
+ 5 files changed, 483 insertions(+), 67 deletions(-)
+
+diff --git a/components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml b/components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml
+index c763f5b9..39cad914 100644
+--- a/components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml
++++ b/components/mobileshell/qml/taskswitcher/TaskSwitcherWindow.qml
+@@ -1,6 +1,7 @@
+ // SPDX-FileCopyrightText: 2026 Artur <ganggg111@gmail.com>
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
++import QtCore
+ import QtQuick
+ import QtQuick.Controls as QQC2
+ import QtQuick.Window
+@@ -12,13 +13,15 @@ import org.kde.plasma.private.mobileshell as MobileShell
+ import org.kde.plasma.private.mobileshell.wayfireipcplugin as WayfireIpcPlugin
+ 
+ /**
+- * Recent apps like on Android: one card per app window, newest first,
+- * scrolled sideways.  Tap a card to go back to the app, swipe it up to close
+- * it, "Zamknij wszystko" closes them all.  Windows come from wayfire over IPC
+- * (no scale plugin, whose GLES renderer crashes when a window closes under it).
++ * Recent apps in the One UI style: a card per app window with its picture,
++ * the newest in front and the older ones stacked to the left.  Tap a card to
++ * go back to the app, swipe it up or tap its cross to close it, the pill at
++ * the bottom closes them all.  Windows and their pictures come from wayfire
++ * over IPC (window-rules and the podglad plugin), without the scale plugin,
++ * whose GLES renderer crashes when a window closes under it.
+  *
+  * Opened by D-Bus pl.s10plus.ScreenGrab.toggleTaskSwitcher on
+- * org.kde.plasmashell, bound to an edge swipe in wayfire.ini.
++ * org.kde.plasmashell, bound to edge swipes in wayfire.ini.
+  */
+ Window {
+     id: window
+@@ -37,22 +40,78 @@ Window {
+     // views asked to close: id -> pid, for the kill fallback
+     property var pendingClose: ({})
+     property bool checkingPending: false
++    // view id -> picture url; a capture costs the compositor ~130 ms, so only
++    // the app on screen is taken again at each opening
++    property var thumbs: ({})
++    property bool refreshFront: false
++
++    readonly property real cardWidth: width * 0.61
++    readonly property real cardHeight: Math.min(cardWidth * 2.2, height * 0.58)
++
++    // suggested apps under the cards: the last used apps that are not open,
++    // remembered each time an app window appears
++    Settings {
++        id: config
++        category: "TaskSwitcher"
++        property bool showSuggested: true
++        property string recentApps: "[]"
++    }
++
++    function rememberApp(appId) {
++        // shell surfaces (desktop, dock, overlay) have no .desktop file
++        if (MobileShell.ShellUtil.appInfo(appId).storageId === "") {
++            return;
++        }
++        let recent = [];
++        try {
++            recent = JSON.parse(config.recentApps);
++        } catch (e) {
++        }
++        recent = recent.filter(id => id !== appId);
++        recent.unshift(appId);
++        config.recentApps = JSON.stringify(recent.slice(0, 12));
++    }
++
++    function updateSuggested(openIds) {
++        suggested.clear();
++        let recent = [];
++        try {
++            recent = JSON.parse(config.recentApps);
++        } catch (e) {
++        }
++        for (const appId of recent) {
++            if (suggested.count >= 4) {
++                break;
++            }
++            if (openIds.indexOf(appId) >= 0) {
++                continue;
++            }
++            const info = MobileShell.ShellUtil.appInfo(appId);
++            if (info.storageId === "") {
++                continue;
++            }
++            suggested.append({ storageId: info.storageId, iconName: info.icon });
++        }
++    }
+ 
+     function open() {
+         views.clear();
++        refreshFront = true;
+         WayfireIpcPlugin.WayfireIPC.requestViews();
+         visible = true;
+         raise();
+-        list.positionViewAtBeginning();
+     }
+ 
+     function hide() {
+         visible = false;
++        menu.expanded = false;
++        settingsPage.visible = false;
+     }
+ 
+     function closeCard(index) {
+         const view = views.get(index);
+         pendingClose[view.viewId] = view.pid;
++        delete thumbs[view.viewId];
+         WayfireIpcPlugin.WayfireIPC.closeView(view.viewId);
+         views.remove(index);
+         killCheck.restart();
+@@ -61,12 +120,31 @@ Window {
+         }
+     }
+ 
++    function showNewest() {
++        list.highlightMoveDuration = 0;
++        list.currentIndex = views.count - 1;
++        list.positionViewAtIndex(views.count - 1, ListView.Center);
++        list.highlightMoveDuration = 250;
++    }
++
+     function closeAll() {
+         while (views.count > 0) {
+             closeCard(0);
+         }
+     }
+ 
++    function appCountText(n) {
++        const last = n % 10;
++        const tens = n % 100;
++        if (n === 1) {
++            return "1 aktywna aplikacja";
++        }
++        if (last >= 2 && last <= 4 && (tens < 12 || tens > 14)) {
++            return n + " aktywne aplikacje";
++        }
++        return n + " aktywnych aplikacji";
++    }
++
+     // an app that keeps its window after the close request (asks to save,
+     // hangs) is terminated, as swiping it away does on Android
+     Timer {
+@@ -106,19 +184,42 @@ Window {
+                 return;
+             }
+             views.clear();
++            const openIds = [];
+             for (const view of list) {
++                openIds.push(view.appId);
+                 if (window.pendingClose[view.id] !== undefined) {
+                     continue;
+                 }
+                 const info = MobileShell.ShellUtil.appInfo(view.appId);
+-                views.append({
++                const front = window.refreshFront && views.count === 0 && !view.minimized;
++                if (front || window.thumbs[view.id] === undefined) {
++                    WayfireIpcPlugin.WayfireIPC.captureThumbnail(view.id);
++                }
++                views.insert(0, {
+                     viewId: view.id,
+                     pid: view.pid,
+-                    name: info.name,
+                     iconName: info.icon,
+-                    title: view.title
++                    thumb: window.thumbs[view.id] || ""
+                 });
+             }
++            window.refreshFront = false;
++            window.updateSuggested(openIds);
++            // after the delegates are laid out, or the list snaps back to 0
++            Qt.callLater(window.showNewest);
++        }
++
++        function onThumbnailReady(viewId, path) {
++            const url = "file://" + path + "?" + Date.now();
++            window.thumbs[viewId] = url;
++            for (let i = 0; i < views.count; i++) {
++                if (views.get(i).viewId === viewId) {
++                    views.setProperty(i, "thumb", url);
++                }
++            }
++        }
++
++        function onViewMapped(appId) {
++            window.rememberApp(appId);
+         }
+ 
+         function onViewsChanged() {
+@@ -132,13 +233,44 @@ Window {
+         id: views
+     }
+ 
++    ListModel {
++        id: suggested
++    }
++
+     Rectangle {
+         anchors.fill: parent
+-        color: Qt.rgba(0, 0, 0, 0.82)
++        color: Qt.rgba(0.17, 0.17, 0.18, 0.93)
+ 
+-        // tap outside the cards goes back
++        // tap outside the cards goes back (or folds the menu first)
+         TapHandler {
+-            onTapped: window.hide()
++            onTapped: {
++                if (menu.expanded) {
++                    menu.expanded = false;
++                } else {
++                    window.hide();
++                }
++            }
++        }
++    }
++
++    // "N aktywne aplikacje" pill, top left
++    Rectangle {
++        visible: views.count > 0
++        x: window.width * 0.04
++        y: window.height * 0.075
++        width: countLabel.implicitWidth + height
++        height: window.width * 0.1
++        radius: height / 2
++        color: Qt.rgba(1, 1, 1, 0.06)
++        border.width: 1
++        border.color: Qt.rgba(1, 1, 1, 0.14)
++
++        QQC2.Label {
++            id: countLabel
++            anchors.centerIn: parent
++            text: window.appCountText(views.count)
++            color: "white"
++            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.1
+         }
+     }
+ 
+@@ -154,20 +286,20 @@ Window {
+         id: list
+         anchors.left: parent.left
+         anchors.right: parent.right
+-        anchors.verticalCenter: parent.verticalCenter
+-        anchors.verticalCenterOffset: -window.height * 0.03
+-        height: window.height * 0.62
++        y: window.height * 0.17
++        height: window.cardHeight
+ 
++        // oldest first, so the newest card is the last one, at the right
+         orientation: ListView.Horizontal
+         model: views
+-        spacing: window.width * 0.05
+-        snapMode: ListView.SnapToItem
++        spacing: window.width * 0.04
++        snapMode: ListView.SnapOneItem
+         highlightRangeMode: ListView.StrictlyEnforceRange
+-        preferredHighlightBegin: (width - cardWidth) / 2
+-        preferredHighlightEnd: (width + cardWidth) / 2
++        preferredHighlightBegin: (width - window.cardWidth) / 2
++        preferredHighlightEnd: (width + window.cardWidth) / 2
+         boundsBehavior: Flickable.StopAtBounds
+ 
+-        readonly property real cardWidth: window.width * 0.66
++        readonly property real step: window.cardWidth + spacing
+ 
+         remove: Transition {
+             NumberAnimation { property: "opacity"; to: 0; duration: 150 }
+@@ -178,61 +310,111 @@ Window {
+ 
+         delegate: Item {
+             id: delegate
+-            width: list.cardWidth
++            width: window.cardWidth
+             height: list.height
+ 
+             required property int index
+-            required property string name
+             required property string iconName
+-            required property string title
++            required property string thumb
++
++            // distance from the centre in cards: < 0 left of it
++            readonly property real offset: (x - list.contentX + width / 2 - list.width / 2) / list.step
++            readonly property real behind: Math.max(0, -offset)
++
++            // cards left of the centre slide under it and only peek out
++            z: -behind
++            transform: [
++                Scale {
++                    origin.x: 0
++                    origin.y: delegate.height / 2
++                    xScale: 1 - 0.07 * Math.min(delegate.behind, 3)
++                    yScale: xScale
++                },
++                Translate {
++                    x: delegate.behind * list.step * 0.74
++                }
++            ]
+ 
+-            Rectangle {
++            Item {
+                 id: card
+                 width: parent.width
+                 height: parent.height
+-                radius: width * 0.08
+-                color: Qt.rgba(0.16, 0.17, 0.19, 1)
+                 opacity: 1 - Math.min(1, Math.max(0, -y / (parent.height * 0.6)))
+ 
++                Rectangle {
++                    id: frame
++                    anchors.fill: parent
++                    radius: width * 0.075
++                    color: "#1f1f21"
++                }
++
++                // the cards behind are shaded like on One UI (over the picture)
++                Rectangle {
++                    anchors.fill: parent
++                    radius: frame.radius
++                    z: 3
++                    color: "black"
++                    opacity: Math.min(0.45, delegate.behind * 0.35)
++                    visible: opacity > 0
++                }
++
++                readonly property real headerHeight: width * 0.17
++
++                Image {
++                    id: picture
++                    visible: false
++                    source: delegate.thumb
++                    cache: false
++                    asynchronous: true
++                    fillMode: Image.PreserveAspectCrop
++                    verticalAlignment: Image.AlignTop
++                    width: card.width
++                    height: card.height - card.headerHeight
++                    sourceSize.width: 720
++                }
++
++                Kirigami.ShadowedTexture {
++                    visible: picture.status === Image.Ready
++                    y: card.headerHeight
++                    width: card.width
++                    height: card.height - card.headerHeight
++                    source: picture
++                    corners.topLeftRadius: 0
++                    corners.topRightRadius: 0
++                    corners.bottomLeftRadius: frame.radius
++                    corners.bottomRightRadius: frame.radius
++                    color: "transparent"
++                }
++
++                // no picture yet: the icon in the middle
+                 Kirigami.Icon {
+-                    id: icon
+-                    anchors.horizontalCenter: parent.horizontalCenter
+-                    anchors.top: parent.top
+-                    anchors.topMargin: parent.height * 0.24
+-                    width: parent.width * 0.42
++                    visible: picture.status !== Image.Ready
++                    anchors.centerIn: parent
++                    width: parent.width * 0.36
+                     height: width
+                     source: delegate.iconName
+                 }
+ 
+-                QQC2.Label {
+-                    id: nameLabel
+-                    anchors.top: icon.bottom
+-                    anchors.topMargin: parent.height * 0.05
+-                    anchors.left: parent.left
+-                    anchors.right: parent.right
+-                    anchors.margins: parent.width * 0.08
+-                    horizontalAlignment: Text.AlignHCenter
+-                    elide: Text.ElideRight
+-                    text: delegate.name
+-                    color: "white"
+-                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.4
+-                    font.weight: Font.DemiBold
+-                }
+-
+-                QQC2.Label {
+-                    anchors.top: nameLabel.bottom
+-                    anchors.topMargin: parent.height * 0.015
+-                    anchors.left: parent.left
+-                    anchors.right: parent.right
+-                    anchors.margins: parent.width * 0.08
+-                    horizontalAlignment: Text.AlignHCenter
+-                    elide: Text.ElideRight
+-                    visible: delegate.title !== delegate.name
+-                    text: delegate.title
+-                    color: Qt.rgba(1, 1, 1, 0.6)
++                // close cross, top left
++                Item {
++                    width: card.headerHeight
++                    height: card.headerHeight
++                    Kirigami.Icon {
++                        anchors.centerIn: parent
++                        width: parent.width * 0.42
++                        height: width
++                        source: "window-close-symbolic"
++                        color: "white"
++                        isMask: true
++                    }
++                    TapHandler {
++                        gesturePolicy: TapHandler.ReleaseWithinBounds
++                        onTapped: flyAway.start()
++                    }
+                 }
+ 
+                 TapHandler {
++                    gesturePolicy: TapHandler.ReleaseWithinBounds
+                     onTapped: {
+                         WayfireIpcPlugin.WayfireIPC.focusView(views.get(delegate.index).viewId);
+                         window.hide();
+@@ -244,8 +426,6 @@ Window {
+                     target: null
+                     yAxis.enabled: true
+                     xAxis.enabled: false
+-                    // sideways moves stay with the list
+-                    acceptedDevices: PointerDevice.TouchScreen | PointerDevice.Mouse
+                     onTranslationChanged: card.y = Math.min(0, translation.y)
+                     onActiveChanged: {
+                         if (active) {
+@@ -273,7 +453,7 @@ Window {
+                     NumberAnimation {
+                         target: card
+                         property: "y"
+-                        to: -delegate.height * 1.2
++                        to: -delegate.height * 1.3
+                         duration: 160
+                         easing.type: Easing.InCubic
+                     }
+@@ -282,15 +462,216 @@ Window {
+                     }
+                 }
+             }
++
++            // app icon over the top edge of the card
++            Kirigami.Icon {
++                anchors.horizontalCenter: card.horizontalCenter
++                y: card.y - height * 0.5
++                width: window.cardWidth * 0.22
++                height: width
++                // only the card in front shows its icon
++                opacity: card.opacity * Math.max(0, 1 - delegate.behind * 2)
++                source: delegate.iconName
++            }
+         }
+     }
+ 
+-    QQC2.Button {
+-        anchors.horizontalCenter: parent.horizontalCenter
+-        anchors.top: list.bottom
+-        anchors.topMargin: window.height * 0.04
++    // "Zamknij wszystko" pill
++    Rectangle {
+         visible: views.count > 0
+-        text: "Zamknij wszystko"
+-        onClicked: window.closeAll()
++        anchors.horizontalCenter: parent.horizontalCenter
++        y: list.y + list.height + window.height * 0.055
++        width: window.width * 0.43
++        height: window.width * 0.105
++        radius: height / 2
++        color: closeAllTap.pressed ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
++        border.width: Math.max(1, window.width * 0.003)
++        border.color: Qt.rgba(1, 1, 1, 0.55)
++
++        QQC2.Label {
++            anchors.centerIn: parent
++            text: "Zamknij wszystko"
++            color: "white"
++            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.25
++        }
++
++        TapHandler {
++            gesturePolicy: TapHandler.ReleaseWithinBounds
++            id: closeAllTap
++            onTapped: window.closeAll()
++        }
++    }
++
++    // three dots, top right: the first tap turns them into the "Ustawienia"
++    // pill, the second opens the settings of this screen
++    Item {
++        id: menu
++        property bool expanded: false
++        anchors.right: parent.right
++        anchors.rightMargin: window.width * 0.04
++        y: window.height * 0.075
++        width: expanded ? window.width * 0.41 : window.width * 0.1
++        height: window.width * 0.1 * (expanded ? 1.3 : 1)
++        Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
++        Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
++
++        Rectangle {
++            anchors.fill: parent
++            radius: height / 2
++            color: Qt.rgba(0.26, 0.26, 0.27, 1)
++            opacity: menu.expanded ? 1 : 0
++            Behavior on opacity { NumberAnimation { duration: 160 } }
++        }
++
++        Column {
++            anchors.centerIn: parent
++            spacing: window.width * 0.009
++            opacity: menu.expanded ? 0 : 1
++            Repeater {
++                model: 3
++                Rectangle {
++                    width: window.width * 0.011
++                    height: width
++                    radius: width / 2
++                    color: "white"
++                }
++            }
++        }
++
++        QQC2.Label {
++            anchors.left: parent.left
++            anchors.leftMargin: parent.height * 0.5
++            anchors.verticalCenter: parent.verticalCenter
++            opacity: menu.expanded ? 1 : 0
++            text: "Ustawienia"
++            color: "white"
++            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.25
++        }
++
++        TapHandler {
++            gesturePolicy: TapHandler.ReleaseWithinBounds
++            onTapped: {
++                if (menu.expanded) {
++                    menu.expanded = false;
++                    settingsPage.visible = true;
++                } else {
++                    menu.expanded = true;
++                }
++            }
++        }
++    }
++
++    // suggested apps
++    Row {
++        visible: config.showSuggested && suggested.count > 0
++        anchors.horizontalCenter: parent.horizontalCenter
++        y: window.height * 0.9
++        spacing: window.width * 0.07
++        Repeater {
++            model: suggested
++            delegate: Kirigami.Icon {
++                id: suggestion
++                required property string storageId
++                required property string iconName
++                width: window.width * 0.16
++                height: width
++                source: iconName
++                TapHandler {
++                    gesturePolicy: TapHandler.ReleaseWithinBounds
++                    onTapped: {
++                        MobileShell.ShellUtil.launchApp(suggestion.storageId);
++                        window.hide();
++                    }
++                }
++            }
++        }
++    }
++
++    // "Ustawienia ekranu Ostatnie"
++    Rectangle {
++        id: settingsPage
++        visible: false
++        anchors.fill: parent
++        color: "black"
++
++        // swallow taps so they do not reach the cards below
++        TapHandler { gesturePolicy: TapHandler.ReleaseWithinBounds }
++
++        Item {
++            id: back
++            x: window.width * 0.04
++            y: window.height * 0.075
++            width: window.width * 0.12
++            height: width
++            Kirigami.Icon {
++                anchors.centerIn: parent
++                width: parent.width * 0.55
++                height: width
++                source: "go-previous-symbolic"
++                color: "white"
++                isMask: true
++            }
++            TapHandler {
++                gesturePolicy: TapHandler.ReleaseWithinBounds
++                onTapped: settingsPage.visible = false
++            }
++        }
++
++        QQC2.Label {
++            anchors.left: back.right
++            anchors.leftMargin: window.width * 0.02
++            anchors.verticalCenter: back.verticalCenter
++            text: "Ustawienia ekranu Ostatnie"
++            color: "white"
++            font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.5
++            font.weight: Font.Bold
++        }
++
++        Rectangle {
++            x: window.width * 0.025
++            y: back.y + back.height + window.height * 0.02
++            width: window.width * 0.95
++            height: window.width * 0.135
++            radius: height / 2.2
++            color: "#1c1c1e"
++
++            QQC2.Label {
++                anchors.left: parent.left
++                anchors.leftMargin: window.width * 0.045
++                anchors.verticalCenter: parent.verticalCenter
++                text: "Wyświetl zalecane aplikacje"
++                color: "white"
++                font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.2
++            }
++
++            // One UI switch: blue track and white knob when on (the Plasma
++            // style barely shows on black); the whole row toggles it
++            Rectangle {
++                id: toggle
++                anchors.right: parent.right
++                anchors.rightMargin: window.width * 0.05
++                anchors.verticalCenter: parent.verticalCenter
++                width: window.width * 0.085
++                height: width * 0.56
++                radius: height / 2
++                color: config.showSuggested ? "#3e7bfa" : "#5a5a5e"
++                Behavior on color { ColorAnimation { duration: 150 } }
++
++                Rectangle {
++                    width: parent.height * 0.72
++                    height: width
++                    radius: width / 2
++                    anchors.verticalCenter: parent.verticalCenter
++                    x: config.showSuggested ? parent.width - width - (parent.height - height) / 2 : (parent.height - height) / 2
++                    color: "white"
++                    Behavior on x { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
++                }
++            }
++
++            TapHandler {
++                gesturePolicy: TapHandler.ReleaseWithinBounds
++                onTapped: config.showSuggested = !config.showSuggested
++            }
++        }
+     }
+ }
+diff --git a/components/mobileshell/shellutil.cpp b/components/mobileshell/shellutil.cpp
+index ffaa4ac5..bc7e3574 100644
+--- a/components/mobileshell/shellutil.cpp
++++ b/components/mobileshell/shellutil.cpp
+@@ -316,6 +316,7 @@ QVariantMap ShellUtil::appInfo(const QString &appId)
+     QVariantMap info;
+     info[QStringLiteral("name")] = service ? service->name() : appId;
+     info[QStringLiteral("icon")] = service && !service->icon().isEmpty() ? service->icon() : appId;
++    info[QStringLiteral("storageId")] = service ? service->storageId() : QString();
+     return info;
+ }
+ 
+diff --git a/components/mobileshell/shellutil.h b/components/mobileshell/shellutil.h
+index 63655450..d7374299 100644
+--- a/components/mobileshell/shellutil.h
++++ b/components/mobileshell/shellutil.h
+@@ -113,7 +113,8 @@ public:
+ 
+     /**
+      * Name and icon of the application behind a Wayland app-id, from its
+-     * .desktop file: {name, icon}.  Falls back to the app-id itself.
++     * .desktop file: {name, icon, storageId}.  Falls back to the app-id itself
++     * (storageId empty when there is no .desktop file).
+      */
+     Q_INVOKABLE QVariantMap appInfo(const QString &appId);
+ 
+diff --git a/components/wayfireipcplugin/wayfireipc.cpp b/components/wayfireipcplugin/wayfireipc.cpp
+index e2de6619..e6899eb0 100644
+--- a/components/wayfireipcplugin/wayfireipc.cpp
++++ b/components/wayfireipcplugin/wayfireipc.cpp
+@@ -3,6 +3,7 @@
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include <QDebug>
++#include <QFile>
+ #include <QFileInfo>
+ #include <QJsonArray>
+ 
+@@ -144,6 +145,23 @@ bool WayfireIPC::terminatePid(int pid)
+     return ::kill(pid, SIGTERM) == 0;
+ }
+ 
++QString WayfireIPC::thumbnailPath(int viewId) const
++{
++    return QStringLiteral("%1/podglad-%2.ppm").arg(QString::fromLocal8Bit(qgetenv("XDG_RUNTIME_DIR"))).arg(viewId);
++}
++
++void WayfireIPC::captureThumbnail(int viewId)
++{
++    QJsonObject dataObj;
++    dataObj["view-id"] = viewId;
++    dataObj["file"] = thumbnailPath(viewId);
++    dataObj["scale"] = 2;
++    QJsonObject msgObj;
++    msgObj["method"] = "podglad/capture";
++    msgObj["data"] = dataObj;
++    sendMessage(QJsonDocument(msgObj));
++}
++
+ void WayfireIPC::onReadData()
+ {
+     while (true) {
+@@ -193,6 +211,12 @@ void WayfireIPC::onReadData()
+             continue;
+         }
+ 
++        if (msg.object().contains("podglad")) {
++            // reply to podglad/capture
++            Q_EMIT thumbnailReady(msg.object().value("podglad").toInt(), msg.object().value("file").toString());
++            continue;
++        }
++
+         QString event = msg.object().value("event").toString();
+         QString appId = msg.object().value("view").toObject().value("app-id").toString();
+         int viewId = msg.object().value("view").toObject().value("id").toInt();
+@@ -230,6 +254,10 @@ void WayfireIPC::onReadData()
+             || event == QLatin1String("view-minimized") || event == QLatin1String("view-focused")) {
+             Q_EMIT viewsChanged();
+         }
++        if (event == QLatin1String("view-unmapped")) {
++            // thumbnails live in RAM (tmpfs)
++            QFile::remove(thumbnailPath(viewId));
++        }
+     }
+ }
+ 
+diff --git a/components/wayfireipcplugin/wayfireipc.h b/components/wayfireipcplugin/wayfireipc.h
+index ed14a585..a3a6d0fa 100644
+--- a/components/wayfireipcplugin/wayfireipc.h
++++ b/components/wayfireipcplugin/wayfireipc.h
+@@ -37,12 +37,17 @@ public:
+     Q_INVOKABLE void focusView(int viewId);
+     Q_INVOKABLE void closeView(int viewId);
+     Q_INVOKABLE bool terminatePid(int pid);
++    // thumbnail of a window through the podglad wayfire plugin, answer in
++    // thumbnailReady; the file is removed when the window goes away
++    Q_INVOKABLE QString thumbnailPath(int viewId) const;
++    Q_INVOKABLE void captureThumbnail(int viewId);
+ 
+ Q_SIGNALS:
+     // toplevel app windows, newest first: {id, pid, appId, title, minimized}
+     void viewsListed(const QVariantList &views);
+     // an app window appeared, went away or changed state
+     void viewsChanged();
++    void thumbnailReady(int viewId, const QString &path);
+     void viewMapped(QString appId);
+     void pwrKeyStateChanged(int state);
+     void idleTimout();
+-- 
+2.47.3
+

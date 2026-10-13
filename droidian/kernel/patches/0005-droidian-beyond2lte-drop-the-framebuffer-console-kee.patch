@@ -1,0 +1,42 @@
+From f9199804cf6cfd1ba78f0472da2b3eaf8421db69 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 13:31:42 +0200
+Subject: [PATCH 05/29] droidian: beyond2lte: drop the framebuffer console,
+ keep SCHED_TUNE
+
+The first Droidian kernel hung before the initramfs: no buzz from the
+early debug script and no reboot from its panic.  Two of the options that
+differ from the LineageOS configuration can stop an Exynos 9820 kernel that
+early: the framebuffer console binding to the Samsung DECON driver, which
+this fragment turned on, and SCHED_TUNE, which the Samsung EMS scheduler is
+written against and the Halium fragment turns off.  Go back to the LineageOS
+values for both.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ droidian/beyond2lte.config | 9 ++++++---
+ 1 file changed, 6 insertions(+), 3 deletions(-)
+
+diff --git a/droidian/beyond2lte.config b/droidian/beyond2lte.config
+index d6ca05b79..340b72b75 100644
+--- a/droidian/beyond2lte.config
++++ b/droidian/beyond2lte.config
+@@ -4,9 +4,12 @@
+ # userspace (LOD_SEC, UH, SEC_RESTRICT_ROOTING).  The common fragments bring
+ # USER_NS, SYSVIPC, FHANDLE and VT.  What is left is device specific.
+ 
+-# Console on the panel for the Droidian initramfs and unl0kr
+-CONFIG_VT_CONSOLE=y
+-CONFIG_FRAMEBUFFER_CONSOLE=y
++# The first Droidian kernel hung before the initramfs.  Stay with what the
++# LineageOS kernel boots with: no framebuffer console on the Samsung DECON
++# driver, and SCHED_TUNE kept for the Samsung EMS scheduler, which the
++# Halium fragment turns off.
++# CONFIG_FRAMEBUFFER_CONSOLE is not set
++CONFIG_SCHED_TUNE=y
+ 
+ # Bluetooth profiles used by BlueZ (as in the UBports port)
+ CONFIG_BT_RFCOMM_TTY=y
+-- 
+2.47.3
+

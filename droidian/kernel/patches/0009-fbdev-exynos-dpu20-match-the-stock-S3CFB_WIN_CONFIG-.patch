@@ -1,0 +1,40 @@
+From c841f8f6d37faa18699e92b87b6758293ace06c1 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 29 Sep 2026 08:10:23 +0200
+Subject: [PATCH 09/29] fbdev: exynos: dpu20: match the stock S3CFB_WIN_CONFIG
+ layout
+
+LineageOS added an fps member to decon_win_config_data and its _old
+variant.  The stock Samsung vendor hwcomposer (G975FXXSGHWC1) still
+sends the original 1440 byte structure, so the ioctl number it uses
+(0x45a046d1) matches neither case and the display never gets a frame:
+"decon_ioctl: invalid command".  The member is not read anywhere in the
+driver; drop it so both layouts match the stock ABI again.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/video/fbdev/exynos/dpu20/decon.h | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/drivers/video/fbdev/exynos/dpu20/decon.h b/drivers/video/fbdev/exynos/dpu20/decon.h
+index 39ba19fab..5ec2168e3 100644
+--- a/drivers/video/fbdev/exynos/dpu20/decon.h
++++ b/drivers/video/fbdev/exynos/dpu20/decon.h
+@@ -549,14 +549,12 @@ struct decon_win_config_extra {
+ struct decon_win_config_data_old {
+ 	int	retire_fence;
+ 	int	fd_odma;
+-	u32	fps;
+ 	struct decon_win_config config[MAX_DECON_WIN + 1];
+ };
+ 
+ struct decon_win_config_data {
+ 	int	retire_fence;
+ 	int	fd_odma;
+-	u32	fps;
+ 	struct decon_win_config config[MAX_DECON_WIN + 1];
+ 	struct decon_win_config_extra extra;
+ };
+-- 
+2.47.3
+

@@ -1,0 +1,236 @@
+From dae7cf48f6eeb15d5af87f4d4c123e15dd97cf74 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 06:21:39 +0200
+Subject: [PATCH 14/29] screenbrightness: go through PowerDevil as in Plasma
+ 6.7
+
+The Galaxy S10+ panel has a backlight device that PowerDevil drives, so use
+the BrightnessControl D-Bus interface instead of libdroid: automatic
+brightness sets the brightness through PowerDevil too, and the slider now
+shows what it set.  Kept a QML singleton for the existing users.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../screenbrightnessplugin/CMakeLists.txt     |   7 +-
+ .../screenbrightnessutil.cpp                  | 102 +++++++++++++-----
+ .../screenbrightnessutil.h                    |  20 ++--
+ 3 files changed, 90 insertions(+), 39 deletions(-)
+
+diff --git a/components/screenbrightnessplugin/CMakeLists.txt b/components/screenbrightnessplugin/CMakeLists.txt
+index e57ceece..1f2096ed 100644
+--- a/components/screenbrightnessplugin/CMakeLists.txt
++++ b/components/screenbrightnessplugin/CMakeLists.txt
+@@ -3,15 +3,13 @@
+ 
+ ecm_add_qml_module(screenbrightnessplugin URI org.kde.plasma.private.mobileshell.screenbrightnessplugin GENERATE_PLUGIN_SOURCE)
+ 
++qt_add_dbus_interfaces(DBUS_SRCS dbus/org.kde.Solid.PowerManagement.Actions.BrightnessControl.xml)
++
+ target_sources(screenbrightnessplugin PRIVATE
+     screenbrightnessutil.cpp
+     ${DBUS_SRCS}
+ )
+ 
+-pkg_check_modules(PKG_LIBDROID_0 REQUIRED libdroid-0)
+-
+-include_directories(${PKG_LIBDROID_0_INCLUDE_DIRS})
+-
+ target_link_libraries(screenbrightnessplugin PRIVATE
+     Qt::Qml
+     Qt::DBus
+@@ -22,7 +20,6 @@ target_link_libraries(screenbrightnessplugin PRIVATE
+     KF6::ConfigGui
+     KF6::I18n
+     KF6::Screen
+-    ${PKG_LIBDROID_0_LIBRARIES}
+ )
+ 
+ ecm_finalize_qml_module(screenbrightnessplugin)
+diff --git a/components/screenbrightnessplugin/screenbrightnessutil.cpp b/components/screenbrightnessplugin/screenbrightnessutil.cpp
+index 2f91559b..98fb2b7d 100644
+--- a/components/screenbrightnessplugin/screenbrightnessutil.cpp
++++ b/components/screenbrightnessplugin/screenbrightnessutil.cpp
+@@ -1,29 +1,49 @@
+ // SPDX-FileCopyrightText: 2024 Devin Lin <devin@kde.org>
+-// SPDX-FileCopyrightText: 2024 Deepak Kumar <notwho53@gmail.com>
+ // SPDX-License-Identifier: GPL-2.0-or-later
+ 
+ #include "screenbrightnessutil.h"
+-#include <QDebug>
++
++#include <QDBusPendingCallWatcher>
++#include <QDBusPendingReply>
+ 
+ ScreenBrightnessUtil::ScreenBrightnessUtil(QObject *parent)
+     : QObject{parent}
+ {
+-    GError *err = nullptr;
+-    m_droidLeds = droid_leds_new(&err);
+-    
+-    if (!err && droid_leds_is_kind_supported(m_droidLeds, DROID_LEDS_KIND_BACKLIGHT)) {
+-		setBrightness(200);
++    m_brightnessInterface =
++        new org::kde::Solid::PowerManagement::Actions::BrightnessControl(QStringLiteral("org.kde.Solid.PowerManagement"),
++                                                                         QStringLiteral("/org/kde/Solid/PowerManagement/Actions/BrightnessControl"),
++                                                                         QDBusConnection::sessionBus(),
++                                                                         this);
++
++    connect(m_brightnessInterface,
++            &org::kde::Solid::PowerManagement::Actions::BrightnessControl::brightnessChanged,
++            this,
++            &ScreenBrightnessUtil::fetchBrightness);
++    connect(m_brightnessInterface,
++            &org::kde::Solid::PowerManagement::Actions::BrightnessControl::brightnessMaxChanged,
++            this,
++            &ScreenBrightnessUtil::fetchMaxBrightness);
++
++    fetchBrightness();
++    fetchMaxBrightness();
++
++    // Watch the bus name of the service, not the interface name: the shell
++    // often starts before PowerDevil, and a name that never appears on the bus
++    // left the brightness slider hidden for the whole session.
++    m_brightnessInterfaceWatcher = new QDBusServiceWatcher(QStringLiteral("org.kde.Solid.PowerManagement"),
++                                                           QDBusConnection::sessionBus(),
++                                                           QDBusServiceWatcher::WatchForOwnerChange,
++                                                           this);
++
++    connect(m_brightnessInterfaceWatcher, &QDBusServiceWatcher::serviceRegistered, this, [this]() -> void {
++        fetchBrightness();
++        fetchMaxBrightness();
+         Q_EMIT brightnessAvailableChanged();
+-    } else {
+-        qWarning() << "Backlight not supported by libdroid";
+-        g_clear_error (&err);
+-        g_clear_object (&m_droidLeds);
+-    }
+-}
++    });
+ 
+-ScreenBrightnessUtil::~ScreenBrightnessUtil()
+-{
+-    g_clear_object (&m_droidLeds);
++    connect(m_brightnessInterfaceWatcher, &QDBusServiceWatcher::serviceUnregistered, this, [this]() -> void {
++        Q_EMIT brightnessAvailableChanged();
++    });
+ }
+ 
+ int ScreenBrightnessUtil::brightness() const
+@@ -33,16 +53,7 @@ int ScreenBrightnessUtil::brightness() const
+ 
+ void ScreenBrightnessUtil::setBrightness(int brightness)
+ {
+-    if (!m_droidLeds) return;
+-
+-    brightness = qBound(0, brightness, m_maxBrightness);
+-    
+-    if (droid_leds_set_backlight(m_droidLeds, brightness, TRUE)) {
+-        m_brightness = brightness;
+-        Q_EMIT brightnessChanged();
+-    } else {
+-        qWarning() << "Failed to set backlight brightness";
+-    }
++    m_brightnessInterface->setBrightness(brightness);
+ }
+ 
+ int ScreenBrightnessUtil::maxBrightness() const
+@@ -52,5 +63,42 @@ int ScreenBrightnessUtil::maxBrightness() const
+ 
+ bool ScreenBrightnessUtil::brightnessAvailable() const
+ {
+-    return m_droidLeds != nullptr;
++    // isValid() is decided when the interface object is created, which is
++    // before PowerDevil is up; a known maximum means the service answered.
++    return m_maxBrightness > 0;
++}
++
++void ScreenBrightnessUtil::fetchBrightness()
++{
++    QDBusPendingReply<int> reply = m_brightnessInterface->brightness();
++    QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(reply, this);
++
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *watcher) {
++        QDBusPendingReply<int> reply = *watcher;
++        if (reply.isError()) {
++            qWarning() << "Getting brightness failed:" << reply.error().name() << reply.error().message();
++        } else if (m_brightness != reply.value()) {
++            m_brightness = reply.value();
++            Q_EMIT brightnessChanged();
++        }
++        watcher->deleteLater();
++    });
++}
++
++void ScreenBrightnessUtil::fetchMaxBrightness()
++{
++    QDBusPendingReply<int> reply = m_brightnessInterface->brightnessMax();
++    QDBusPendingCallWatcher *watcher = new QDBusPendingCallWatcher(reply, this);
++
++    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *watcher) {
++        QDBusPendingReply<int> reply = *watcher;
++        if (reply.isError()) {
++            qWarning() << "Getting max brightness failed:" << reply.error().name() << reply.error().message();
++        } else if (m_maxBrightness != reply.value()) {
++            m_maxBrightness = reply.value();
++            Q_EMIT maxBrightnessChanged();
++            Q_EMIT brightnessAvailableChanged();
++        }
++        watcher->deleteLater();
++    });
+ }
+diff --git a/components/screenbrightnessplugin/screenbrightnessutil.h b/components/screenbrightnessplugin/screenbrightnessutil.h
+index da7cfe9e..5fe4d75e 100644
+--- a/components/screenbrightnessplugin/screenbrightnessutil.h
++++ b/components/screenbrightnessplugin/screenbrightnessutil.h
+@@ -3,9 +3,11 @@
+ 
+ #pragma once
+ 
++#include <QDBusServiceWatcher>
+ #include <QObject>
+ #include <qqmlregistration.h>
+-#include <libdroid/leds.h>
++
++#include "brightnesscontrolinterface.h"
+ 
+ /**
+  * Utility class that provides useful functions related to screen brightness.
+@@ -15,16 +17,14 @@
+ class ScreenBrightnessUtil : public QObject
+ {
+     Q_OBJECT
+-    QML_SINGLETON
+-    QML_ELEMENT
+-  
+     Q_PROPERTY(int brightness READ brightness WRITE setBrightness NOTIFY brightnessChanged);
+     Q_PROPERTY(int maxBrightness READ maxBrightness NOTIFY maxBrightnessChanged)
+     Q_PROPERTY(bool brightnessAvailable READ brightnessAvailable NOTIFY brightnessAvailableChanged)
++    QML_ELEMENT
++    QML_SINGLETON
+ 
+ public:
+     ScreenBrightnessUtil(QObject *parent = nullptr);
+-    ~ScreenBrightnessUtil();
+ 
+     int brightness() const;
+     void setBrightness(int brightness);
+@@ -38,8 +38,14 @@ Q_SIGNALS:
+     void maxBrightnessChanged();
+     void brightnessAvailableChanged();
+ 
++private Q_SLOTS:
++    void fetchBrightness();
++    void fetchMaxBrightness();
++
+ private:
+-    DroidLeds *m_droidLeds;
+     int m_brightness{0};
+-    int m_maxBrightness{255};
++    int m_maxBrightness{0};
++
++    org::kde::Solid::PowerManagement::Actions::BrightnessControl *m_brightnessInterface;
++    QDBusServiceWatcher *m_brightnessInterfaceWatcher;
+ };
+-- 
+2.47.3
+

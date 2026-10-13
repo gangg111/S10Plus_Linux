@@ -97,15 +97,17 @@ czyta tylko archiwa `ustar` z dopisaną sumą MD5; powyższe pliki są spakowane
 
 ### Budowanie ze źródeł
 
-Wszystko tu jest odtwarzalne; nic nie jest zamkniętym blobem, którego nie da się zbudować.
-
+- **Droidian**: w [`droidian/`](droidian/README.pl.md) jest każda zmiana portu jako seria
+  łatek na przypięte commity upstream (jądro, powłoka, ustawienia, aparat, adaptacja
+  urządzenia, przepis obrazu) oraz skrypty, które budują paczki, obraz i dwa pliki dla Odina,
+  na Linuksie albo w WSL2. Nałożenie serii daje te same drzewa źródeł, z których zbudowano
+  działający telefon. Jedyny plik, który dostarczasz sam, to firmware procesora dźwięku
+  Samsunga.
 - **U-Boot**: upstreamowy U-Boot plus `patches-uboot/` (patrz `patches-uboot/README.md`),
   pakowany do Odina przez `scripts/pack-uboot-odin.sh`.
 - **rootfs pmOS**: pakowany do Odina przez `scripts/pack-pmos-odin.sh`.
-- **Jądro i seria łatek na mainline**: `patches/`, `scripts/`, `SOURCES.md`; patrz
+- **Seria jądra mainline** (droga pmOS): `patches/`, `scripts/`, `SOURCES.md`; patrz
   `docs/mainline-submission.md` po notatki deweloperskie i do wysyłki na listę.
-- **Adaptacja urządzenia pod Droidiana** (paczka `.deb` ze stylem One UI, modemem, dźwiękiem,
-  czujnikami, demonem głębokiego snu i resztą): `tools/phone/adaptacja/`.
 
 ### Autorstwo i licencja
 

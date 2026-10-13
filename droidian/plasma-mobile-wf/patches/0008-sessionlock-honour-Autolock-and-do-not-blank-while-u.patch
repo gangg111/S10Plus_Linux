@@ -1,0 +1,128 @@
+From 3d65685e8f426f3cebbb36a585df8aeaad33d1b7 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Tue, 29 Sep 2026 22:38:55 +0200
+Subject: [PATCH 08/29] sessionlock: honour Autolock and do not blank while
+ unlocked
+
+The session locked itself whenever the lock manager became active, and the
+lock surface preloaded after unlocking kept its 15 s timer running, which
+turned the display off in an unlocked session.  Lock only with Autolock on
+(kscreenlockerrc [Daemon]) and let the timer act only while locked.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../qml/wayfiretweaks/WayfireTweaks.qml       | 25 +++++++++++--------
+ components/sessionlockplugin/qml/Main.qml     |  5 ++++
+ components/sessionlockplugin/sessionlock.cpp  |  9 ++++++-
+ 3 files changed, 28 insertions(+), 11 deletions(-)
+
+diff --git a/components/mobileshell/qml/wayfiretweaks/WayfireTweaks.qml b/components/mobileshell/qml/wayfiretweaks/WayfireTweaks.qml
+index fed9a40e..58598009 100644
+--- a/components/mobileshell/qml/wayfiretweaks/WayfireTweaks.qml
++++ b/components/mobileshell/qml/wayfiretweaks/WayfireTweaks.qml
+@@ -11,6 +11,7 @@ import org.kde.plasma.private.mobileshell.wlrdpmsplugin as DpmsPlugin
+ import org.kde.plasma.private.mobileshell.wayfireipcplugin as WayfireIpcPlugin
+ import org.kde.plasma.private.mobileshell.screenbrightnessplugin as ScreenBrightness
+ import org.kde.telephony
++import org.kde.plasma.private.mobileshell as MobileShell
+ 
+ Item {
+     id: root
+@@ -19,14 +20,22 @@ Item {
+     property var lastBrightness: 150
+     property bool callActive: ActiveCallModel.active
+ 
++    // lock the session unless Autolock=false in kscreenlockerrc; the screen
++    // still turns off on the power key and when idle either way
++    function lockIfEnabled() {
++        if (!MobileShell.ShellUtil.autolockEnabled()) {
++            return;
++        }
++        lockSplash.lockText = "Locking..."
++        lockSplash.visible = true
++        SessionLockPlugin.SessionLock.requestLock();
++    }
++
+     Component.onCompleted: {
+         // initialize dpms plugin
+         DpmsPlugin.WlrDpmsManagerV1.dpmsInit();
+ 
+-        // lock the screen
+-        lockSplash.lockText = "Locking..."
+-        lockSplash.visible = true
+-        SessionLockPlugin.SessionLock.requestLock();
++        lockIfEnabled();
+     }
+ 
+     Connections {
+@@ -67,11 +76,9 @@ Item {
+         function onPwrKeyStateChanged(state: var) {
+             if (!state) {
+                 if(DpmsPlugin.WlrDpmsManagerV1.pwrOn){
+-                    lockSplash.lockText = "Locking..."
+-                    lockSplash.visible = true
+                     if(ScreenBrightness.ScreenBrightnessUtil.brightness > 0)
+                         lastBrightness = ScreenBrightness.ScreenBrightnessUtil.brightness
+-                    SessionLockPlugin.SessionLock.requestLock();
++                    lockIfEnabled();
+                     dimIn.stop();
+                     dimOut.start();
+                 } else {
+@@ -84,11 +91,9 @@ Item {
+ 
+         function onIdleTimout() {
+             if(DpmsPlugin.WlrDpmsManagerV1.pwrOn){
+-                lockSplash.lockText = "Locking..."
+-                lockSplash.visible = true
+                 if(ScreenBrightness.ScreenBrightnessUtil.brightness > 0)
+                         lastBrightness = ScreenBrightness.ScreenBrightnessUtil.brightness
+-                SessionLockPlugin.SessionLock.requestLock();
++                lockIfEnabled();
+                 dimIn.stop();
+                 dimOut.start();
+             }
+diff --git a/components/sessionlockplugin/qml/Main.qml b/components/sessionlockplugin/qml/Main.qml
+index ad992fcb..372b4346 100644
+--- a/components/sessionlockplugin/qml/Main.qml
++++ b/components/sessionlockplugin/qml/Main.qml
+@@ -122,6 +122,11 @@ Item {
+         running: false
+         interval: 15000
+         onTriggered: {
++            // the surface is also preloaded while unlocked; only a shown lock
++            // screen may turn the display off
++            if (!SessionLock.locked) {
++                return;
++            }
+             dimIn.stop();
+             dimOut.start();
+         }
+diff --git a/components/sessionlockplugin/sessionlock.cpp b/components/sessionlockplugin/sessionlock.cpp
+index e88c2e77..559cd018 100644
+--- a/components/sessionlockplugin/sessionlock.cpp
++++ b/components/sessionlockplugin/sessionlock.cpp
+@@ -6,6 +6,9 @@
+ #include <QQmlEngine>
+ #include <QTimer>
+ 
++#include <KConfigGroup>
++#include <KSharedConfig>
++
+ #include <sessionlock.h>
+ 
+ static int conversation(int num_msg, const struct pam_message **msg, struct pam_response **resp, void *data)
+@@ -157,5 +160,9 @@ void SessionLock::screenAdded(QScreen *screen)
+ 
+ void SessionLock::sessionlockMngrActivated()
+ {
+-    requestLock();
++    // lock at session start only when Autolock is on (kscreenlockerrc)
++    const KConfigGroup daemon(KSharedConfig::openConfig(QStringLiteral("kscreenlockerrc")), QStringLiteral("Daemon"));
++    if (daemon.readEntry("Autolock", true)) {
++        requestLock();
++    }
+ }
+\ No newline at end of file
+-- 
+2.47.3
+

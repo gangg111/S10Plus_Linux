@@ -1,0 +1,97 @@
+From 87325d4efa302b3ffccae5a8604533c1c4e78a99 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:31:28 +0200
+Subject: [PATCH 27/29] halcyon: uninstall an app from its long-press menu
+
+Add "Uninstall" to the app menu, with a confirmation menu.  The work is
+done by /usr/lib/s10plus/app-uninstall from the device adaptation, which
+removes APT packages through pkexec and the user's local .desktop entries.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../halcyon/qml/GridAppDelegate.qml           | 51 ++++++++++++++++++-
+ 1 file changed, 49 insertions(+), 2 deletions(-)
+
+diff --git a/containments/homescreens/halcyon/qml/GridAppDelegate.qml b/containments/homescreens/halcyon/qml/GridAppDelegate.qml
+index ceefbe36..32868131 100644
+--- a/containments/homescreens/halcyon/qml/GridAppDelegate.qml
++++ b/containments/homescreens/halcyon/qml/GridAppDelegate.qml
+@@ -11,6 +11,7 @@ import QtQuick.Controls as Controls
+ 
+ import org.kde.plasma.core as PlasmaCore
+ import org.kde.plasma.components 3.0 as PlasmaComponents
++import org.kde.plasma.plasma5support 2.0 as P5Support
+ import org.kde.kquickcontrolsaddons
+ import org.kde.plasma.plasmoid
+ 
+@@ -52,6 +53,49 @@ MouseArea {
+         }
+     }
+ 
++    // Uninstall backend: the helper handles APT packages (through pkexec) and
++    // the user's local .desktop files.
++    P5Support.DataSource {
++        id: uninstallRunner
++        engine: "executable"
++        connectedSources: []
++        onNewData: function(source, data) {
++            disconnectSource(source);
++        }
++        function uninstall(storageId) {
++            var id = String(storageId).replace(/'/g, "");
++            connectSource("/usr/lib/s10plus/app-uninstall '" + id + "'");
++        }
++    }
++
++    // Confirmation before uninstalling: a second menu rather than a dialog or
++    // overlay inside the GridView delegate.  Closing the menu cancels.
++    function openUninstallConfirm() {
++        confirmLoader.active = true;
++        confirmLoader.item.open();
++    }
++
++    Loader {
++        id: confirmLoader
++        active: false
++
++        sourceComponent: PlasmaComponents.Menu {
++            title: i18n("Uninstall %1?", delegate.application ? delegate.application.name : "")
++            closePolicy: PlasmaComponents.Menu.CloseOnReleaseOutside | PlasmaComponents.Menu.CloseOnEscape
++
++            PlasmaComponents.MenuItem {
++                icon.name: "delete"
++                text: i18n("Uninstall")
++                onClicked: uninstallRunner.uninstall(delegate.application.storageId)
++            }
++            PlasmaComponents.MenuItem {
++                icon.name: "dialog-cancel"
++                text: i18n("Cancel")
++            }
++            onClosed: confirmLoader.active = false
++        }
++    }
++
+     Loader {
+         id: dialogLoader
+         active: false
+@@ -67,6 +111,11 @@ MouseArea {
+                     Plasmoid.pinnedModel.addApp(application.storageId, 0);
+                 }
+             }
++            PlasmaComponents.MenuItem {
++                icon.name: "delete"
++                text: i18n("Uninstall")
++                onClicked: delegate.openUninstallConfirm()
++            }
+             onClosed: dialogLoader.active = false
+         }
+     }
+@@ -199,5 +248,3 @@ MouseArea {
+         }
+     }
+ }
+-
+-
+-- 
+2.47.3
+

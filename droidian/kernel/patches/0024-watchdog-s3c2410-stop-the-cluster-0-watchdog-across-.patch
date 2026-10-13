@@ -1,0 +1,99 @@
+From 88975b40175688e1f08191cbefcb2ce46904c32a Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:27:05 +0200
+Subject: [PATCH 24/29] watchdog: s3c2410: stop the cluster 0 watchdog across
+ system suspend
+
+The syscore suspend hook saved WTCON/WTDAT of the cluster 0 watchdog but
+never stopped the timer.  With the keepalive frozen in suspend-to-RAM the
+counter ran out and the PMU raised CLUSTER0_WDTRESET (RST_STAT bit 24), so
+the phone rebooted instead of waking up.
+
+Mask the reset and stop the timer in syscore suspend, and do the same from
+a PM notifier at PM_SUSPEND_PREPARE: a slow device suspend (bcmdhd over
+PCIe) could otherwise let the watchdog expire before syscore ran.  It is
+re-armed at PM_POST_SUSPEND; syscore resume restores the saved registers.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/watchdog/s3c2410_wdt.c | 43 ++++++++++++++++++++++++++++++++++
+ 1 file changed, 43 insertions(+)
+
+diff --git a/drivers/watchdog/s3c2410_wdt.c b/drivers/watchdog/s3c2410_wdt.c
+index 0c885c52d..94bec3ad4 100644
+--- a/drivers/watchdog/s3c2410_wdt.c
++++ b/drivers/watchdog/s3c2410_wdt.c
+@@ -38,6 +38,7 @@
+ #include <linux/delay.h>
+ #include <linux/rtc.h>
+ #include <linux/syscore_ops.h>
++#include <linux/suspend.h>
+ #include <linux/soc/samsung/exynos-soc.h>
+ #include <soc/samsung/exynos-pmu.h>
+ 
+@@ -1169,6 +1170,15 @@ static int s3c2410wdt_syscore_suspend(void)
+ 	wdt->wtcon_save = readl(wdt->reg_base + S3C2410_WTCON);
+ 	wdt->wtdat_save = readl(wdt->reg_base + S3C2410_WTDAT);
+ 
++	/*
++	 * The stock code saved the cluster 0 watchdog state but never stopped
++	 * the timer.  In suspend-to-RAM the keepalive is frozen, so the counter
++	 * ran out and the PMU raised CLUSTER0_WDTRESET (RST_STAT bit 24).  Mask
++	 * the reset and stop the timer; resume restores wtcon_save/wtdat_save.
++	 */
++	if (wdt->drv_data->auto_disable_func)
++		wdt->drv_data->auto_disable_func(wdt, true);
++	__s3c2410wdt_stop(wdt);
+ 	return 0;
+ }
+ 
+@@ -1220,6 +1230,38 @@ static struct syscore_ops s3c2410wdt_syscore_ops = {
+ 	.resume		= s3c2410wdt_syscore_resume,
+ };
+ 
++/*
++ * Keep the cluster 0 watchdog off for the whole system suspend.  A slow
++ * device suspend (Wi-Fi bcmdhd over PCIe) let the frozen keepalive expire,
++ * and the PMU raised CLUSTER0_WDTRESET before syscore_suspend was reached.
++ */
++static int s3c2410wdt_pm_notifier(struct notifier_block *nb,
++				  unsigned long event, void *dummy)
++{
++	struct s3c2410_wdt *wdt = s3c_wdt[LITTLE_CLUSTER];
++
++	if (!wdt)
++		return NOTIFY_DONE;
++
++	switch (event) {
++	case PM_SUSPEND_PREPARE:
++		if (wdt->drv_data->auto_disable_func)
++			wdt->drv_data->auto_disable_func(wdt, true);
++		s3c2410wdt_stop(&wdt->wdt_device);
++		break;
++	case PM_POST_SUSPEND:
++		if (wdt->drv_data->auto_disable_func)
++			wdt->drv_data->auto_disable_func(wdt, false);
++		s3c2410wdt_start(&wdt->wdt_device);
++		break;
++	}
++	return NOTIFY_DONE;
++}
++
++static struct notifier_block s3c2410wdt_pm_nb = {
++	.notifier_call = s3c2410wdt_pm_notifier,
++};
++
+ static int s3c2410wdt_probe(struct platform_device *pdev)
+ {
+ 	struct device *dev = &pdev->dev;
+@@ -1430,6 +1472,7 @@ static int s3c2410wdt_probe(struct platform_device *pdev)
+ 	wtcon = readl(wdt->reg_base + S3C2410_WTCON);
+ 	if (cluster_index == LITTLE_CLUSTER) {
+ 		register_syscore_ops(&s3c2410wdt_syscore_ops);
++		register_pm_notifier(&s3c2410wdt_pm_nb);
+ #ifdef CONFIG_DEBUG_SNAPSHOT_WATCHDOG_RESET
+ 	/* register panic handler for watchdog reset */
+ 		wdt_block.nb_panic_block.notifier_call = s3c2410wdt_panic_handler;
+-- 
+2.47.3
+

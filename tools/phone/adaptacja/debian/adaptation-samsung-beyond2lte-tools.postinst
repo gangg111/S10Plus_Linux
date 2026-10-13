@@ -1,0 +1,21 @@
+#!/bin/sh
+# Up to version 15 FormDelegateBackground.qml of FormCard was replaced too.
+# kirigami-addons 1.14 rounds the pressed highlight with the card by itself, so
+# the file is no longer ours: dpkg has already removed our copy, and the
+# diversion is dropped here, which moves the original back from *.distrib.
+set -e
+
+PKG=adaptation-samsung-beyond2lte-tools
+RETIRED=/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormDelegateBackground.qml
+
+if [ "$1" = configure ]; then
+	for f in $RETIRED; do
+		if [ "$(dpkg-divert --listpackage "$f")" = "$PKG" ]; then
+			dpkg-divert --package "$PKG" --rename --remove "$f"
+		fi
+	done
+fi
+
+#DEBHELPER#
+
+exit 0

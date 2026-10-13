@@ -1,0 +1,481 @@
+From 6e6c201e1c9f15d61957344a9b3c9cae4a42bb1e Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 06:05:22 +0200
+Subject: [PATCH 02/29] droidian: add the packaging for the Galaxy S10+
+ (beyond2lte)
+
+Debian packaging after the Droidian porting guide, with the boot image
+values read from the stock boot.img of the phone: header version 1, base
+0x10000000, kernel at +0x8000, tags at +0x100, 2048 byte pages.  The
+device tree comes from the dtb and dtbo partitions, so the build target
+is a plain Image.
+
+Common fragments from droidian-devices/common_fragments, branch
+4.14-android, commit 438e885f38db.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/kernel-info.mk                      | 255 +++++++++++++++++++++
+ debian/rules                               |   6 +
+ debian/source/format                       |   1 +
+ droidian/beyond2lte.config                 |  15 ++
+ droidian/common_fragments/container.config |  34 +++
+ droidian/common_fragments/debug.config     |   6 +
+ droidian/common_fragments/droidian.config  |  29 +++
+ droidian/common_fragments/halium.config    |  49 ++++
+ 8 files changed, 395 insertions(+)
+ create mode 100644 debian/kernel-info.mk
+ create mode 100755 debian/rules
+ create mode 100644 debian/source/format
+ create mode 100644 droidian/beyond2lte.config
+ create mode 100644 droidian/common_fragments/container.config
+ create mode 100644 droidian/common_fragments/debug.config
+ create mode 100644 droidian/common_fragments/droidian.config
+ create mode 100644 droidian/common_fragments/halium.config
+
+diff --git a/debian/kernel-info.mk b/debian/kernel-info.mk
+new file mode 100644
+index 000000000..9ec7f7434
+--- /dev/null
++++ b/debian/kernel-info.mk
+@@ -0,0 +1,255 @@
++########################################################################
++# Kernel settings
++########################################################################
++
++# Kernel variant. This is currently used only on the Source package name.
++# Use 'android' for Android kernels ("downstream") or 'mainline' for upstream
++# kernels.
++VARIANT = android
++
++# Kernel base version
++KERNEL_BASE_VERSION = 4.14.356
++
++# The kernel cmdline to use
++KERNEL_BOOTIMAGE_CMDLINE = androidboot.selinux=permissive loop.max_part=7 console=tty0 droidian.lvm.prefer
++
++# Slug for the device vendor. This is going to be used in the KERNELRELEASE
++# and package names.
++DEVICE_VENDOR = samsung
++
++# Slug for the device model. Like above.
++DEVICE_MODEL = beyond2lte
++
++# Slug for the device platform. If unsure, keep this commented.
++# DEVICE_PLATFORM = platform
++
++# Marketing-friendly full-name. This will be used inside package descriptions
++DEVICE_FULL_NAME = Samsung Galaxy S10+ (Exynos)
++
++# Set to 1 if your device has an init_boot partition.
++DEVICE_HAS_INIT_BOOT = 0
++
++# Whether to use configuration fragments to augment the kernel configuration.
++# If unsure, keep this to 0.
++KERNEL_CONFIG_USE_FRAGMENTS = 1
++
++# Enable kernel config device extra fragments
++# KERNEL_CONFIG_EXTRA_FRAGMENTS = container.config debug.config other.config
++
++# Whether to use diffconfig to generate the device-specific configuration.
++# If you enable this, you should set KERNEL_CONFIG_USE_FRAGMENTS to 1.
++# If unsure, keep this to 0.
++KERNEL_CONFIG_USE_DIFFCONFIG = 0
++
++# The diffconfig to apply. Only used when KERNEL_CONFIG_USE_DIFFCONFIG is
++# enabled.
++# KERNEL_PRODUCT_DIFFCONFIG = my_diffconfig
++
++# Defconfig to use
++KERNEL_DEFCONFIG = exynos9820-beyond2lte_defconfig
++
++# Whether to include DTBs with the image. Use 0 (no) or 1.
++# GKI devices should set this to 0
++KERNEL_IMAGE_WITH_DTB = 0
++
++# Path to the DTB
++# If you leave this undefined, an attempt to find it automatically
++# will be made.
++# KERNEL_IMAGE_DTB = arch/arm64/boot/dts/qcom/my_dtb.dtb
++
++# Whether to include a DTB Overlay. Use 0 (no) or 1.
++# GKI devices should set this to 0
++KERNEL_IMAGE_WITH_DTB_OVERLAY = 0
++
++# Path to the DTB overlay.
++# If you leave this undefined, an attempt to find it automatically
++# will be made.
++# KERNEL_IMAGE_DTB_OVERLAY = arch/arm64/boot/dts/qcom/my_overlay.dtbo
++
++# Whether to include the DTB Overlay into the kernel image
++# Use 0 (no, default) or 1.
++# dtbo.img will always be shipped in the linux-bootimage- package.
++# GKI devices should set this to 0
++KERNEL_IMAGE_WITH_DTB_OVERLAY_IN_KERNEL = 0
++
++# Path to a specifc configuration file for mkdtboimg.
++# The default is to leave it undefined.
++# KERNEL_IMAGE_DTB_OVERLAY_CONFIGURATION = debian/custom_dtbo_config.cfg
++
++# Path to the DTB directory. Only define if KERNEL_IMAGE_DTB_OVERLAY_CONFIGURATION
++# is defined too.
++# KERNEL_IMAGE_DTB_OVERLAY_DTB_DIRECTORY = arch/arm64/boot/dts/qcom
++
++# Path to the prebuilt DT image. should only be defined on header version 1 and below. 
++# mostly used on samsung devices. default is to leave it undefined
++# KERNEL_PREBUILT_DT = debian/dt.img
++
++# Various other settings that will be passed straight to mkbootimg
++# GKI devices can leave BASE_OFFSET, KERNEL_OFFSET, INITRAMFS_OFFSET, SECOND_OFFSET and TAGS_OFFSET empty
++KERNEL_BOOTIMAGE_PAGE_SIZE = 2048
++KERNEL_BOOTIMAGE_BASE_OFFSET = 0x10000000
++KERNEL_BOOTIMAGE_KERNEL_OFFSET = 0x00008000
++KERNEL_BOOTIMAGE_INITRAMFS_OFFSET = 0x01000000
++KERNEL_BOOTIMAGE_SECONDIMAGE_OFFSET = 0x00f00000
++KERNEL_BOOTIMAGE_TAGS_OFFSET = 0x00000100
++
++# Specify boot image security patch level if needed
++# KERNEL_BOOTIMAGE_PATCH_LEVEL = 2022-04-05
++
++# Specify boot image OS version if needed
++# KERNEL_BOOTIMAGE_OS_VERSION = 12.0.0
++
++# Required for header version 2, ignore otherwise
++# GKI devices should leave this offset empty
++KERNEL_BOOTIMAGE_DTB_OFFSET = 0x1f00000
++
++# Kernel bootimage version. Defaults to 0 (legacy header).
++# As a rule of thumb:
++# Devices launched with Android 8 and lower: version 0
++# Devices launched with Android 9: version 1
++# Devices launched with Android 10: version 2
++# Devices launched with Android 11: version 2 or 3 (GKI)
++# Devices launched with Android 12: version 3 (GKI) or 4 (GKI)
++# Devices launched with Android 13: version 3 (GKI) or 4 (GKI)
++KERNEL_BOOTIMAGE_VERSION = 1
++
++# Kernel initramfs compression. Defaults to gzip.
++# All non-gki devices need a gzip (gz) initramfs
++# For devices launched with a GKI kernel it can be either gzip (gz) or lz4 (lz4)
++KERNEL_INITRAMFS_COMPRESSION = gz
++
++# Whether to generate a vendor_boot image. Supported since
++# bootimage version 3.
++# vendor_boot images will contain the required kernel modules that
++# are to be loaded during the initramfs stage.
++# If building for a device with bootimage version >= 3, you
++# should probably want to enable it.
++#
++# Module list should be added in KERNEL_DIR/droidian/modules.load.
++KERNEL_BOOTIMAGE_GENERATE_VENDOR_BOOT = 0
++
++# The cmdline for the vendor_boot image
++KERNEL_BOOTIMAGE_VENDOR_CMDLINE = 
++
++########################################################################
++# Android verified boot
++########################################################################
++
++# Whether to build a flashable vbmeta.img. Please note that currently
++# only empty vbmeta images (disabling verified boot) can be generated.
++# Use 0 (no) or 1 (default).
++DEVICE_VBMETA_REQUIRED = 0
++
++# Samsung devices require a special flag. Enable the following if your
++# device is a Samsung device that requires flag 0 to be present
++# Use 0 (no, default) or 1.
++DEVICE_VBMETA_IS_SAMSUNG = 1
++
++# boot partition size. If specified, an AVB footer will be added at the
++# end of the bootimage.
++KERNEL_BOOTIMAGE_PARTITION_SIZE = 57671680
++
++########################################################################
++# Automatic flashing on package upgrades
++########################################################################
++
++# Whether to enable kernel upgrades on package upgrades. Use 0 (no) or 1.
++FLASH_ENABLED = 1
++
++# If your device is treble-ized, but aonly, you should set the following to
++# 1 (yes).
++FLASH_IS_AONLY = 1
++
++# `flash-bootimage` defaults are enough for most recent devices, but legacy
++# devices won't work out of the box.
++# If you set the following to 1, this package will set `flash-bootimage`'s
++# DEVICE_IS_AB and BOOTIMAGE_SLOT_A accordingly, thus enabling flashing
++# on older devices.
++#
++# Do not enable if you don't know what you're doing
++FLASH_IS_LEGACY_DEVICE = 1
++
++# On some exynos devices partition names are capitalized (boot is BOOT and so on)
++# This flag makes the kernel to get flashed to the correct partition on updates.
++FLASH_IS_EXYNOS = 1
++
++# On some devices flashing userdata.img via fastboot fails and telnet should
++# be used instead. Set to 1 for telnet and 0 for fastboot
++FLASH_USE_TELNET = 0
++
++# Device manufacturer. This must match the `ro.product.vendor.manufacturer`
++# Android property. If you don't want to specify this, leave it undefined,
++# FLASH_INFO_CPU will be checked instead.
++FLASH_INFO_MANUFACTURER = samsung
++
++# Device model. This must match the `ro.product.vendor.model`
++# Android property. If you don't want to specify this, leave it undefined,
++# FLASH_INFO_CPU will be checked instead.
++FLASH_INFO_MODEL = SM-G975F
++
++# Device CPU. This will be grepped against /proc/cpuinfo to check if
++# we're running on the specific device. Note this is a last-resort
++# method, specifying FLASH_INFO_MANUFACTURER and FLASH_INFO_MODEL is
++# recommended.
++FLASH_INFO_CPU = Exynos9820
++
++# Space-separated list of supported device ids as reported by fastboot
++FLASH_INFO_DEVICE_IDS = beyond2lte beyond2
++
++########################################################################
++# Kernel build settings
++########################################################################
++
++# Whether to cross-build. Use 0 (no) or 1.
++BUILD_CROSS = 1
++
++# (Cross-build only) The build triplet to use. You'll probably want to
++# use aarch64-linux-android- if building Android kernels.
++# might need to use aarch64-linux-gnu- with newer kernels such as GKI
++BUILD_TRIPLET = aarch64-linux-android-
++
++# (Cross-build only) The build triplet to use with clang. You'll probably
++# want to use aarch64-linux-gnu- here.
++BUILD_CLANG_TRIPLET = aarch64-linux-gnu-
++
++# The compiler to use. Recent Android kernels are built with clang.
++BUILD_CC = clang
++
++# Use llvm instead of gcc. Recent Android kernels (past android 12) need llvm.
++BUILD_LLVM = 1
++
++# Set to 1 to skip modules packaging if CONFIG_MODULES is disabled in defconfig 
++BUILD_SKIP_MODULES = 0
++
++# Set clang version
++CLANG_VERSION = 17.0-r487747c
++# Set to 1 to use a manually installed toolchain
++# Remember to update the path in BUILD_PATH
++CLANG_CUSTOM = 0
++
++# Extra paths to prepend to the PATH variable. You'll probably want
++# to specify the clang path here (the default).
++BUILD_PATH = /usr/lib/llvm-android-$(CLANG_VERSION)/bin
++
++# Extra packages to add to the Build-Depends section. Mainline builds
++# can have this section empty, unless cross-building.
++# The default is enough to install the Android toolchain, including clang.
++DEB_TOOLCHAIN = linux-initramfs-halium-generic:arm64, binutils-aarch64-linux-gnu, gcc-4.9-aarch64-linux-android, g++-4.9-aarch64-linux-android, libgcc-4.9-dev-aarch64-linux-android-cross
++
++# Where we're building on
++# Comment DEB_BUILD_ON to enable host arch autodetection.
++# Only amd64 and arm64 archs are supported yet.
++DEB_BUILD_ON = amd64
++
++# Where we're going to run this kernel on
++DEB_BUILD_FOR = arm64
++
++# Target kernel architecture
++KERNEL_ARCH = arm64
++
++# Kernel target to build
++KERNEL_BUILD_TARGET = Image
++
++# Samsung S-Boot: wersja i poziom poprawek jak w firmware G975FXXSGHWC2
++KERNEL_BOOTIMAGE_OS_VERSION = 12.0.0
++KERNEL_BOOTIMAGE_PATCH_LEVEL = 2023-03
+diff --git a/debian/rules b/debian/rules
+new file mode 100755
+index 000000000..224ef2f34
+--- /dev/null
++++ b/debian/rules
+@@ -0,0 +1,6 @@
++#!/usr/bin/make -f
++
++include /usr/share/linux-packaging-snippets/kernel-snippet.mk
++
++%:
++	dh $@
+diff --git a/debian/source/format b/debian/source/format
+new file mode 100644
+index 000000000..89ae9db8f
+--- /dev/null
++++ b/debian/source/format
+@@ -0,0 +1 @@
++3.0 (native)
+diff --git a/droidian/beyond2lte.config b/droidian/beyond2lte.config
+new file mode 100644
+index 000000000..d6ca05b79
+--- /dev/null
++++ b/droidian/beyond2lte.config
+@@ -0,0 +1,15 @@
++# Samsung Galaxy S10+ (Exynos 9820, beyond2lte)
++#
++# LineageOS already turns off the Samsung restrictions that break a Linux
++# userspace (LOD_SEC, UH, SEC_RESTRICT_ROOTING).  The common fragments bring
++# USER_NS, SYSVIPC, FHANDLE and VT.  What is left is device specific.
++
++# Console on the panel for the Droidian initramfs and unl0kr
++CONFIG_VT_CONSOLE=y
++CONFIG_FRAMEBUFFER_CONSOLE=y
++
++# Bluetooth profiles used by BlueZ (as in the UBports port)
++CONFIG_BT_RFCOMM_TTY=y
++CONFIG_BT_BNEP=y
++CONFIG_BT_BNEP_MC_FILTER=y
++CONFIG_BT_BNEP_PROTO_FILTER=y
+diff --git a/droidian/common_fragments/container.config b/droidian/common_fragments/container.config
+new file mode 100644
+index 000000000..bae3a71e5
+--- /dev/null
++++ b/droidian/common_fragments/container.config
+@@ -0,0 +1,34 @@
++# Docker stuff by g7
++CONFIG_BRIDGE_NETFILTER=y
++CONFIG_NETFILTER_XT_MATCH_ADDRTYPE=y
++CONFIG_NETFILTER_XT_MATCH_IPVS=y
++CONFIG_POSIX_MQUEUE=y
++CONFIG_CGROUP_PIDS=y
++CONFIG_BLK_DEV_THROTTLING=y
++CONFIG_CGROUP_HUGETLB=y
++CONFIG_CGROUP_NET_PRIO=y
++CONFIG_IP_VS=y
++CONFIG_IP_VS_NFCT=y
++CONFIG_IP_VS_PROTO_TCP=y
++CONFIG_IP_VS_PROTO_UDP=y
++CONFIG_IP_VS_RR=y
++CONFIG_VXLAN=y
++CONFIG_BRIDGE_VLAN_FILTERING=y
++# Additional configs
++CONFIG_CGROUPS=y
++CONFIG_CGROUP_DEVICE=y
++CONFIG_CGROUP_PERF=y
++CONFIG_CGROUP_CPUACCT=y
++CONFIG_CPUSETS=y
++CONFIG_CPU_FREQ=y
++CONFIG_CFS_SCHED=y
++CONFIG_SCHED_AUTOGROUP=y
++CONFIG_BLK_CGROUP=y
++CONFIG_MEMCG=y
++CONFIG_MEMCG_SWAP=y
++CONFIG_CGROUP_MEM_RES_CTLR=y
++CONFIG_CGROUP_MEM_RES_CTLR_SWAP=y
++CONFIG_CGROUP_MEM_RES_CTLR_KMEM=y
++# CFS_BANDWIDTH seems to be incompatible with SCHED_WALT
++# Is not essential to get docker working
++# CONFIG_CFS_BANDWIDTH is not set
+diff --git a/droidian/common_fragments/debug.config b/droidian/common_fragments/debug.config
+new file mode 100644
+index 000000000..76b594361
+--- /dev/null
++++ b/droidian/common_fragments/debug.config
+@@ -0,0 +1,6 @@
++# pstore
++CONFIG_PSTORE=y
++CONFIG_PSTORE_CONSOLE=y
++CONFIG_PSTORE_RAM=y
++CONFIG_PSTORE_RAM_ANNOTATION_APPEND=y
++
+diff --git a/droidian/common_fragments/droidian.config b/droidian/common_fragments/droidian.config
+new file mode 100644
+index 000000000..d14e2271b
+--- /dev/null
++++ b/droidian/common_fragments/droidian.config
+@@ -0,0 +1,29 @@
++# Droidian requirements
++CONFIG_ANDROID_PARANOID_NETWORK=n
++CONFIG_USER_NS=y
++CONFIG_ANDROID_BINDERFS=n
++# CONFIG_ANDROID_BINDER_DEVICES is defined below in the Waydroid section
++
++# Waydroid
++CONFIG_SW_SYNC_USER=y
++CONFIG_NET_CLS_CGROUP=y
++CONFIG_CGROUP_NET_CLASSID=y
++CONFIG_VETH=y
++CONFIG_NETFILTER_XT_TARGET_CHECKSUM=y
++CONFIG_ANDROID_BINDER_DEVICES="binder,hwbinder,vndbinder,anbox-binder,anbox-hwbinder,anbox-vndbinder"
++
++# RNDIS usb networking
++CONFIG_USB_CONFIGFS_RNDIS=y
++CONFIG_USB_CONFIGFS_RMNET_BAM=y
++CONFIG_USB_CONFIGFS_MASS_STORAGE=y
++
++# Bluetooth
++CONFIG_BT_HCIVHCI=y
++CONFIG_BT_HIDP=y
++CONFIG_BT_RFCOMM=y
++
++# Crypto
++CONFIG_CRYPTO_USER_API_SKCIPHER=y
++
++# Security
++CONFIG_SECURITY_YAMA=y
+diff --git a/droidian/common_fragments/halium.config b/droidian/common_fragments/halium.config
+new file mode 100644
+index 000000000..663255ab4
+--- /dev/null
++++ b/droidian/common_fragments/halium.config
+@@ -0,0 +1,49 @@
++# Halium modifications
++
++# Halium errors
++CONFIG_VT=y
++CONFIG_IP_NF_MATCH_RPFILTER=y
++CONFIG_EPOLL=y
++CONFIG_PROC_FS=y
++CONFIG_DUMMY=n
++CONFIG_INOTIFY_USER=y
++CONFIG_RD_GZIP=y
++CONFIG_TIMERFD=y
++CONFIG_DEVTMPFS_MOUNT=y
++CONFIG_SIGNALFD=y
++CONFIG_QUOTACTL=y
++CONFIG_SYSVIPC=y
++CONFIG_DEVTMPFS=y
++CONFIG_FHANDLE=y
++CONFIG_NLS_UTF8=y
++CONFIG_SYSFS=y
++CONFIG_NETFILTER_XT_MATCH_MULTIPORT=y
++CONFIG_COMPAT_VDSO=n
++CONFIG_SECURITY_SELINUX_BOOTPARAM=y
++
++# Halium warnings
++CONFIG_WATCHDOG_NOWAYOUT=n # Enable once there is dsme or an alternative
++CONFIG_NET_NS=y
++CONFIG_NET_CLS_CGROUP=y
++CONFIG_PID_NS=y
++CONFIG_UDF_FS=y
++CONFIG_NETFILTER_XT_MATCH_SCTP=y
++CONFIG_NETFILTER_XT_CONNMARK=y
++CONFIG_NETFILTER_XT_MATCH_RECENT=y
++CONFIG_NETFILTER_XT_MATCH_ESP=y
++CONFIG_NETFILTER_XT_MATCH_DCCP=y
++CONFIG_NETFILTER_XT_MATCH_NFACCT=y
++CONFIG_UTS_NS=y
++CONFIG_TMPFS_XATTR=y
++CONFIG_BLK_CGROUP=y
++CONFIG_FANOTIFY=y
++CONFIG_CGROUP_PERF=y
++CONFIG_CPUSETS=y
++CONFIG_LBDAF=y
++CONFIG_CGROUP_DEVICE=y
++CONFIG_IPC_NS=y
++CONFIG_NETPRIO_CGROUP=y
++CONFIG_MEMCG_KMEM=y
++CONFIG_RTC_DRV_CMOS=y
++CONFIG_CGROUP_SCHEDTUNE=n
++CONFIG_SCHED_TUNE=n
+-- 
+2.47.3
+

@@ -1,0 +1,170 @@
+From 9e1e468e57a5a64c3decf80089a197abf0f1265d Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 09:42:15 +0200
+Subject: [PATCH 17/29] actiondrawer: keep the window mapped, judge release by
+ recent motion
+
+Creating the drawer window on every pull cost ~200-300 ms before its first
+frame through libhybris, and the One UI blur window (useless on wayfire,
+which has no blur) was mapped on every pull as well.  Keep the drawer window
+mapped and let input through while closed; drop the blur window.  First
+frame now 2-5 ms after the touch (measured with uprobes on eglSwapBuffers).
+The direction of a release comes from the motion of the last 80 ms instead of
+the last touch event, which jittered back up on quick flicks.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ .../qml/actiondrawer/ActionDrawer.qml         | 37 ++++++++++
+ .../qml/actiondrawer/ActionDrawerWindow.qml   | 70 ++++---------------
+ 2 files changed, 49 insertions(+), 58 deletions(-)
+
+diff --git a/components/mobileshell/qml/actiondrawer/ActionDrawer.qml b/components/mobileshell/qml/actiondrawer/ActionDrawer.qml
+index 31651454..07e50939 100644
+--- a/components/mobileshell/qml/actiondrawer/ActionDrawer.qml
++++ b/components/mobileshell/qml/actiondrawer/ActionDrawer.qml
+@@ -135,6 +135,25 @@ Item {
+     signal runPendingNotificationAction()
+ 
+     property real oldOffset
++    // recent drag samples, to judge the direction of a release by the motion
++    // of the last few frames rather than by the last touch event, which on a
++    // quick flick often jitters a pixel back up and closed the drawer
++    property var dragSamples: []
++    readonly property int releaseWindowMs: 80
++
++    function releaseDirection() {
++        const now = Date.now();
++        const recent = dragSamples.filter(s => now - s.t <= releaseWindowMs);
++        if (recent.length < 2) {
++            return root.direction;
++        }
++        const dy = recent[recent.length - 1].offset - recent[0].offset;
++        if (Math.abs(dy) < 2) {
++            return MobileShell.Direction.None;
++        }
++        return dy > 0 ? MobileShell.Direction.Down : MobileShell.Direction.Up;
++    }
++
+     onOffsetChanged: {
+         if (offset < 0) {
+             offset = 0;
+@@ -146,6 +165,13 @@ Item {
+ 
+         oldOffset = offset;
+ 
++        if (root.state === "") {
++            const now = Date.now();
++            let samples = dragSamples.filter(s => now - s.t <= 200);
++            samples.push({ t: now, offset: offset });
++            dragSamples = samples;
++        }
++
+         // close panel immediately after panel is not shown, and the flickable is not being dragged
+         if (opened && root.offset <= 0 && !contentContainer.swipeAreaMoving && !drawerAnimation.running) {
+             root.state = "";
+@@ -197,6 +223,17 @@ Item {
+     function updateState() {
+         let openThreshold = Kirigami.Units.gridUnit;
+ 
++        // judge the release by the motion of the last frames (see releaseDirection)
++        root.direction = releaseDirection();
++        dragSamples = [];
++        if (root.direction === MobileShell.Direction.None && root.opened
++                && root.offset > contentContainer.minimizedQuickSettingsOffset
++                && root.offset < contentContainer.maximizedQuickSettingsOffset) {
++            // no clear motion: settle on the nearer of pinned and expanded
++            const middle = (contentContainer.minimizedQuickSettingsOffset + contentContainer.maximizedQuickSettingsOffset) / 2;
++            root.direction = root.offset > middle ? MobileShell.Direction.Down : MobileShell.Direction.Up;
++        }
++
+         if (root.offset <= 0) {
+             // close immediately, so that we don't have to wait Kirigami.Units.longDuration
+             root.intendedToBeVisible = false;
+diff --git a/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml b/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml
+index b3e6f400..59f5b3f4 100644
+--- a/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml
++++ b/components/mobileshell/qml/actiondrawer/ActionDrawerWindow.qml
+@@ -35,68 +35,22 @@ Window {
+     property alias actionDrawer: drawer
+     property alias state: drawer.state
+ 
+-    visible: drawer.intendedToBeVisible
++    // Always mapped: creating the surface on each pull cost ~220 ms before the
++    // first frame through libhybris (measured), so the drawer lagged behind the
++    // finger.  A closed drawer is transparent and lets input through.
++    visible: true
+ 
+     color: "transparent"
+ 
+-    // Set input to transparent when closing to prevent window from taking unwanted touch inputs
+-    onStateChanged: MobileShell.ShellUtil.setInputTransparent(window, state === "close")
++    // Let touches through while the drawer is closed or closing.  The window
++    // stays mapped, and after closing the drawer state goes back to "", so the
++    // state alone is not enough.
++    readonly property bool passInput: !drawer.intendedToBeVisible || state === "close"
++    onPassInputChanged: MobileShell.ShellUtil.setInputTransparent(window, passInput)
+ 
+-    // Blur everything behind the drawer, stronger the further it is pulled
+-    // down (One UI).  The blur belongs to a separate empty window under the
+-    // drawer, whose opacity KWin uses to fade the blur (see DrawerBlur in the
+-    // mobile task switcher effect); fading the drawer window itself would
+-    // fade its content too.
+-    readonly property real blurProgress: Math.max(0, Math.min(1, drawer.offset / (window.height * 0.5)))
+-    property real sentBlurProgress: -1
+-
+-    function sendBlurProgress() {
+-        if (Math.abs(blurProgress - sentBlurProgress) >= 0.02 || (blurProgress !== sentBlurProgress && (blurProgress === 0 || blurProgress === 1))) {
+-            sentBlurProgress = blurProgress;
+-            MobileShell.ShellUtil.setDrawerBlurStrength(blurProgress);
+-        }
+-    }
+-    onBlurProgressChanged: sendBlurProgress()
+-
+-    Window {
+-        id: blurWindow
+-
+-        // "splash" marks this window for DrawerBlur in KWin
+-        LayerShell.Window.scope: "splash"
+-        LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight | LayerShell.Window.AnchorBottom
+-        LayerShell.Window.layer: LayerShell.Window.LayerTop
+-        LayerShell.Window.exclusionZone: -1
+-        LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+-
+-        // a layer surface of its own, not a child of the drawer window
+-        transientParent: null
+-        color: "transparent"
+-        flags: Qt.WindowTransparentForInput
+-        // only while the drawer is out, so a closed drawer costs the GPU nothing
+-        visible: window.visible && drawer.offset > 0
+-
+-        onVisibleChanged: {
+-            if (visible) {
+-                MobileShell.ShellUtil.setBlurBehind(blurWindow, true);
+-                window.sentBlurProgress = -1;
+-                window.sendBlurProgress();
+-            }
+-        }
+-    }
+-
+-    // Preload and render content to avoid lag on first open
+-    Component.onCompleted: {
+-        preloadTimer.start();
+-    }
+-
+-    Timer {
+-        id: preloadTimer
+-        interval: 1
+-        onTriggered: {
+-            // Set window visibility binding after preloading content to the action drawer state
+-            window.visible = Qt.binding(() => drawer.intendedToBeVisible);
+-        }
+-    }
++    // No blur window here: wayfire has no blur, and mapping that extra surface
++    // on every pull delayed the drawer further.
++    Component.onCompleted: MobileShell.ShellUtil.setInputTransparent(window, passInput)
+ 
+     onVisibleChanged: {
+         if (visible) {
+-- 
+2.47.3
+

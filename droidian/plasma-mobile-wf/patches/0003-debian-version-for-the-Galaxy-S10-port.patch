@@ -1,0 +1,27 @@
+From dbb5a31942bc41077e7d2f6778fd8a0456a2bd69 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 07:55:20 +0200
+Subject: [PATCH 03/29] debian: version for the Galaxy S10+ port
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/changelog | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/debian/changelog b/debian/changelog
+index b5db2e30..26c3c49f 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,9 @@
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus1) rolling; urgency=medium
++
++  * Build against Plasma 6.7 and Qt 6.10 for the Galaxy S10+ port.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Mon, 28 Sep 2026 05:28:57 +0000
++
+ plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5) trixie; urgency=medium
+ 
+   * waydroidintegration: add basic Waydroid installation for Droidian
+-- 
+2.47.3
+

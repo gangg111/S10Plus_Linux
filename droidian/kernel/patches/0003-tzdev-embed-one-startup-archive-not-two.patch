@@ -1,0 +1,42 @@
+From cb02754a10106d2914bf4472945af4106ae0d274 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Mon, 28 Sep 2026 06:12:34 +0200
+Subject: [PATCH 03/29] tzdev: embed one startup archive, not two
+
+startup_old.tzar is kept for firmware older than the one this port runs
+on (G975FXXSGHWC1 and later).  Two 5 MB copies do not fit the 55 MB boot
+partition next to the Droidian initramfs, so the fallback now points at
+the current archive and the retry loop keeps working as before.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ drivers/misc/tzdev/tz_deploy_tzar.c | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/drivers/misc/tzdev/tz_deploy_tzar.c b/drivers/misc/tzdev/tz_deploy_tzar.c
+index 6d7ff993c..29648c795 100644
+--- a/drivers/misc/tzdev/tz_deploy_tzar.c
++++ b/drivers/misc/tzdev/tz_deploy_tzar.c
+@@ -41,12 +41,14 @@ __asm__ (
+ );
+ extern char tzdev_tzar_begin[], tzdev_tzar_end[];
+ 
++/*
++ * The fallback archive is only for firmware older than the one this port
++ * runs on, and a second 5 MB copy does not fit the boot partition next to
++ * the Droidian initramfs.  Point the fallback at the current archive.
++ */
+ __asm__ (
+-  ".section .init.data,\"aw\"\n"
+-  "tzdev_old_tzar_begin:\n"
+-  ".incbin \"" KBUILD_SRC "/drivers/misc/tzdev/startup_old.tzar\"\n"
+-  "tzdev_old_tzar_end:\n"
+-  ".previous\n"
++  ".set tzdev_old_tzar_begin, tzdev_tzar_begin\n"
++  ".set tzdev_old_tzar_end, tzdev_tzar_end\n"
+ );
+ extern char tzdev_old_tzar_begin[], tzdev_old_tzar_end[];
+ 
+-- 
+2.47.3
+

@@ -1,0 +1,28 @@
+From 134e9f3bfaa7b4ef0f830f13ba99a140682874ab Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Wed, 30 Sep 2026 05:12:27 +0200
+Subject: [PATCH 13/29] debian: version for the Galaxy S10+ port
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/changelog | 7 +++++++
+ 1 file changed, 7 insertions(+)
+
+diff --git a/debian/changelog b/debian/changelog
+index 884db875..742e6252 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,10 @@
++plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus8) rolling; urgency=medium
++
++  * Status bar icons sized for the content height, not the 200 px panel,
++    so they match the clock; battery percentage centred.
++
++ -- Artur Szafraniec <ganggg111@gmail.com>  Wed, 30 Sep 2026 02:35:25 +0000
++
+ plasma-mobile-wf (6.5.2-1~git20251121171019.91ba13c.next.plasma.6.5+s10plus7) rolling; urgency=medium
+ 
+   * Default surface format 8/8/8/8: with the sizes unset libhybris ends
+-- 
+2.47.3
+

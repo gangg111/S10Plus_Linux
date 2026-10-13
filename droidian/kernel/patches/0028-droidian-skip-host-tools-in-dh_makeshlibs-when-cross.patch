@@ -1,0 +1,35 @@
+From 75dbf70fb81db4aedb73a5628e4f6bc375eaff00 Mon Sep 17 00:00:00 2001
+From: Artur Szafraniec <ganggg111@gmail.com>
+Date: Sun, 11 Oct 2026 18:27:22 +0200
+Subject: [PATCH 28/29] droidian: skip host tools in dh_makeshlibs when
+ cross-building
+
+In a cross build the tools under usr/src/linux-headers/scripts
+(asn1_compiler, fixdep, ...) are built for the build machine, and the
+aarch64 objdump used by dh_makeshlibs fails on them.  They are not shared
+libraries, so exclude the directory.
+
+Signed-off-by: Artur Szafraniec <ganggg111@gmail.com>
+---
+ debian/rules | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/debian/rules b/debian/rules
+index 5a04132b4..7be7713f6 100755
+--- a/debian/rules
++++ b/debian/rules
+@@ -11,5 +11,11 @@ out/KERNEL_OBJ/initramfs.xz: out/KERNEL_OBJ/initramfs.gz
+ out/KERNEL_OBJ/initramfs.recovery-xz: out/KERNEL_OBJ/initramfs.recovery-gz
+ 	gunzip -c $< | xz -9e --check=crc32 -T0 > $@
+ 
++# Cross-build: host build tools under usr/src/linux-headers/scripts (asn1_compiler,
++# fixdep, ...) are the BUILD arch (amd64), so aarch64-objdump chokes on them. They are
++# not shared libraries, so skip them in dh_makeshlibs.
++override_dh_makeshlibs:
++	dh_makeshlibs -Xusr/src/linux-headers
++
+ %:
+ 	dh $@
+-- 
+2.47.3
+

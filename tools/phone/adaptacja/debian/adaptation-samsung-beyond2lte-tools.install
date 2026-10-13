@@ -6,10 +6,6 @@ tools/plasma-mobile-wf/wayfire.ini usr/share/plasma-mobile-wf
 tools/plasma-settings/plasma-settings usr/bin
 tools/plasma-settings/mobile.plasmasettings.mo usr/share/locale/pl/LC_MESSAGES
 tools/plasma-settings/categories/* usr/share/plasma-settings/categories
-tools/kirigami-addons/formcard/* usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard
-tools/kirigami/controls/qmldir usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls
-tools/kirigami/controls/private/globaltoolbar/ToolBarPageHeader.qml usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/private/globaltoolbar
-tools/breeze/qmldir usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze
-tools/breeze/ToolBar.qml usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze
+build/oneui/usr/lib usr
 tools/rgba8888/librgba8888.so usr/lib/aarch64-linux-gnu/s10plus
 tools/maliit/maliit-keyboard usr/bin
