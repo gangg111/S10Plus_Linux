@@ -120,7 +120,8 @@ skompresowane xz). Wgraj je Odinem dokładnie tak, jak opisuje [główne README]
 
 Po pierwszym starcie telefon przyjmuje SSH jako `droidian` (hasło `1234`) zarówno po Wi-Fi,
 jak i po kablu USB (`ssh droidian@169.254.172.1`; adres link-local, więc PC nie potrzebuje DHCP,
-a Windows sam ładuje sterownik RNDIS). Zwykły obraz plamo-wf nie ma ani SSH, ani działającej
+a Windows sam ładuje sterownik RNDIS). Ten sam kabel daje też dostęp do plików: Windows widzi
+telefon jako urządzenie przenośne (MTP) z katalogiem domowym. Zwykły obraz plamo-wf nie ma ani SSH, ani działającej
 sieci po USB; adaptacja dodaje oba, a klucze hosta SSH powstają od nowa przy pierwszym starcie,
 więc telefony wgrane z tego samego obrazu ich nie współdzielą. Pierwszy start powiększa też
 system plików na całą partycję userdata, więc trwa dłużej.

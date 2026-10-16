@@ -123,7 +123,8 @@ describes.
 
 After the first boot the phone answers SSH as `droidian` (password `1234`) both over Wi-Fi and
 over the USB cable (`ssh droidian@169.254.172.1`; a link-local address, so the PC needs no DHCP,
-and Windows loads its RNDIS driver by itself). The stock plamo-wf image carries neither SSH nor a
+and Windows loads its RNDIS driver by itself). The same cable also gives file access: Windows
+shows the phone as a portable device (MTP) with the home folder. The stock plamo-wf image carries neither SSH nor a
 working USB network; the adaptation adds both, and the SSH host keys are made anew on the first
 boot, so phones flashed from the same image do not share them. The first boot also grows the
 root file system to the whole userdata partition, so it takes longer.
