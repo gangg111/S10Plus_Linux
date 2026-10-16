@@ -1,3 +1,15 @@
+adaptation-samsung-beyond2lte (19) unstable; urgency=medium
+
+  * Files over the USB cable (MTP), next to the network: the gadget gets a
+    PTP function (ptp.gs1) beside RNDIS, and mtp-server starts with the
+    Plasma session (it was wired only to the GNOME session).  PTP rather
+    than mtp.gs0: the Samsung mtp function does not return its Microsoft OS
+    descriptor, so Windows leaves it without a driver, while the PTP class
+    (Still Image) gets the built-in MTP driver.  bcdDevice 0x0416, because
+    Windows caches the descriptors per VID, PID and version.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Fri, 16 Oct 2026 21:10:00 +0200
+
 adaptation-samsung-beyond2lte (18) unstable; urgency=medium
 
   * droidian-quirks-regenerate-ssh-keys next to openssh-server: openssh-server

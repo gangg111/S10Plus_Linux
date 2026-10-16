@@ -21,7 +21,7 @@ Description: Droidian adaptation for the Samsung Galaxy S10+ (Exynos)
 
 Package: adaptation-samsung-beyond2lte-configs
 Architecture: all
-Depends: python3, python3-dbus, python3-gi, plymouth, ${misc:Depends}
+Depends: python3, python3-dbus, python3-gi, plymouth, mtp-server, ${misc:Depends}
 Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
  Device specific configuration for the Samsung Galaxy S10+ with the
  Exynos 9820 (SM-G975F, beyond2lte): device node permissions from the
@@ -35,8 +35,8 @@ Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
  wake (systemd suspend kept off, the daemon owns it), the modem radio turned
  on at boot with the ofono2mm SIM race fixed, non-blocking buffer swaps so
  the screen comes back after blanking, the Material dark style for Qt Quick
- Controls and a network over the USB cable (RNDIS, the phone at
- 169.254.172.1).
+ Controls, and on the USB cable both a network (RNDIS, the phone at
+ 169.254.172.1) and file access over MTP.
 
 Package: adaptation-samsung-beyond2lte-tools
 Architecture: arm64

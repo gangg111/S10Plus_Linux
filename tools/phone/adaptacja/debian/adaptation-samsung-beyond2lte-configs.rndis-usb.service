@@ -1,5 +1,5 @@
 [Unit]
-Description=Siec RNDIS po USB (kanal serwisowy niezalezny od Wi-Fi, takze pod Windowsem)
+Description=Kabel USB: siec RNDIS i pliki MTP (takze pod Windowsem)
 After=multi-user.target
 
 [Service]
