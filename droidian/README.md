@@ -25,7 +25,7 @@ the vendor HAL).
 | Kernel (LineageOS 4.14) | `LineageOS/android_kernel_samsung_exynos9820` `a412cfaf` | [`kernel/patches`](kernel/patches), 29 patches | [`kernel/build.sh`](kernel/build.sh) |
 | Shell, Plasma Mobile on wayfire | `droidian/plasma-mobile-wf` `91ba13c8` | [`plasma-mobile-wf/patches`](plasma-mobile-wf/patches), 29 patches | [`plasma-mobile-wf/build.sh`](plasma-mobile-wf/build.sh) |
 | Settings, One UI look | `plasma-mobile/plasma-settings` `v26.04.0` | [`../tools/phone/plasma-settings-oneui`](../tools/phone/plasma-settings-oneui), 4 patches | shipped prebuilt in the adaptation, see there |
-| Camera app | `droidian/droidian-camera` `7071899` | [`../tools/phone/aparat/patches`](../tools/phone/aparat/patches), 8 patches | [`camera/build.sh`](camera/build.sh) |
+| Camera app | `droidian/droidian-camera` `7071899` | [`../tools/phone/aparat/patches`](../tools/phone/aparat/patches), 9 patches | [`camera/build.sh`](camera/build.sh) |
 | Device adaptation | none, our package | [`../tools/phone/adaptacja`](../tools/phone/adaptacja) | [`adaptation/build.sh`](adaptation/build.sh) |
 | `qt6-text-input-v3`, `maliit-framework` | Droidian's git, the commits the archive binaries were built from | rebuilt unchanged against the current Qt (the archive binaries still want Qt 6.10.2, which is gone) | [`archive-rebuild/build.sh`](archive-rebuild/build.sh) |
 | `libbatman-wrappers` | none | an empty placeholder | [`libbatman-wrappers/build.sh`](libbatman-wrappers/build.sh) |

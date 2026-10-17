@@ -24,7 +24,7 @@ pada w HAL-u producenta).
 | Jądro (LineageOS 4.14) | `LineageOS/android_kernel_samsung_exynos9820` `a412cfaf` | [`kernel/patches`](kernel/patches), 29 łatek | [`kernel/build.sh`](kernel/build.sh) |
 | Powłoka, Plasma Mobile na wayfire | `droidian/plasma-mobile-wf` `91ba13c8` | [`plasma-mobile-wf/patches`](plasma-mobile-wf/patches), 29 łatek | [`plasma-mobile-wf/build.sh`](plasma-mobile-wf/build.sh) |
 | Ustawienia w stylu One UI | `plasma-mobile/plasma-settings` `v26.04.0` | [`../tools/phone/plasma-settings-oneui`](../tools/phone/plasma-settings-oneui), 4 łatki | gotowa binarka w adaptacji, opis tam |
-| Aparat | `droidian/droidian-camera` `7071899` | [`../tools/phone/aparat/patches`](../tools/phone/aparat/patches), 8 łatek | [`camera/build.sh`](camera/build.sh) |
+| Aparat | `droidian/droidian-camera` `7071899` | [`../tools/phone/aparat/patches`](../tools/phone/aparat/patches), 9 łatek | [`camera/build.sh`](camera/build.sh) |
 | Adaptacja urządzenia | brak, nasza paczka | [`../tools/phone/adaptacja`](../tools/phone/adaptacja) | [`adaptation/build.sh`](adaptation/build.sh) |
 | `qt6-text-input-v3`, `maliit-framework` | git Droidiana, commity, z których zbudowano binarki w archiwum | przebudowane bez zmian pod bieżące Qt (binarki z archiwum wciąż chcą Qt 6.10.2, którego już nie ma) | [`archive-rebuild/build.sh`](archive-rebuild/build.sh) |
 | `libbatman-wrappers` | brak | pusta atrapa | [`libbatman-wrappers/build.sh`](libbatman-wrappers/build.sh) |

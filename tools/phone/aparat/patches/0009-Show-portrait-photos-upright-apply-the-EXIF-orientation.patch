@@ -1,0 +1,77 @@
+From a204190823f5aaa58592c003e639c50b2ae53ed2 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 17 Oct 2026 19:41:50 +0200
+Subject: [PATCH] Show portrait photos upright: apply the EXIF orientation
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ debian/changelog                   |  8 ++++++++
+ src/MediaScanner/media-scanner.cpp | 11 +++++++++--
+ src/qml/DefaultUI/ImageViewer.qml  |  2 ++
+ 3 files changed, 19 insertions(+), 2 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index fccce54..74d5842 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,11 @@
++droidian-camera (26.1+s10plus9) unstable; urgency=medium
++
++  * Photos taken with the phone upright are shown upright in the gallery,
++    the photo viewer and the last-photo button: the EXIF Orientation tag
++    is applied (QImage and Qt Quick Image ignore it by default).
++
++ -- Artur <ganggg111@gmail.com>  Sat, 17 Oct 2026 20:00:00 +0200
++
+ droidian-camera (26.1+s10plus8) unstable; urgency=medium
+ 
+   * Volume keys as the shutter no longer change the volume as well: while
+diff --git a/src/MediaScanner/media-scanner.cpp b/src/MediaScanner/media-scanner.cpp
+index bc4918e..74c8146 100644
+--- a/src/MediaScanner/media-scanner.cpp
++++ b/src/MediaScanner/media-scanner.cpp
+@@ -9,6 +9,7 @@
+ #include <QDirIterator>
+ #include <QDateTime>
+ #include <QImage>
++#include <QImageReader>
+ #include <QDebug>
+ #include <QtConcurrent/QtConcurrent>
+ #include <QFileInfo>
+@@ -80,12 +81,18 @@ QString MediaScanner::generateImageThumbnail(const QString &filePath)
+     QDir().mkpath(cacheDir);
+ 
+     QFileInfo fi(filePath);
+-    QString thumbFile = cacheDir + "/" + QString::number(qHash(filePath)) + ".jpg";
++    // "-o": thumbnails made before the EXIF orientation was applied are not reused
++    QString thumbFile = cacheDir + "/" + QString::number(qHash(filePath)) + "-o.jpg";
+ 
+     if (QFile::exists(thumbFile))
+         return thumbFile;
+ 
+-    QImage image(filePath);
++    // The camera stores the pixels as the sensor sees them and the turn in the EXIF
++    // Orientation tag; QImage(path) ignores the tag, so a portrait photo came out
++    // sideways.  The thumbnail is saved without EXIF, so it is turned here.
++    QImageReader reader(filePath);
++    reader.setAutoTransform(true);
++    QImage image = reader.read();
+     if (image.isNull()) {
+         qWarning() << "Failed to load image for thumbnail:" << filePath;
+         return "";
+diff --git a/src/qml/DefaultUI/ImageViewer.qml b/src/qml/DefaultUI/ImageViewer.qml
+index d3c58fc..519b817 100644
+--- a/src/qml/DefaultUI/ImageViewer.qml
++++ b/src/qml/DefaultUI/ImageViewer.qml
+@@ -38,6 +38,8 @@ Item {
+             fillMode: Image.PreserveAspectFit
+             source: root.source
+             smooth: true
++            // portrait photos carry their turn in the EXIF Orientation tag
++            autoTransform: true
+ 
+             transform: [
+                 Scale {
+-- 
+2.47.3
+
