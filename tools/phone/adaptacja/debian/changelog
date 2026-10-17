@@ -1,3 +1,13 @@
+adaptation-samsung-beyond2lte (20) unstable; urgency=medium
+
+  * Wi-Fi keeps one address: NetworkManager manages only wlan0, the card
+    with the factory MAC.  The Broadcom driver also exposes wlan1, whose MAC
+    is random on every boot, so a connection that landed there got a new IP
+    after each restart; and p2p0 (Wi-Fi Direct), which NetworkManager took
+    for Ethernet and kept trying DHCP on.  Both are unmanaged now.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 17 Oct 2026 01:10:00 +0200
+
 adaptation-samsung-beyond2lte (19) unstable; urgency=medium
 
   * Files over the USB cable (MTP), next to the network: the gadget gets a
