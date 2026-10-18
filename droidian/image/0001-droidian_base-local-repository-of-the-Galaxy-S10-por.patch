@@ -39,7 +39,7 @@ index b06214a..19267a6 100644
 +    chroot: true
 +    description: Enable the local repository of the S10+ port, pinned to 1100
 +    command: |
-+      echo "deb [trusted=yes] file:/opt/localrepo ./" > /etc/apt/sources.list.d/zz-s10plus-local.list
++      echo "deb [trusted=yes lang=none] file:/opt/localrepo ./" > /etc/apt/sources.list.d/zz-s10plus-local.list
 +      printf 'Package: *\nPin: origin ""\nPin-Priority: 1100\n' > /etc/apt/preferences.d/zz-s10plus-local
 +      apt-get update
 +

@@ -33,6 +33,10 @@ in_container "$IMG_ROOTFS" linux/amd64 --privileged --cgroupns=host \
 	-v "$I":/buildd/sources -w /buildd/sources -- "
 python3 -c 'import yaml' 2>/dev/null || { apt-get update -qq && apt-get install -y -qq python3-yaml >/dev/null; }
 (cd localrepo && dpkg-scanpackages -m . > Packages 2>/dev/null)
+# a Release file and no translations (lang=none in the list): without them apt only warns,
+# but PackageKit, which Discover uses, shows it as an error on every refresh
+command -v apt-ftparchive >/dev/null || apt-get install -y -qq apt-utils >/dev/null
+(cd localrepo && apt-ftparchive release . > ../Release.tmp && mv ../Release.tmp Release)
 DROIDIAN_VERSION=102 python3 generate_device_recipe.py samsung_beyond2lte arm64 plamo_wf_experimental phone 32
 debos --disable-fakemachine generated/droidian.yaml
 "

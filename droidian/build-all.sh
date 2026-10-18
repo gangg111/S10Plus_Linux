@@ -2,10 +2,12 @@
 # Builds every package of the port into the local repository, in dependency order, then
 # the image.  Each step can also be run on its own (see README.md).
 #
-# Usage: ABOX_FIRMWARE=/path/to/abox-fw ./build-all.sh
+# Usage: ABOX_FIRMWARE=/path/to/abox-fw ANDROID_LIBS=/path/to/android-libs ./build-all.sh
 set -euo pipefail
 . "$(dirname "$0")/env.sh"
 : "${ABOX_FIRMWARE:?set ABOX_FIRMWARE first (see README.md, step 2)}"
+: "${ANDROID_LIBS:?set ANDROID_LIBS first (see README.md, step 2)}"
+export ABOX_FIRMWARE ANDROID_LIBS
 
 command -v docker >/dev/null || die "docker is needed"
 [ -e /proc/sys/fs/binfmt_misc/qemu-aarch64 ] || die "arm64 emulation is not registered (README.md, step 1)"

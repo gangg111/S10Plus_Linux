@@ -13,10 +13,18 @@ name=$(basename "$src")
 mkdir -p "$LOCALREPO"
 [ -f "$LOCALREPO/Packages" ] || : > "$LOCALREPO/Packages"
 
+# ANDROID_LIBS=<dir>: Android libraries of the phone for code built for the Android side
+# (the camera's libcamx.so), mounted where the build expects them; clang and lld come with it
+extra=() extra_pkgs=""
+if [ -n "${ANDROID_LIBS:-}" ]; then
+	extra=(-v "$ANDROID_LIBS":/android/system/lib64:ro -v "$ANDROID_LIBS":/apex/com.android.runtime/lib64/bionic:ro)
+	extra_pkgs="clang lld"
+fi
+
 log "building $name for arm64"
-in_container "$IMG_ARM64" linux/arm64 -v "$parent":/b -v "$LOCALREPO":/localrepo -- "
+in_container "$IMG_ARM64" linux/arm64 -v "$parent":/b -v "$LOCALREPO":/localrepo "${extra[@]}" -- "
 $APT_SETUP
-apt-get install -y -qq --no-install-recommends devscripts equivs >/dev/null
+apt-get install -y -qq --no-install-recommends devscripts equivs $extra_pkgs >/dev/null
 cd /b/$name
 mk-build-deps -i -r -t 'apt-get -y -qq --no-install-recommends' debian/control >/dev/null
 rm -f ../*.deb
