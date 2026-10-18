@@ -25,7 +25,7 @@ the vendor HAL).
 | Kernel (LineageOS 4.14) | `LineageOS/android_kernel_samsung_exynos9820` `a412cfaf` | [`kernel/patches`](kernel/patches), 29 patches | [`kernel/build.sh`](kernel/build.sh) |
 | Shell, Plasma Mobile on wayfire | `droidian/plasma-mobile-wf` `91ba13c8` | [`plasma-mobile-wf/patches`](plasma-mobile-wf/patches), 29 patches | [`plasma-mobile-wf/build.sh`](plasma-mobile-wf/build.sh) |
 | Settings, One UI look | `plasma-mobile/plasma-settings` `v26.04.0` | [`../tools/phone/plasma-settings-oneui`](../tools/phone/plasma-settings-oneui), 4 patches | shipped prebuilt in the adaptation, see there |
-| Camera app | `droidian/droidian-camera` `7071899` | [`../tools/phone/aparat/patches`](../tools/phone/aparat/patches), 9 patches | [`camera/build.sh`](camera/build.sh) |
+| Camera app | `droidian/droidian-camera` `7071899` | [`../tools/phone/aparat/patches`](../tools/phone/aparat/patches), 11 patches | [`camera/build.sh`](camera/build.sh) |
 | Device adaptation | none, our package | [`../tools/phone/adaptacja`](../tools/phone/adaptacja) | [`adaptation/build.sh`](adaptation/build.sh) |
 | `qt6-text-input-v3`, `maliit-framework` | Droidian's git, the commits the archive binaries were built from | rebuilt unchanged against the current Qt (the archive binaries still want Qt 6.10.2, which is gone) | [`archive-rebuild/build.sh`](archive-rebuild/build.sh) |
 | `libbatman-wrappers` | none | an empty placeholder | [`libbatman-wrappers/build.sh`](libbatman-wrappers/build.sh) |
@@ -53,8 +53,8 @@ desktop. Its `-tools` package ships a few prebuilt binaries; the
   takes well over a gigabyte; too many at once took a 15 GB WSL VM down). Set `JOBS=n`
   to choose yourself.
 - **arm64 emulation** for the containers (step 1).
-- The **ABOX audio firmware** from an S10+ (step 2). It is Samsung's, so it is not in this
-  repository.
+- The **ABOX audio firmware** and nine **Android libraries** from an S10+ (step 2). They are
+  Samsung's, so they are not in this repository.
 
 On Windows, clone the repository **inside WSL** (for example `~/S10Plus_Linux`), not under
 `/mnt/c`: files on the Windows drive show up with every permission bit set, and the Debian
@@ -71,7 +71,9 @@ git clone https://github.com/gangg111/S10Plus_Linux.git
 cd S10Plus_Linux/droidian
 ```
 
-### Step 2: ABOX firmware
+### Step 2: files from an S10+
+
+#### ABOX firmware
 
 The audio DSP asks for its firmware before `/vendor` is mounted, so the kernel carries it.
 You need these four files from `/vendor/firmware` of an SM-G975F:
@@ -91,12 +93,42 @@ b3afb1a41154630f25284e2358af0b28936e6e8cc508d4552cfd56bf99bc57e8  calliope_dram.
 c0ca54cdef0ab850d7a229ac6f5b2e3e09797ca344227a72d91b3a7d036c0904  calliope_dram_2.bin
 ```
 
+#### Android libraries
+
+The camera's `libcamx.so` (PRO modes, RAW, video) runs on the Android side and is linked
+against the phone's own libraries. Without them `camera/build.sh` stops, rather than build a
+camera that cannot record video. From a phone that already runs this Droidian:
+
+```bash
+mkdir android-libs
+for f in libcamera_client libutils libcamera2ndk libmediandk libbinder_ndk libnativewindow libc++; do
+  scp droidian@<phone>:/android/system/lib64/$f.so android-libs/
+done
+scp droidian@<phone>:/apex/com.android.runtime/lib64/bionic/libc.so android-libs/
+scp droidian@<phone>:/apex/com.android.runtime/lib64/bionic/libm.so android-libs/
+```
+
+On rooted stock Android the same files are in `/system/lib64` and
+`/apex/com.android.runtime/lib64/bionic`. Point `ANDROID_LIBS` at the directory. Tested with:
+
+```
+7d8d507344f25419afc56dcc91fc2025277bc15c23f1b4a5764971f554cc277d  libbinder_ndk.so
+465bd7d5bfb520c2024aebd35ec7a9a83a0d4facde2f6250dc4f61f27dcd3a88  libcamera2ndk.so
+f2bcf1cdd78f016d9860da5f7d4acf6b4c99a3df2f6bcbe73a62a5a4c1239dd1  libcamera_client.so
+c38a57de7b44bccc27bdffd58de033edcc5584c116fc303ec62e80416e9b2d7a  libc++.so
+af74522d47bd108b7ac2d3c6d03ad0800b34cea4da1bdec83105b1d4744f6457  libc.so
+667b27cdcd00af3d946457f65e6095e18a9f599af8a72c92f4b3d839310d24bf  libmediandk.so
+021563c4554561098e8d97d8dc297bcc64ce7e141f7384e1550dc1d1fafc6e98  libm.so
+14d28e33af5cf064439814f9e0dc7e8126635f6947032bf429d51dee852c8666  libnativewindow.so
+382d6f541397c254f79719f8328e9f709f45cda6f94019bf22f540e12ede4aea  libutils.so
+```
+
 ### Step 3: build
 
 All at once (packages, then the image, then the Odin files):
 
 ```bash
-ABOX_FIRMWARE=$HOME/abox-fw ./build-all.sh
+ABOX_FIRMWARE=$HOME/abox-fw ANDROID_LIBS=$HOME/android-libs ./build-all.sh
 ```
 
 or one part at a time, in this order, each one adding its packages to `~/s10plus-build/localrepo`:
@@ -105,7 +137,7 @@ or one part at a time, in this order, each one adding its packages to `~/s10plus
 ABOX_FIRMWARE=$HOME/abox-fw ./kernel/build.sh
 ./archive-rebuild/build.sh
 ./plasma-mobile-wf/build.sh
-./camera/build.sh
+ANDROID_LIBS=$HOME/android-libs ./camera/build.sh
 ./adaptation/build.sh
 docker run --rm -v "$PWD":/d:ro -v ~/s10plus-build/localrepo:/out quay.io/droidian/build-essential:next-amd64 sh /d/libbatman-wrappers/build.sh /out
 ./image/build.sh
@@ -140,6 +172,17 @@ so anything lower loses to the archive copy). Every package the port rebuilds wi
 the archive copy, both while the image is built and later on the phone: a Droidian update does
 not replace the patched shell or kernel. To update a port package, rebuild it and install it
 (or rebuild the image).
+
+A pin above 1000 also lets apt go back to an older version. So when you install a newer port
+package by hand, put it into `/opt/localrepo` as well and refresh the index there, or the next
+upgrade (also from Discover) brings back the version the image came with:
+
+```bash
+sudo apt install dpkg-dev apt-utils     # once
+sudo cp new-package.deb /opt/localrepo/ && cd /opt/localrepo
+sudo sh -c 'dpkg-scanpackages -m . > Packages && apt-ftparchive release . > /tmp/R && mv /tmp/R Release'
+sudo apt update
+```
 
 The archive is snapshot 102 plus the rolling production repository (`env.sh`). The production
 repository moves; if a later Qt breaks a build, the scripts stop with the apt error, and the

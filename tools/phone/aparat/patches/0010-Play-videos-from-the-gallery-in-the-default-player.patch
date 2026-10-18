@@ -1,0 +1,61 @@
+From ee2a0cd352eb0e253c9714d337419f6d63187c49 Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sat, 17 Oct 2026 21:19:00 +0200
+Subject: [PATCH] Play videos from the gallery in the default player, with
+ sound
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ debian/changelog                | 10 ++++++++++
+ src/qml/DefaultUI/MediaWall.qml | 10 ++++++----
+ 2 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 74d5842..6643474 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,13 @@
++droidian-camera (26.1+s10plus10) unstable; urgency=medium
++
++  * Videos from the gallery open in the default player (mpv) with sound.
++    The built-in player was always muted, although the recordings have an
++    AAC track, and it stuttered: it copies every frame through the CPU,
++    which is slow on libhybris (decoding is not the limit: a 4 s 1080p
++    clip decodes in 0.95 s on the CPU).
++
++ -- Artur <ganggg111@gmail.com>  Sat, 17 Oct 2026 21:30:00 +0200
++
+ droidian-camera (26.1+s10plus9) unstable; urgency=medium
+ 
+   * Photos taken with the phone upright are shown upright in the gallery,
+diff --git a/src/qml/DefaultUI/MediaWall.qml b/src/qml/DefaultUI/MediaWall.qml
+index 47d6eb1..165257e 100644
+--- a/src/qml/DefaultUI/MediaWall.qml
++++ b/src/qml/DefaultUI/MediaWall.qml
+@@ -162,9 +162,10 @@ Item {
+                                     imgView.visible = true
+                                     imgView.source = modelData.path
+                                 } else if(modelData.type === "video"){
+-                                    videoRect.visible = true
+-                                    videoPlayer.source = modelData.path
+-                                    videoPlayer.play()
++                                    // the default player (mpv): the built-in Video item
++                                    // copies every frame through the CPU, which on libhybris
++                                    // stutters, and the sound stutters with it
++                                    Qt.openUrlExternally(modelData.path)
+                                 }
+                             }
+                         }
+@@ -186,7 +187,8 @@ Item {
+             source: ""
+             autoPlay: false
+             loops: MediaPlayer.Infinite
+-            muted: true
++            // recorded videos carry sound (AAC); the gallery played them muted
++            muted: false
+             visible: parent.visible
+ 
+             MouseArea {
+-- 
+2.47.3
+

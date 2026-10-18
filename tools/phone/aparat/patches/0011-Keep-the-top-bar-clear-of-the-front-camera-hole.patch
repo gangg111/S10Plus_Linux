@@ -1,0 +1,61 @@
+From 8eeafc440f72e64d8354fcb93ea51a5c5caa82fa Mon Sep 17 00:00:00 2001
+From: Artur <ganggg111@gmail.com>
+Date: Sun, 18 Oct 2026 03:29:23 +0200
+Subject: [PATCH] Keep the top bar clear of the front camera hole
+
+Signed-off-by: Artur <ganggg111@gmail.com>
+---
+ debian/changelog                | 7 +++++++
+ src/qml/DefaultUI/DefaultUI.qml | 8 +++++++-
+ 2 files changed, 14 insertions(+), 1 deletion(-)
+
+diff --git a/debian/changelog b/debian/changelog
+index 6643474..ada9d6d 100644
+--- a/debian/changelog
++++ b/debian/changelog
+@@ -1,3 +1,10 @@
++droidian-camera (26.1+s10plus11) unstable; urgency=medium
++
++  * The top bar ends before the front camera hole (top right corner of the
++    portrait screen), so none of its icons sits under the hole.
++
++ -- Artur <ganggg111@gmail.com>  Sun, 18 Oct 2026 03:40:00 +0200
++
+ droidian-camera (26.1+s10plus10) unstable; urgency=medium
+ 
+   * Videos from the gallery open in the default player (mpv) with sound.
+diff --git a/src/qml/DefaultUI/DefaultUI.qml b/src/qml/DefaultUI/DefaultUI.qml
+index 8a5a815..6f3e3d6 100644
+--- a/src/qml/DefaultUI/DefaultUI.qml
++++ b/src/qml/DefaultUI/DefaultUI.qml
+@@ -14,6 +14,7 @@ import QtQuick
+ import QtQuick.Layouts
+ import QtQuick.Controls
+ import QtQuick.Effects
++import QtQuick.Window
+ import HybrisCamera
+ import ThemeUtils
+ import MediaScanner
+@@ -231,13 +232,18 @@ Item {
+     }
+ 
+     // ---------------------------------------------------------------- top bar
++    // Galaxy S10+: the front camera hole sits over the top right corner of the
++    // portrait screen (from x = 367 pt, down to y = 52 pt); the top bar ends before it.
++    readonly property real cameraInset: Screen.width < Screen.height && root.width === Screen.width
++                                        ? Math.max(0, root.width - 367) : 0
++
+     Row {
+         id: topBar
+         visible: !camera.isRecording && !moreGrid.visible && camera.camMode !== HybrisCamera.QrMode
+         anchors.top: parent.top
+         anchors.right: parent.right
+         anchors.topMargin: 14
+-        anchors.rightMargin: 12
++        anchors.rightMargin: 12 + root.cameraInset
+         spacing: 14
+ 
+         // flash (photo) / torch (video); hidden on lenses without a flash
+-- 
+2.47.3
+
