@@ -1,0 +1,13 @@
+[Desktop Entry]
+# Galaxy S10+: Kate is a desktop text editor that droidian-plamo-wf-full pulls in and
+# whose window does not fit a phone screen.  It stays installed (text files still open in
+# it) but is not listed among the applications.  The original is kate's
+# /usr/share/applications/org.kde.kate.desktop.distrib (diverted by this package).
+Type=Application
+Name=Kate
+GenericName=Advanced Text Editor
+Exec=kate -b %U
+Icon=kate
+MimeType=text/plain;inode/directory;
+Categories=Qt;KDE;Development;TextEditor;
+NoDisplay=true

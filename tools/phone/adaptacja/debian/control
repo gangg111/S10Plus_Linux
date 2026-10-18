@@ -21,7 +21,10 @@ Description: Droidian adaptation for the Samsung Galaxy S10+ (Exynos)
 
 Package: adaptation-samsung-beyond2lte-configs
 Architecture: all
-Depends: python3, python3-dbus, python3-gi, plymouth, mtp-server, ${misc:Depends}
+Depends: python3, python3-dbus, python3-gi, plymouth, mtp-server,
+# the JPEG XL icons of the Droidian software catalog, for Discover
+         kimageformat6-plugins,
+         ${misc:Depends}
 Description: Droidian configuration for the Samsung Galaxy S10+ (Exynos)
  Device specific configuration for the Samsung Galaxy S10+ with the
  Exynos 9820 (SM-G975F, beyond2lte): device node permissions from the

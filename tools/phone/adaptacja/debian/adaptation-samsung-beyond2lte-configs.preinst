@@ -39,10 +39,12 @@ if [ "$1" = install ] || [ "$1" = upgrade ]; then
 
 	# mm_modem.py: ofono2mm z bramka na PinRequired, ktorego ofono jeszcze nie
 	# wyslal zaraz po wlozeniu karty (bez niej KeyError i modem w stanie failed).
+	# org.kde.kate.desktop: Kate (ciagniety przez droidian-plamo-wf-full) ukryty z listy
+	# aplikacji kopia z NoDisplay=true; okno edytora na komputer nie miesci sie na ekranie.
 	# (binder.conf do wersji 15 tez byl przekierowany; teraz binder.d, patrz postinst)
 	# keep in sync with postrm
 	PKG=adaptation-samsung-beyond2lte-configs
-	for f in /usr/lib/ofono2mm/ofono2mm/mm_modem.py; do
+	for f in /usr/lib/ofono2mm/ofono2mm/mm_modem.py /usr/share/applications/org.kde.kate.desktop; do
 		owner=$(dpkg-divert --listpackage "$f")
 		if [ "$owner" = "$PKG" ]; then
 			:

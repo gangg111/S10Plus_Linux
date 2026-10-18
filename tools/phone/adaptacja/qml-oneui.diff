@@ -1,3 +1,89 @@
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/qmldir
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/qmldir
+@@ -9,7 +9,6 @@
+ depends org.kde.kirigami
+ depends org.kde.breeze.impl
+ depends org.kde.guiaddons
+-prefer :/qt/qml/org/kde/breeze/
+ AbstractButton 254.0 AbstractButton.qml
+ ApplicationWindow 254.0 ApplicationWindow.qml
+ BusyIndicator 254.0 BusyIndicator.qml
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/ToolBar.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/ToolBar.qml
+@@ -5,6 +5,7 @@
+ pragma ComponentBehavior: Bound
+ 
+ import QtQuick
++import QtQuick.Window
+ import QtQuick.Templates as T
+ import org.kde.kirigami as Kirigami
+ 
+@@ -24,6 +25,47 @@
+     spacing: Kirigami.Units.smallSpacing
+ 
+     padding: Kirigami.Units.smallSpacing
++    rightPadding: horizontalPadding + cameraInset
++
++    // Galaxy S10+: with the shell panels auto-hidden the window covers the whole
++    // portrait screen and the front camera hole sits over the top right corner
++    // (from x = 367 pt, down to y = 52 pt). A toolbar on that corner ends before
++    // it; with the status bar shown (window shorter than the screen) or in
++    // landscape nothing changes.
++    // A window shortened from the bottom (on-screen keyboard) still starts under the hole;
++    // only a small difference means the status bar is shown above the window.
++    // Set from a function, not a binding: the inset depends on the bar's own width and
++    // changes its padding, and inside page headers Qt broke that binding loop and left 0.
++    property real cameraInset: 0
++    function __s10CameraInset() {
++        const w = control.Window.width;
++        const h = control.Window.height;
++        const d = Screen.height - h;
++        if (w <= 0 || w !== Screen.width || Screen.width >= Screen.height
++                || (d > 1 && d < 60) || h < Screen.height / 3 || control.width <= 0) {
++            return 0;
++        }
++        const p = control.mapToItem(null, control.width, 0);
++        if (p.x < w - 1 || p.y > 52) {
++            return 0;
++        }
++        return Math.max(0, w - 367);
++    }
++    function __s10UpdateInset() {
++        const v = __s10CameraInset();
++        if (v !== cameraInset) {
++            cameraInset = v;
++        }
++    }
++    onWidthChanged: Qt.callLater(__s10UpdateInset)
++    onXChanged: Qt.callLater(__s10UpdateInset)
++    onYChanged: Qt.callLater(__s10UpdateInset)
++    Component.onCompleted: Qt.callLater(__s10UpdateInset)
++    Connections {
++        target: control.Window.window
++        function onWidthChanged() { Qt.callLater(control.__s10UpdateInset) }
++        function onHeightChanged() { Qt.callLater(control.__s10UpdateInset) }
++    }
+ 
+     // Add space for the separator above the footer
+     topPadding: __isFooter && background && background.hasOwnProperty("separator") ?
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormButtonDelegate.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormButtonDelegate.qml
+@@ -128,6 +128,15 @@
+                 Layout.fillWidth: true
+                 text: root.description
+                 color: Kirigami.Theme.disabledTextColor
++                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
++                Binding on font.pixelSize {
++                    when: root.font.pixelSize > 0
++                    value: Math.round(root.font.pixelSize * 0.8)
++                }
++                Binding on font.pointSize {
++                    when: root.font.pixelSize <= 0
++                    value: root.font.pointSize * 0.8
++                }
+                 elide: Text.ElideRight
+                 visible: root.description !== ""
+                 wrapMode: Text.Wrap
 --- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormCard.qml
 +++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormCard.qml
 @@ -83,6 +83,11 @@
@@ -39,178 +125,6 @@
              readonly property list<Item> _visibleItems: visibleChildren.filter(child => child.height !== 0)
              readonly property Item _firstVisibleItem: _visibleItems[0] ?? null
              readonly property Item _lastVisibleItem: _visibleItems[_visibleItems.length - 1] ?? null
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormButtonDelegate.qml
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormButtonDelegate.qml
-@@ -128,6 +128,15 @@
-                 Layout.fillWidth: true
-                 text: root.description
-                 color: Kirigami.Theme.disabledTextColor
-+                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
-+                Binding on font.pixelSize {
-+                    when: root.font.pixelSize > 0
-+                    value: Math.round(root.font.pixelSize * 0.8)
-+                }
-+                Binding on font.pointSize {
-+                    when: root.font.pixelSize <= 0
-+                    value: root.font.pointSize * 0.8
-+                }
-                 elide: Text.ElideRight
-                 visible: root.description !== ""
-                 wrapMode: Text.Wrap
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/ToolBar.qml
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/ToolBar.qml
-@@ -5,6 +5,7 @@
- pragma ComponentBehavior: Bound
- 
- import QtQuick
-+import QtQuick.Window
- import QtQuick.Templates as T
- import org.kde.kirigami as Kirigami
- 
-@@ -24,6 +25,25 @@
-     spacing: Kirigami.Units.smallSpacing
- 
-     padding: Kirigami.Units.smallSpacing
-+    rightPadding: horizontalPadding + cameraInset
-+
-+    // Galaxy S10+: with the shell panels auto-hidden the window covers the whole
-+    // portrait screen and the front camera hole sits over the top right corner
-+    // (from x = 367 pt, down to y = 52 pt). A toolbar on that corner ends before
-+    // it; with the status bar shown (window shorter than the screen) or in
-+    // landscape nothing changes.
-+    readonly property real cameraInset: {
-+        const w = control.Window.width;
-+        const h = control.Window.height;
-+        if (w <= 0 || Screen.width >= Screen.height || h < Screen.height - 1 || control.width <= 0) {
-+            return 0;
-+        }
-+        const p = control.mapToItem(null, control.width, 0);
-+        if (p.x < w - 1 || p.y > 52) {
-+            return 0;
-+        }
-+        return Math.max(0, w - 367);
-+    }
- 
-     // Add space for the separator above the footer
-     topPadding: __isFooter && background && background.hasOwnProperty("separator") ?
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/qmldir
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/breeze/qmldir
-@@ -9,7 +9,6 @@
- depends org.kde.kirigami
- depends org.kde.breeze.impl
- depends org.kde.guiaddons
--prefer :/qt/qml/org/kde/breeze/
- AbstractButton 254.0 AbstractButton.qml
- ApplicationWindow 254.0 ApplicationWindow.qml
- BusyIndicator 254.0 BusyIndicator.qml
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/qmldir
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/qmldir
-@@ -8,7 +8,6 @@
- depends org.kde.kirigamiaddons.components
- depends org.kde.kirigamiaddons.dateandtime
- depends org.kde.kirigamiaddons.delegates
--prefer :/qt/qml/org/kde/kirigamiaddons/formcard/
- AboutKDE 1.0 AboutKDE.qml
- AboutKDEPage 1.0 AboutKDEPage.qml
- AboutPage 1.0 AboutPage.qml
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormSwitchDelegate.qml
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormSwitchDelegate.qml
-@@ -127,6 +127,15 @@
-                 text: root.description
-                 wrapMode: Text.Wrap
-                 color: Kirigami.Theme.disabledTextColor
-+                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
-+                Binding on font.pixelSize {
-+                    when: root.font.pixelSize > 0
-+                    value: Math.round(root.font.pixelSize * 0.8)
-+                }
-+                Binding on font.pointSize {
-+                    when: root.font.pixelSize <= 0
-+                    value: root.font.pointSize * 0.8
-+                }
-                 Accessible.ignored: true
-             }
-         }
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/qmldir
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/qmldir
-@@ -8,7 +8,6 @@
- depends org.kde.kirigami.platform
- depends org.kde.kirigami.primitives
- depends org.kde.kirigami.templates
--prefer :/qt/qml/org/kde/kirigami/controls/
- AboutItem 2.0 AboutItem.qml
- AboutPage 2.0 AboutPage.qml
- AbstractApplicationHeader 2.0 AbstractApplicationHeader.qml
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/private/globaltoolbar/ToolBarPageHeader.qml
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/private/globaltoolbar/ToolBarPageHeader.qml
-@@ -36,7 +36,25 @@
-     }
- 
-     leftPadding: Platform.Units.mediumSpacing
--    rightPadding: Platform.Units.mediumSpacing
-+    rightPadding: Platform.Units.mediumSpacing + cameraInset
-+
-+    // Galaxy S10+: with the shell panels auto-hidden the window covers the whole
-+    // portrait screen and the front camera hole sits over the top right corner
-+    // (from x = 367 pt, down to y = 52 pt). The header on that corner ends
-+    // before it; with the status bar shown (window shorter than the screen) or
-+    // in landscape nothing changes.
-+    readonly property real cameraInset: {
-+        const w = root.Window.width;
-+        const h = root.Window.height;
-+        if (w <= 0 || Screen.width >= Screen.height || h < Screen.height - 1 || root.width <= 0) {
-+            return 0;
-+        }
-+        const p = root.mapToItem(null, root.width, 0);
-+        if (p.x < w - 1 || p.y > 52) {
-+            return 0;
-+        }
-+        return Math.max(0, w - 367);
-+    }
- 
-     MouseArea {
-         anchors.fill: parent
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormTextDelegate.qml
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormTextDelegate.qml
-@@ -121,6 +121,15 @@
-                 Layout.fillWidth: true
-                 text: root.description
-                 color: Kirigami.Theme.disabledTextColor
-+                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
-+                Binding on font.pixelSize {
-+                    when: root.font.pixelSize > 0
-+                    value: Math.round(root.font.pixelSize * 0.8)
-+                }
-+                Binding on font.pointSize {
-+                    when: root.font.pixelSize <= 0
-+                    value: root.font.pointSize * 0.8
-+                }
-                 visible: root.description !== ""
-                 onLinkActivated: root.linkActivated(link)
-                 wrapMode: Text.Wrap
---- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/private/FormCardUnits.qml
-+++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/private/FormCardUnits.qml
-@@ -4,11 +4,18 @@
- pragma Singleton
- 
- import QtQml
-+import QtQuick
- import org.kde.kirigami as Kirigami
- 
- QtObject {
--    readonly property int horizontalPadding: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
--    readonly property int verticalPadding: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
-+    // Galaxy S10+ port, One UI look: rows as tall as One UI ones (65 px with 17 px text),
-+    // the vertical padding follows the application font, so smaller fonts get lower rows
-+    readonly property FontMetrics _fontMetrics: FontMetrics {
-+        font: Qt.application.font
-+    }
-+    readonly property int horizontalPadding: 20
-+    readonly property int verticalPadding: Math.max(Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing,
-+                                                    Math.round(_fontMetrics.height * 0.85))
- 
-     readonly property int verticalSpacing: Kirigami.Units.smallSpacing
-     readonly property int horizontalSpacing: Kirigami.Units.largeSpacing
 --- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormHeader.qml
 +++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormHeader.qml
 @@ -55,7 +55,8 @@
@@ -252,3 +166,236 @@
              wrapMode: Text.WordWrap
              Accessible.role: Accessible.Heading
              Layout.fillWidth: true
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormSwitchDelegate.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormSwitchDelegate.qml
+@@ -127,6 +127,15 @@
+                 text: root.description
+                 wrapMode: Text.Wrap
+                 color: Kirigami.Theme.disabledTextColor
++                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
++                Binding on font.pixelSize {
++                    when: root.font.pixelSize > 0
++                    value: Math.round(root.font.pixelSize * 0.8)
++                }
++                Binding on font.pointSize {
++                    when: root.font.pixelSize <= 0
++                    value: root.font.pointSize * 0.8
++                }
+                 Accessible.ignored: true
+             }
+         }
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormTextDelegate.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/FormTextDelegate.qml
+@@ -121,6 +121,15 @@
+                 Layout.fillWidth: true
+                 text: root.description
+                 color: Kirigami.Theme.disabledTextColor
++                // Galaxy S10+ port, One UI look: the subtitle is smaller than the title
++                Binding on font.pixelSize {
++                    when: root.font.pixelSize > 0
++                    value: Math.round(root.font.pixelSize * 0.8)
++                }
++                Binding on font.pointSize {
++                    when: root.font.pixelSize <= 0
++                    value: root.font.pointSize * 0.8
++                }
+                 visible: root.description !== ""
+                 onLinkActivated: root.linkActivated(link)
+                 wrapMode: Text.Wrap
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/private/FormCardUnits.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/private/FormCardUnits.qml
+@@ -4,11 +4,18 @@
+ pragma Singleton
+ 
+ import QtQml
++import QtQuick
+ import org.kde.kirigami as Kirigami
+ 
+ QtObject {
+-    readonly property int horizontalPadding: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
+-    readonly property int verticalPadding: Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing
++    // Galaxy S10+ port, One UI look: rows as tall as One UI ones (65 px with 17 px text),
++    // the vertical padding follows the application font, so smaller fonts get lower rows
++    readonly property FontMetrics _fontMetrics: FontMetrics {
++        font: Qt.application.font
++    }
++    readonly property int horizontalPadding: 20
++    readonly property int verticalPadding: Math.max(Kirigami.Units.largeSpacing + Kirigami.Units.smallSpacing,
++                                                    Math.round(_fontMetrics.height * 0.85))
+ 
+     readonly property int verticalSpacing: Kirigami.Units.smallSpacing
+     readonly property int horizontalSpacing: Kirigami.Units.largeSpacing
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/qmldir
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigamiaddons/formcard/qmldir
+@@ -8,7 +8,6 @@
+ depends org.kde.kirigamiaddons.components
+ depends org.kde.kirigamiaddons.dateandtime
+ depends org.kde.kirigamiaddons.delegates
+-prefer :/qt/qml/org/kde/kirigamiaddons/formcard/
+ AboutKDE 1.0 AboutKDE.qml
+ AboutKDEPage 1.0 AboutKDEPage.qml
+ AboutPage 1.0 AboutPage.qml
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/ActionToolBar.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/ActionToolBar.qml
+@@ -6,6 +6,7 @@
+ pragma ComponentBehavior: Bound
+ 
+ import QtQuick
++import QtQuick.Window
+ import QtQml
+ import QtQuick.Layouts
+ import QtQuick.Controls as QQC2
+@@ -73,6 +74,49 @@
+      */
+     property int display: QQC2.Button.TextBesideIcon
+ 
++    // Galaxy S10+: actions kept visible (DisplayHint.KeepVisible) never go to the overflow
++    // menu, so in a bar shortened before the front camera hole (x >= 367 pt, y < 52 pt)
++    // they run past its end and under the hole. Then the bar shows them as icons only.
++    property bool __s10IconOnly: false
++    function __s10CheckOverflow() {
++        const w = root.Window.width;
++        if (__s10IconOnly || w <= 0 || w !== Screen.width || Screen.width >= Screen.height) {
++            return;
++        }
++        for (let i = 0; i < layout.children.length; i++) {
++            const c = layout.children[i];
++            if (!c.visible || c.width <= 0 || c.x + c.width <= layout.width + 1) {
++                continue;
++            }
++            const p = c.mapToItem(null, c.width, 0);
++            if (p.x > 367 && p.y < 52) {
++                __s10IconOnly = true;
++                // the layout does not follow the buttons' new widths by itself
++                Qt.callLater(layout.relayout);
++                return;
++            }
++        }
++    }
++    Timer {
++        id: s10OverflowTimer
++        interval: 250
++        onTriggered: root.__s10CheckOverflow()
++    }
++    onWidthChanged: s10OverflowTimer.restart()
++    onActionsChanged: s10OverflowTimer.restart()
++    Component.onCompleted: s10OverflowTimer.restart()
++    Connections {
++        target: root.Window.window
++        function onWidthChanged() {
++            if (root.__s10IconOnly) {
++                root.__s10IconOnly = false;
++                Qt.callLater(layout.relayout);
++            }
++            s10OverflowTimer.restart();
++        }
++        function onHeightChanged() { s10OverflowTimer.restart() }
++    }
++
+     /*!
+       \qmlproperty Qt::Alignment ActionToolBar::alignment
+ 
+@@ -171,7 +215,7 @@
+ 
+         fullDelegate: P.PrivateActionToolButton {
+             flat: root.flat
+-            display: root.display
++            display: root.__s10IconOnly ? QQC2.Button.IconOnly : root.display
+             position: root.position
+             action: KL.ToolBarLayout.action as T.Action
+         }
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/private/globaltoolbar/ToolBarPageHeader.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/private/globaltoolbar/ToolBarPageHeader.qml
+@@ -38,6 +38,7 @@
+     leftPadding: Platform.Units.mediumSpacing
+     rightPadding: Platform.Units.mediumSpacing
+ 
++
+     MouseArea {
+         anchors.fill: parent
+         onPressed: mouse => {
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/qmldir
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/controls/qmldir
+@@ -8,7 +8,6 @@
+ depends org.kde.kirigami.platform
+ depends org.kde.kirigami.primitives
+ depends org.kde.kirigami.templates
+-prefer :/qt/qml/org/kde/kirigami/controls/
+ AboutItem 2.0 AboutItem.qml
+ AboutPage 2.0 AboutPage.qml
+ AbstractApplicationHeader 2.0 AbstractApplicationHeader.qml
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/templates/AbstractApplicationHeader.qml
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/templates/AbstractApplicationHeader.qml
+@@ -5,6 +5,7 @@
+  */
+ 
+ import QtQuick
++import QtQuick.Window
+ import QtQuick.Controls as QQC2
+ import org.kde.kirigami.platform as Platform
+ import org.kde.kirigami.controls as KirigamiControls
+@@ -106,6 +107,45 @@
+      */
+     property int rightPadding: Platform.Units.mediumSpacing
+ 
++    // Galaxy S10+: with the shell panels auto-hidden the window covers the whole
++    // portrait screen and the front camera hole sits over the top right corner
++    // (from x = 367 pt, down to y = 52 pt). A header on that corner ends before
++    // it; with the status bar shown (window shorter than the screen) or in
++    // landscape nothing changes.
++    // A window shortened from the bottom (on-screen keyboard) still starts under the hole;
++    // only a small difference means the status bar is shown above the window.
++    // Set from a function, not a binding: the inset depends on the bar's own width and
++    // changes its padding, and inside page headers Qt broke that binding loop and left 0.
++    property real cameraInset: 0
++    function __s10CameraInset() {
++        const w = root.Window.width;
++        const h = root.Window.height;
++        const d = Screen.height - h;
++        if (w <= 0 || w !== Screen.width || Screen.width >= Screen.height
++                || (d > 1 && d < 60) || h < Screen.height / 3 || root.width <= 0) {
++            return 0;
++        }
++        const p = root.mapToItem(null, root.width, 0);
++        if (p.x < w - 1 || p.y > 52) {
++            return 0;
++        }
++        return Math.max(0, w - 367);
++    }
++    function __s10UpdateInset() {
++        const v = __s10CameraInset();
++        if (v !== cameraInset) {
++            cameraInset = v;
++        }
++    }
++    onWidthChanged: Qt.callLater(__s10UpdateInset)
++    onXChanged: Qt.callLater(__s10UpdateInset)
++    onYChanged: Qt.callLater(__s10UpdateInset)
++    Connections {
++        target: root.Window.window
++        function onWidthChanged() { Qt.callLater(root.__s10UpdateInset) }
++        function onHeightChanged() { Qt.callLater(root.__s10UpdateInset) }
++    }
++
+     /*!
+      */
+     property int bottomPadding: Platform.Units.mediumSpacing
+@@ -278,7 +318,7 @@
+                 bottom: parent.bottom
+ 
+                 leftMargin: root.leftPadding
+-                rightMargin: root.rightPadding
++                rightMargin: root.rightPadding + root.cameraInset
+                 bottomMargin: root.bottomPadding
+             }
+         }
+--- a/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/templates/qmldir
++++ b/usr/lib/aarch64-linux-gnu/qt6/qml/org/kde/kirigami/templates/qmldir
+@@ -3,7 +3,6 @@
+ optional plugin KirigamiTemplatesplugin
+ classname org_kde_kirigami_templatesPlugin
+ typeinfo KirigamiTemplates.qmltypes
+-prefer :/qt/qml/org/kde/kirigami/templates/
+ AbstractApplicationHeader 2.0 AbstractApplicationHeader.qml
+ AbstractCard 2.0 AbstractCard.qml
+ singleton AppHeaderSizeGroup 2.0 AppHeaderSizeGroup.qml

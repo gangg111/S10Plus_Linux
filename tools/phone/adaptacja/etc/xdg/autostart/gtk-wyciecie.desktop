@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=GTK: otwor aparatu
+Comment=Paski naglowka GTK 3 i 4 koncza sie przed otworem aparatu
+Exec=/bin/sh /usr/lib/s10plus/gtk-wyciecie.sh
+NoDisplay=true
+X-KDE-autostart-phase=1

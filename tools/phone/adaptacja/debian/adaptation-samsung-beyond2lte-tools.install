@@ -8,4 +8,5 @@ tools/plasma-settings/mobile.plasmasettings.mo usr/share/locale/pl/LC_MESSAGES
 tools/plasma-settings/categories/* usr/share/plasma-settings/categories
 build/oneui/usr/lib usr
 tools/rgba8888/librgba8888.so usr/lib/aarch64-linux-gnu/s10plus
+tools/qt6-styles/libs10style.so usr/lib/aarch64-linux-gnu/qt6/plugins/styles
 tools/maliit/maliit-keyboard usr/bin

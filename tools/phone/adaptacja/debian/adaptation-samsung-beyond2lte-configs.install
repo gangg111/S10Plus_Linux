@@ -15,5 +15,7 @@ etc/systemd/logind.conf.d/*
 usr/lib/droid-system-overlay/etc/init/*
 usr/lib/droid-vendor-overlay/etc/*
 usr/lib/ofono2mm/ofono2mm/*
+usr/share/applications/org.kde.kate.desktop
 etc/systemd/system/android-mount.service.d/*
 usr/share/color-schemes/*
+usr/share/s10plus/gtk/*

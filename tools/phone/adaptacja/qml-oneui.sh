@@ -1,7 +1,7 @@
 #!/bin/sh
 # Builds the One UI QML overlays of the -tools package from the archive's own files.
 #
-# qml-oneui.diff changes 12 files of three archive packages (kirigami-addons FormCard,
+# qml-oneui.diff changes 14 files of three archive packages (kirigami-addons FormCard,
 # Kirigami controls, the Breeze Qt Quick style).  Copying our edited files over a newer
 # release would mix two versions in one QML module, so instead the packages are fetched
 # from the archive here, the diff is applied to exactly their files, and -tools depends

@@ -31,6 +31,13 @@ fi
 if [ "$1" = configure ]; then
 	firefox_fragments
 
+	# systemd-backlight zapisuje jasnosc przy wylaczaniu i przywraca ja przy starcie; przy
+	# wygaszonym ekranie (zdalny restart, rozladowana bateria) zapisuje 0 i telefon startuje
+	# na minimum (2430 z 48600).  Bez niego zostaje wartosc jadra (12800, ok. 183 nitow),
+	# a dalej jasnosc ustawiaja autojasnosc i PowerDevil.
+	B=/etc/systemd/system/systemd-backlight@backlight:panel.service
+	[ -e "$B" ] || ln -s /dev/null "$B"
+
 	# hand-installed copies from before version 2 (rules in /etc override
 	# the packaged ones in /usr/lib, so identical ones are dropped)
 	drop_if_same /usr/lib/udev/rules.d/70-beyond2lte.rules /etc/udev/rules.d/70-beyond2lte.rules

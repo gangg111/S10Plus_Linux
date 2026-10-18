@@ -2,6 +2,10 @@
 set -e
 
 if [ "$1" = remove ] || [ "$1" = purge ]; then
+	# the mask of systemd-backlight for the panel (postinst) goes with the package
+	B=/etc/systemd/system/systemd-backlight@backlight:panel.service
+	[ "$(readlink "$B" 2>/dev/null)" = /dev/null ] && rm -f "$B"
+
 	# our Firefox fragments are gone, their lines leave the mobile-config-firefox lists
 	for pair in userChrome:userChrome/s10plus-pasek-u-gory.css \
 	            userContent:userContent/s10plus-strona-glowna.css; do
@@ -20,7 +24,7 @@ if [ "$1" = remove ] || [ "$1" = abort-install ] || [ "$1" = disappear ]; then
 	# binder.conf i mm_modem.py wracaja do wersji z ich pakietow
 	# keep in sync with preinst
 	PKG=adaptation-samsung-beyond2lte-configs
-	for f in /etc/ofono/binder.conf /usr/lib/ofono2mm/ofono2mm/mm_modem.py; do
+	for f in /etc/ofono/binder.conf /usr/lib/ofono2mm/ofono2mm/mm_modem.py /usr/share/applications/org.kde.kate.desktop; do
 		if [ "$(dpkg-divert --listpackage "$f")" = "$PKG" ]; then
 			dpkg-divert --package "$PKG" --rename --remove "$f"
 		fi

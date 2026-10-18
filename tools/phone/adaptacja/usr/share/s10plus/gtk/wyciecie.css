@@ -1,0 +1,9 @@
+/* Galaxy S10+: with the shell panels auto-hidden a maximized window covers the
+ * whole portrait screen and the front camera hole sits over its top right
+ * corner (from x = 367 px, down to y = 52 px).  The header bar ends before it;
+ * the window itself is not moved.  Imported from ~/.config/gtk-3.0/gtk.css and
+ * ~/.config/gtk-4.0/gtk.css by /usr/lib/s10plus/gtk-wyciecie.sh. */
+window.maximized headerbar,
+window.fullscreen headerbar {
+    padding-right: 108px;
+}

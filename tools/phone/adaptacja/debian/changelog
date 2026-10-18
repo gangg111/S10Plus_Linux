@@ -1,3 +1,36 @@
+adaptation-samsung-beyond2lte (21) unstable; urgency=medium
+
+  * Discover shows the application icons: the Droidian software catalog
+    ships them as JPEG XL, which Qt reads only with kimageformat6-plugins;
+    without it every application had the same placeholder.
+  * The screen no longer comes up at the lowest brightness after a restart:
+    systemd-backlight saved the level at shutdown, 0 when the screen was
+    blanked (a remote restart, a flat battery), and restored the minimum.
+    It is masked for the panel; the kernel level (12800, about 183 nits)
+    stays until autojasnosc or PowerDevil sets one.
+  * Kate is not listed among the applications: droidian-plamo-wf-full pulls
+    in this desktop text editor and its window does not fit the phone.  Its
+    desktop entry is diverted to a copy with NoDisplay=true, so it stays
+    installed and still opens text files.
+  * No button sits under the front camera hole (top right corner of the
+    portrait screen, from x = 367 pt down to y = 52 pt); the windows are not
+    moved, their header bars end before the hole:
+    - every Kirigami header (the rule moved from ToolBarPageHeader into the
+      AbstractApplicationHeader template, so headers the apps build
+      themselves, like the search field of the phone book, get it too), also
+      when the on-screen keyboard shortens the window; the inset is set from
+      a function, as a binding Qt broke the loop and left 0;
+    - Kirigami action bars show their always-visible actions as icons when
+      they would still reach under the hole (Calindori);
+    - Qt Widgets applications (Ark, Okular, ...) through the S10Breeze style,
+      a Breeze proxy selected with QT_STYLE_OVERRIDE: the menu bar gets a
+      corner spacer and horizontal tool bars a right margin;
+    - GTK 3 and GTK 4 header bars (Text Editor) through
+      /usr/share/s10plus/gtk/wyciecie.css, imported into the user's gtk.css
+      at login by gtk-wyciecie.sh.
+
+ -- Artur Szafraniec <ganggg111@gmail.com>  Sat, 17 Oct 2026 21:50:00 +0200
+
 adaptation-samsung-beyond2lte (20) unstable; urgency=medium
 
   * Wi-Fi keeps one address: NetworkManager manages only wlan0, the card
